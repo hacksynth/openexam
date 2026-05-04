@@ -1,0 +1,497 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  user
+  admin
+}
+
+enum QuestionKind {
+  single_choice
+  multiple_choice
+  true_false
+  blank
+  short_answer
+  case_analysis
+}
+
+enum Visibility {
+  private
+  unlisted
+  public
+}
+
+enum SourceType {
+  original
+  authorized
+  public_domain_or_open
+  user_uploaded
+  ai_generated
+  unknown
+}
+
+enum ReviewStatus {
+  draft
+  pending_review
+  approved
+  rejected
+  needs_changes
+  takedown
+}
+
+enum AttemptStatus {
+  in_progress
+  paused
+  submitted
+  graded
+  abandoned
+}
+
+enum AiProvider {
+  openai
+  anthropic
+  gemini
+}
+
+enum AiTaskType {
+  explain_question
+  grade_subjective
+  generate_plan
+  extract_questions
+  diagnose_learning
+  generate_wrong_note_image_prompt
+  generate_image
+  chat_with_context
+}
+
+enum AiCallStatus {
+  queued
+  running
+  succeeded
+  failed
+  canceled
+}
+
+enum JobStatus {
+  queued
+  running
+  succeeded
+  failed
+  canceled
+}
+
+model User {
+  id             String            @id @default(cuid())
+  email          String            @unique
+  name           String?
+  passwordHash   String?
+  role           UserRole          @default(user)
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  goals          ExamGoal[]
+  attempts       Attempt[]
+  wrongNotes     WrongNote[]
+  questions      Question[]        @relation("QuestionOwner")
+  materials      Material[]
+  assets         Asset[]
+  aiCalls        AiCall[]
+  jobs           Job[]
+  providerKeys   UserProviderKey[]
+  auditLogs      AuditLog[]        @relation("AuditActor")
+}
+
+model ExamProgram {
+  id          String      @id @default(cuid())
+  name        String
+  slug        String      @unique
+  description String?
+  tracks      ExamTrack[]
+  goals       ExamGoal[]
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+}
+
+model ExamTrack {
+  id          String       @id @default(cuid())
+  programId   String
+  program     ExamProgram  @relation(fields: [programId], references: [id])
+  name        String
+  slug        String
+  level       String?
+  cycles      ExamCycle[]
+  goals       ExamGoal[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@unique([programId, slug])
+}
+
+model ExamCycle {
+  id          String       @id @default(cuid())
+  trackId     String
+  track       ExamTrack    @relation(fields: [trackId], references: [id])
+  name        String
+  slug        String
+  startsAt    DateTime?
+  examDate    DateTime?
+  subjects    Subject[]
+  papers      Paper[]
+  goals       ExamGoal[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@unique([trackId, slug])
+}
+
+model Subject {
+  id          String       @id @default(cuid())
+  cycleId     String
+  cycle       ExamCycle    @relation(fields: [cycleId], references: [id])
+  name        String
+  slug        String
+  description String?
+  syllabi     Syllabus[]
+  papers      Paper[]
+  goals       ExamGoal[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@unique([cycleId, slug])
+}
+
+model Syllabus {
+  id             String          @id @default(cuid())
+  subjectId      String
+  subject        Subject         @relation(fields: [subjectId], references: [id])
+  name           String
+  version        String
+  knowledgeNodes KnowledgeNode[]
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  @@unique([subjectId, version])
+}
+
+model KnowledgeNode {
+  id               String                  @id @default(cuid())
+  syllabusId        String
+  syllabus          Syllabus                @relation(fields: [syllabusId], references: [id])
+  parentId          String?
+  parent            KnowledgeNode?          @relation("KnowledgeNodeTree", fields: [parentId], references: [id])
+  children          KnowledgeNode[]         @relation("KnowledgeNodeTree")
+  code              String?
+  title             String
+  description       String?
+  examExpectation   String?
+  questionBindings  QuestionKnowledgeNode[]
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+
+  @@index([syllabusId, parentId])
+}
+
+model Question {
+  id                String                  @id @default(cuid())
+  ownerId           String?
+  owner             User?                   @relation("QuestionOwner", fields: [ownerId], references: [id])
+  kind              QuestionKind
+  stem              String
+  payload           Json
+  answerKey         Json?
+  rubric            Json?
+  explanation       String?
+  difficulty        Int?
+  sourceType        SourceType              @default(unknown)
+  sourceTitle       String?
+  sourceUrl         String?
+  sourceLicense     String?
+  visibility        Visibility              @default(private)
+  reviewStatus      ReviewStatus            @default(draft)
+  currentVersion    Int                     @default(1)
+  deletedAt         DateTime?
+  versions          QuestionVersion[]
+  knowledgeBindings QuestionKnowledgeNode[]
+  paperLinks        PaperQuestion[]
+  attemptAnswers    AttemptAnswer[]
+  wrongNotes        WrongNote[]
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+
+  @@index([visibility, reviewStatus, sourceType])
+  @@index([ownerId])
+}
+
+model QuestionVersion {
+  id           String       @id @default(cuid())
+  questionId   String
+  question     Question     @relation(fields: [questionId], references: [id])
+  version      Int
+  stem         String
+  payload      Json
+  answerKey    Json?
+  rubric       Json?
+  explanation  String?
+  sourceType   SourceType
+  visibility   Visibility
+  reviewStatus ReviewStatus
+  answers      AttemptAnswer[]
+  createdAt    DateTime     @default(now())
+
+  @@unique([questionId, version])
+}
+
+model QuestionKnowledgeNode {
+  questionId      String
+  knowledgeNodeId String
+  question        Question      @relation(fields: [questionId], references: [id])
+  knowledgeNode   KnowledgeNode @relation(fields: [knowledgeNodeId], references: [id])
+  weight          Float         @default(1)
+  isPrimary       Boolean       @default(false)
+
+  @@id([questionId, knowledgeNodeId])
+}
+
+model Paper {
+  id          String          @id @default(cuid())
+  cycleId     String?
+  cycle       ExamCycle?      @relation(fields: [cycleId], references: [id])
+  subjectId   String?
+  subject     Subject?        @relation(fields: [subjectId], references: [id])
+  title       String
+  slug        String
+  paperType   String          @default("practice")
+  visibility  Visibility      @default(private)
+  questions   PaperQuestion[]
+  attempts    Attempt[]
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@unique([slug])
+}
+
+model PaperQuestion {
+  paperId    String
+  questionId String
+  paper      Paper    @relation(fields: [paperId], references: [id])
+  question   Question @relation(fields: [questionId], references: [id])
+  order      Int
+  number     String
+  section    String?
+  score      Float    @default(1)
+
+  @@id([paperId, questionId])
+  @@unique([paperId, order])
+}
+
+model ExamGoal {
+  id             String       @id @default(cuid())
+  userId         String
+  user           User         @relation(fields: [userId], references: [id])
+  programId      String
+  program        ExamProgram  @relation(fields: [programId], references: [id])
+  trackId        String?
+  track          ExamTrack?   @relation(fields: [trackId], references: [id])
+  cycleId        String?
+  cycle          ExamCycle?   @relation(fields: [cycleId], references: [id])
+  subjectId      String?
+  subject        Subject?     @relation(fields: [subjectId], references: [id])
+  targetDate     DateTime?
+  targetScore    Float?
+  dailyMinutes   Int          @default(60)
+  isPrimary      Boolean      @default(false)
+  attempts       Attempt[]
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([userId, isPrimary])
+}
+
+model Attempt {
+  id          String          @id @default(cuid())
+  userId      String
+  user        User            @relation(fields: [userId], references: [id])
+  goalId      String?
+  goal        ExamGoal?       @relation(fields: [goalId], references: [id])
+  paperId     String?
+  paper       Paper?          @relation(fields: [paperId], references: [id])
+  status      AttemptStatus   @default(in_progress)
+  startedAt   DateTime        @default(now())
+  submittedAt DateTime?
+  pausedAt    DateTime?
+  totalScore  Float?
+  maxScore    Float?
+  answers     AttemptAnswer[]
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@index([userId, status])
+}
+
+model AttemptAnswer {
+  id                String           @id @default(cuid())
+  attemptId         String
+  attempt           Attempt          @relation(fields: [attemptId], references: [id])
+  questionId        String
+  question          Question         @relation(fields: [questionId], references: [id])
+  questionVersionId String?
+  questionVersion   QuestionVersion? @relation(fields: [questionVersionId], references: [id])
+  userAnswer        Json?
+  isCorrect         Boolean?
+  score             Float?
+  maxScore          Float?
+  aiSuggestedScore  Float?
+  userConfirmed     Boolean          @default(false)
+  wrongNotes        WrongNote[]
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  @@index([attemptId])
+  @@index([questionVersionId])
+}
+
+model WrongNote {
+  id              String         @id @default(cuid())
+  userId          String
+  user            User           @relation(fields: [userId], references: [id])
+  questionId      String
+  question        Question       @relation(fields: [questionId], references: [id])
+  attemptAnswerId String?
+  attemptAnswer   AttemptAnswer? @relation(fields: [attemptAnswerId], references: [id])
+  mastered        Boolean        @default(false)
+  mistakeTags     String[]       @default([])
+  userNotes       String?
+  aiAnalysis      String?
+  errorCount      Int            @default(1)
+  lastReviewedAt  DateTime?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@unique([userId, questionId])
+  @@index([userId, mastered])
+}
+
+model Material {
+  id              String   @id @default(cuid())
+  ownerId         String
+  owner           User     @relation(fields: [ownerId], references: [id])
+  title           String
+  mimeType        String
+  sizeBytes       Int
+  sha256          String
+  storageKey      String
+  bindingScope    String?
+  extractionState String   @default("pending")
+  sourceLicense   String?
+  assets          Asset[]
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([ownerId])
+}
+
+model Asset {
+  id          String     @id @default(cuid())
+  ownerId     String?
+  owner       User?      @relation(fields: [ownerId], references: [id])
+  materialId  String?
+  material    Material?  @relation(fields: [materialId], references: [id])
+  visibility  Visibility @default(private)
+  mimeType    String
+  sizeBytes   Int
+  sha256      String
+  storageKey  String     @unique
+  source      String?
+  createdAt   DateTime   @default(now())
+
+  @@index([ownerId, visibility])
+}
+
+model UserProviderKey {
+  id           String     @id @default(cuid())
+  userId       String
+  user         User       @relation(fields: [userId], references: [id])
+  provider     AiProvider
+  encryptedKey String
+  keyHint      String?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@unique([userId, provider])
+}
+
+model AiProviderPreset {
+  id             String     @id @default(cuid())
+  provider       AiProvider
+  model          String
+  label          String
+  capabilities   String[]   @default([])
+  defaultForTask AiTaskType?
+  temperature    Float?
+  maxTokens      Int?
+  enabled        Boolean    @default(true)
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  @@unique([provider, model])
+}
+
+model AiCall {
+  id                 String       @id @default(cuid())
+  userId             String?
+  user               User?        @relation(fields: [userId], references: [id])
+  provider           AiProvider
+  model              String
+  taskType           AiTaskType
+  promptVersion      String
+  inputContextSource String?
+  tokenEstimate      Int?
+  imageCount         Int?
+  status             AiCallStatus @default(queued)
+  usage              Json?
+  errorSummary       String?
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+
+  @@index([userId, taskType, status])
+}
+
+model Job {
+  id         String    @id @default(cuid())
+  type       String
+  status     JobStatus @default(queued)
+  priority   Int       @default(100)
+  userId     String?
+  user       User?     @relation(fields: [userId], references: [id])
+  payload    Json
+  result     Json?
+  error      String?
+  progress   Int       @default(0)
+  runAt      DateTime  @default(now())
+  startedAt  DateTime?
+  finishedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([status, priority, runAt])
+  @@index([userId])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  actor      User?    @relation("AuditActor", fields: [actorId], references: [id])
+  action     String
+  entityType String
+  entityId   String?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@index([actorId])
+}

@@ -2,20 +2,20 @@
 
 ## Project Structure & Module Organization
 
-This repository currently contains planning documentation only. Keep source-of-truth product and architecture notes in `docs/`, including `product-requirements.md`, `architecture-decisions.md`, `mvp-roadmap.md`, and `design-system.md`.
+This repository contains a Next.js foundation scaffold plus planning documentation. Keep source-of-truth product and architecture notes in `docs/`, including `product-requirements.md`, `architecture-decisions.md`, `mvp-roadmap.md`, and `design-system.md`.
 
-When implementation begins, follow the documented MVP stack: a single Next.js App Router application with learner and admin UI together. Expected top-level paths are `app/` for routes, `components/` for shared UI, `lib/` for server/client utilities, `prisma/` for schema and migrations, `public/` for static assets, `tests/` for unit/API coverage, and `e2e/` or `tests/e2e/` for Playwright workflows.
+Top-level paths are `app/` for routes and API handlers, `components/` for shared UI, `lib/` for domain helpers and utilities, `prisma/` for schema and seed data, `tests/` for Vitest coverage, and `docs/` for product and architecture decisions. Add `e2e/` when Playwright workflows are introduced.
 
 ## Build, Test, and Development Commands
 
-No package manifest exists yet, so there are no runnable project commands today. After scaffolding the app, add scripts to `package.json` and keep these names stable:
-
 - `npm run dev`: start the local Next.js development server.
 - `npm run build`: create a production build.
-- `npm run lint`: run TypeScript, ESLint, and formatting checks.
-- `npm test`: run Vitest unit and API tests.
-- `npm run test:e2e`: run Playwright browser workflow tests.
-- `npx prisma migrate dev`: apply local PostgreSQL migrations.
+- `npm run lint`: run TypeScript checks.
+- `npm test`: run Vitest unit tests.
+- `npm run test:e2e`: run Playwright browser workflow tests once e2e specs exist.
+- `npm run prisma:validate`: validate the Prisma schema with a fallback local Postgres URL.
+- `npm run prisma:generate`: generate Prisma Client.
+- `npm run db:migrate`: apply local PostgreSQL migrations.
 
 ## Coding Style & Naming Conventions
 

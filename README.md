@@ -4,7 +4,7 @@ OpenExam is a self-hostable AI exam preparation platform for individual learners
 
 ## Status
 
-This repository is in the planning and foundation stage. The current source of truth is in `docs/`; application code has not been scaffolded yet.
+This repository is in the foundation stage. The app scaffold, route shell, Prisma domain schema, and initial rule tests are in place. The product and architecture source of truth remains in `docs/`.
 
 ## Documentation
 
@@ -25,16 +25,43 @@ This repository is in the planning and foundation stage. The current source of t
 
 ## Development
 
-No runnable application exists yet. Once the app is scaffolded, expected commands are:
+Install dependencies, then run the local app:
 
 ```sh
+npm install
 npm run dev
+```
+
+Useful commands:
+
+```sh
 npm run build
 npm run lint
 npm test
 npm run test:e2e
+npm run prisma:validate
+npm run prisma:generate
 npx prisma migrate dev
 ```
+
+Copy `.env.example` to `.env` and update `DATABASE_URL` before running migrations or seed data.
+
+For local PostgreSQL:
+
+```sh
+docker compose up -d postgres
+npm run db:migrate
+npm run db:seed
+```
+
+## Project Layout
+
+- `app/`: Next.js App Router pages and API routes.
+- `components/`: shared UI shell and page primitives.
+- `lib/`: domain helpers, validation schemas, environment parsing, and Prisma client setup.
+- `prisma/`: database schema and seed script.
+- `tests/`: Vitest unit tests.
+- `docs/`: product, architecture, roadmap, and design-system decisions.
 
 ## License
 
