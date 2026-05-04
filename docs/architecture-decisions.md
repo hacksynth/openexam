@@ -42,6 +42,7 @@ Current implementation status:
 - `docker-compose.yml` defines separate `web`, `admin`, and `postgres` services.
 - Database-backed email/password auth and separate learner/admin session cookies are implemented.
 - The first Exam Core workflow is implemented with admin exam hierarchy and knowledge-tree management, learner primary goal selection, and a dashboard goal read path.
+- The first Practice Loop workflow is implemented for single-choice practice, graded attempts, wrong-note auto-collection, mastery toggles, and dashboard weak-node summaries.
 - shadcn/ui installation, Playwright specs, and real storage adapters are still pending.
 - Full i18n routing and locale negotiation are not implemented.
 
@@ -97,7 +98,7 @@ Admin APIs live inside the admin app under `/api/...`. If a reverse proxy mounts
 
 Implementation note:
 
-- `apps/web` includes a route shell for every learner route above; `/goals` and `/dashboard` now use database-backed goal data.
+- `apps/web` includes a route shell for every learner route above; `/goals`, `/dashboard`, `/practice`, and `/wrong-notes` now use database-backed workflow data.
 - `apps/admin` includes a route shell for every admin route above; `/exams` and `/knowledge` now contain the first minimal CRUD workflows.
 - Both apps expose `/api/health` for foundation health checks.
 - Admin business APIs are not implemented yet.
@@ -167,6 +168,8 @@ Rules:
 - `Attempt` records user work.
 - Attempt answers bind to the question version used at answer time.
 
+Implementation note: the current practice workflow creates one graded `Attempt` per submitted single-choice question and stores the selected answer in `AttemptAnswer.userAnswer`.
+
 ## Question Versioning
 
 Question versioning is lightweight.
@@ -180,6 +183,8 @@ Rules:
 - Answer, stem, option, and rubric changes must create versions.
 - Minor metadata edits may avoid version bumps.
 - Deletion is soft deletion.
+
+Implementation note: practice submission resolves the current `QuestionVersion` and stores its id on `AttemptAnswer` when available.
 
 ## Knowledge Nodes
 

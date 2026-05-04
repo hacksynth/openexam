@@ -30,9 +30,9 @@ export const learnerRoutes: RouteItem[] = [
     id: "practice",
     href: "/practice",
     label: "练习",
-    description: "随机练习、知识点练习、真题练习、错题重练和 AI 生成练习。",
+    description: "当前目标下的单选练习、自动判题、结果反馈和错题入口。",
     section: "learner",
-    status: "planned"
+    status: "foundation"
   },
   {
     id: "papers",
@@ -54,9 +54,9 @@ export const learnerRoutes: RouteItem[] = [
     id: "wrong-notes",
     href: "/wrong-notes",
     label: "错题本",
-    description: "错误原因、掌握状态、AI 解析、重练和复习卡片。",
+    description: "自动收集错误答案，查看解析并维护掌握状态。",
     section: "learner",
-    status: "planned"
+    status: "foundation"
   },
   {
     id: "knowledge",

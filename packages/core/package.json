@@ -10,6 +10,7 @@
     "./exam-core": "./src/exam-core.ts",
     "./grading": "./src/grading.ts",
     "./password": "./src/password.ts",
+    "./practice": "./src/practice.ts",
     "./prisma": "./src/prisma.ts",
     "./question-governance": "./src/question-governance.ts",
     "./routes": "./src/routes.ts",

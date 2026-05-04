@@ -1,12 +1,19 @@
 import Link from "next/link";
 import { AppShell } from "@/components/app-shell";
 import { requireWebSession } from "@/lib/auth";
-import { dashboardMetrics, recentJobs, todayTasks, weakKnowledgeNodes } from "@openexam/core/dashboard-data";
+import { recentJobs, todayTasks } from "@openexam/core/dashboard-data";
 import { formatDateInput, formatGoalPath, getPrimaryExamGoal } from "@openexam/core/exam-core";
+import { getDashboardPracticeSummary } from "@openexam/core/practice";
 
 export default async function DashboardPage() {
   const session = await requireWebSession();
-  const currentGoal = await getPrimaryExamGoal(session.user.id);
+  const [currentGoal, practiceSummary] = await Promise.all([getPrimaryExamGoal(session.user.id), getDashboardPracticeSummary(session.user.id)]);
+  const dashboardMetrics = [
+    { label: "今日任务", value: String(todayTasks.length) },
+    { label: "待复习错题", value: String(practiceSummary.pendingWrongNotes) },
+    { label: "薄弱知识点", value: String(practiceSummary.weakKnowledgeNodes.length) },
+    { label: "AI 任务", value: String(recentJobs.length) }
+  ];
 
   return (
     <AppShell section="learner" eyebrow="学习端基础版" title="仪表盘">
@@ -63,13 +70,17 @@ export default async function DashboardPage() {
         <div className="grid gap-5 lg:grid-cols-2">
           <section className="pixel-panel p-5">
             <h2 className="mb-4 text-xl font-black">薄弱知识点</h2>
-            <div className="flex flex-wrap gap-2">
-              {weakKnowledgeNodes.map((node) => (
-                <span key={node} className="status-chip px-2 py-1">
-                  {node}
-                </span>
-              ))}
-            </div>
+            {practiceSummary.weakKnowledgeNodes.length === 0 ? (
+              <p className="border-2 border-black bg-[var(--surface-subtle)] p-3 font-bold text-[var(--muted)]">暂无未掌握错题，继续练习后会按知识点汇总。</p>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {practiceSummary.weakKnowledgeNodes.map((node) => (
+                  <span key={node.title} className="status-chip px-2 py-1">
+                    {node.title} / {node.count} 题
+                  </span>
+                ))}
+              </div>
+            )}
           </section>
 
           <section className="pixel-panel p-5">

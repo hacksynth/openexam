@@ -112,7 +112,7 @@ async function main() {
     examExpectation: "能判断 O(1)、O(log n)、O(n)、O(n^2) 等复杂度。"
   });
 
-  await upsertKnowledgeNode({
+  const dbNormNode = await upsertKnowledgeNode({
     syllabusId: basicSyllabus.id,
     code: "DB-NORM-001",
     title: "数据库规范化",
@@ -120,7 +120,7 @@ async function main() {
     examExpectation: "能识别 1NF、2NF、3NF 与 BCNF 的基本条件。"
   });
 
-  await upsertKnowledgeNode({
+  const umlNode = await upsertKnowledgeNode({
     syllabusId: basicSyllabus.id,
     code: "UML-MODEL-001",
     title: "UML 建模",
@@ -128,7 +128,7 @@ async function main() {
     examExpectation: "能根据题干识别 UML 图元素和关系。"
   });
 
-  await upsertKnowledgeNode({
+  const securityNode = await upsertKnowledgeNode({
     syllabusId: basicSyllabus.id,
     code: "SEC-BASIC-001",
     title: "网络安全基础",
@@ -152,56 +152,61 @@ async function main() {
     examExpectation: "能按题目上下文组织答案并给出关键推理过程。"
   });
 
-  const stem = "以下哪种记号表示算法运行时间随输入规模线性增长？";
-  const existingQuestion = await prisma.question.findFirst({ where: { stem } });
-  const question =
-    existingQuestion ??
-    (await prisma.question.create({
-      data: {
-        kind: QuestionKind.single_choice,
-        stem,
-        payload: {
-          options: [
-            { key: "A", text: "O(1)" },
-            { key: "B", text: "O(log n)" },
-            { key: "C", text: "O(n)" },
-            { key: "D", text: "O(n^2)" }
-          ]
-        },
-        answerKey: { value: "C" },
-        explanation: "O(n) 表示运行时间与输入规模成正比。",
-        difficulty: 1,
-        sourceType: SourceType.original,
-        visibility: Visibility.public,
-        reviewStatus: ReviewStatus.approved,
-        knowledgeBindings: {
-          create: {
-            knowledgeNodeId: algorithmNode.id,
-            weight: 1,
-            isPrimary: true
-          }
-        },
-        versions: {
-          create: {
-            version: 1,
-            stem,
-            payload: {
-              options: [
-                { key: "A", text: "O(1)" },
-                { key: "B", text: "O(log n)" },
-                { key: "C", text: "O(n)" },
-                { key: "D", text: "O(n^2)" }
-              ]
-            },
-            answerKey: { value: "C" },
-            explanation: "O(n) 表示运行时间与输入规模成正比。",
-            sourceType: SourceType.original,
-            visibility: Visibility.public,
-            reviewStatus: ReviewStatus.approved
-          }
-        }
-      }
-    }));
+  const questions = await Promise.all([
+    seedSingleChoiceQuestion({
+      knowledgeNodeId: algorithmNode.id,
+      stem: "以下哪种记号表示算法运行时间随输入规模线性增长？",
+      legacyStems: ["Which notation describes an algorithm whose running time grows linearly with input size?"],
+      options: [
+        { key: "A", text: "O(1)" },
+        { key: "B", text: "O(log n)" },
+        { key: "C", text: "O(n)" },
+        { key: "D", text: "O(n^2)" }
+      ],
+      answer: "C",
+      explanation: "O(n) 表示运行时间与输入规模成正比。",
+      difficulty: 1
+    }),
+    seedSingleChoiceQuestion({
+      knowledgeNodeId: dbNormNode.id,
+      stem: "关系模式满足 2NF 的前提是它已经满足哪一个范式？",
+      options: [
+        { key: "A", text: "1NF" },
+        { key: "B", text: "3NF" },
+        { key: "C", text: "BCNF" },
+        { key: "D", text: "4NF" }
+      ],
+      answer: "A",
+      explanation: "第二范式要求在第一范式基础上消除非主属性对码的部分函数依赖。",
+      difficulty: 2
+    }),
+    seedSingleChoiceQuestion({
+      knowledgeNodeId: umlNode.id,
+      stem: "UML 用例图主要用于描述系统与哪类对象之间的交互？",
+      options: [
+        { key: "A", text: "数据库表" },
+        { key: "B", text: "参与者" },
+        { key: "C", text: "源代码文件" },
+        { key: "D", text: "部署节点" }
+      ],
+      answer: "B",
+      explanation: "用例图描述参与者与系统提供的用例之间的关系。",
+      difficulty: 1
+    }),
+    seedSingleChoiceQuestion({
+      knowledgeNodeId: securityNode.id,
+      stem: "数字签名主要用于保证消息的完整性和哪一项安全目标？",
+      options: [
+        { key: "A", text: "不可否认性" },
+        { key: "B", text: "匿名性" },
+        { key: "C", text: "可压缩性" },
+        { key: "D", text: "负载均衡" }
+      ],
+      answer: "A",
+      explanation: "数字签名可验证发送者身份，并提供完整性与不可否认性。",
+      difficulty: 2
+    })
+  ]);
 
   const paper = await prisma.paper.upsert({
     where: { slug: "ruankao-software-designer-basic-sample" },
@@ -223,15 +228,15 @@ async function main() {
   });
 
   await prisma.paperQuestion.deleteMany({ where: { paperId: paper.id } });
-  await prisma.paperQuestion.create({
-    data: {
+  await prisma.paperQuestion.createMany({
+    data: questions.map((question, index) => ({
       paperId: paper.id,
       questionId: question.id,
-      order: 1,
-      number: "1",
+      order: index + 1,
+      number: String(index + 1),
       section: "基础知识",
       score: 1
-    }
+    }))
   });
 }
 
@@ -260,6 +265,109 @@ async function upsertKnowledgeNode(input: {
   return prisma.knowledgeNode.create({
     data: input
   });
+}
+
+async function seedSingleChoiceQuestion(input: {
+  knowledgeNodeId: string;
+  stem: string;
+  legacyStems?: string[];
+  options: { key: string; text: string }[];
+  answer: string;
+  explanation: string;
+  difficulty: number;
+}) {
+  const payload = { options: input.options };
+  const answerKey = { value: input.answer };
+  const questionData = {
+    kind: QuestionKind.single_choice,
+    stem: input.stem,
+    payload,
+    answerKey,
+    explanation: input.explanation,
+    difficulty: input.difficulty,
+    sourceType: SourceType.original,
+    visibility: Visibility.public,
+    reviewStatus: ReviewStatus.approved,
+    deletedAt: null
+  };
+  const legacyStems = input.legacyStems ?? [];
+  const canonicalQuestion = await prisma.question.findFirst({ where: { stem: input.stem } });
+  const legacyQuestions =
+    legacyStems.length > 0
+      ? await prisma.question.findMany({
+          where: {
+            stem: {
+              in: legacyStems
+            }
+          }
+        })
+      : [];
+  const existing = canonicalQuestion ?? legacyQuestions[0] ?? null;
+
+  if (canonicalQuestion && legacyQuestions.length > 0) {
+    await prisma.question.updateMany({
+      where: {
+        id: {
+          in: legacyQuestions.map((question) => question.id)
+        }
+      },
+      data: {
+        visibility: Visibility.private,
+        reviewStatus: ReviewStatus.draft,
+        deletedAt: new Date()
+      }
+    });
+  }
+
+  const question = existing
+    ? await prisma.question.update({
+        where: { id: existing.id },
+        data: questionData
+      })
+    : await prisma.question.create({
+        data: questionData
+      });
+
+  await prisma.questionKnowledgeNode.deleteMany({ where: { questionId: question.id } });
+  await prisma.questionKnowledgeNode.create({
+    data: {
+      questionId: question.id,
+      knowledgeNodeId: input.knowledgeNodeId,
+      weight: 1,
+      isPrimary: true
+    }
+  });
+
+  await prisma.questionVersion.upsert({
+    where: {
+      questionId_version: {
+        questionId: question.id,
+        version: question.currentVersion
+      }
+    },
+    update: {
+      stem: input.stem,
+      payload,
+      answerKey,
+      explanation: input.explanation,
+      sourceType: SourceType.original,
+      visibility: Visibility.public,
+      reviewStatus: ReviewStatus.approved
+    },
+    create: {
+      questionId: question.id,
+      version: question.currentVersion,
+      stem: input.stem,
+      payload,
+      answerKey,
+      explanation: input.explanation,
+      sourceType: SourceType.original,
+      visibility: Visibility.public,
+      reviewStatus: ReviewStatus.approved
+    }
+  });
+
+  return question;
 }
 
 async function seedAdminUser() {

@@ -45,7 +45,8 @@ Current implementation status:
 - Email/password authentication, database-backed sessions, and route protection are implemented for the learner and admin apps.
 - Admin exam hierarchy and knowledge-tree management are started as a minimal CRUD workflow.
 - Learners can save a primary exam goal and see it on the dashboard.
-- Real practice sessions, AI provider calls, material uploads, image generation, question/paper CRUD, and admin hardening remain future implementation work.
+- The first single-choice practice workflow is implemented with goal-scoped question retrieval, graded attempts, wrong-note auto-collection, wrong-note mastery toggles, and weak-point dashboard summaries.
+- AI provider calls, material uploads, image generation, question/paper CRUD, advanced practice modes, and admin hardening remain future implementation work.
 
 ## Exam Coverage
 
@@ -75,7 +76,7 @@ After login, the first screen is a learner dashboard, not a marketing page. It s
 
 The unauthenticated landing page stays lightweight: product introduction, login/register, open-source and self-hosting notes.
 
-Implementation note: the current `/dashboard` page is authenticated and reads the user's primary exam goal from the database. Task, weak-point, wrong-note, and job-status areas still use representative foundation data until the practice loop is implemented.
+Implementation note: the current `/dashboard` page is authenticated and reads the user's primary exam goal plus pending wrong-note and weak knowledge-node summaries from the database. Task and job-status areas still use representative foundation data.
 
 ### Exam Goals
 
@@ -105,7 +106,7 @@ The MVP supports these practice modes:
 
 The MVP does not include leaderboards, social check-ins, class assignments, community question lists, or complex adaptive testing.
 
-Implementation note: `packages/core/src/grading.ts` contains the first tested objective-grading helper. Practice sessions, question retrieval, submissions, persistence, and wrong-note creation are still pending.
+Implementation note: `/practice` now supports a first goal-scoped single-choice flow. `packages/core/src/practice.ts` retrieves public approved questions for the current goal, persists one-question graded attempts, references the answered question version, and writes wrong notes for incorrect answers.
 
 ### Mock Exams
 
@@ -147,6 +148,8 @@ Required behavior:
 - Retry from wrong notes.
 - Filter by exam goal, subject, knowledge node, question type, error count, and recency.
 - Feed status into diagnosis and study plans.
+
+Implementation note: `/wrong-notes` lists auto-collected wrong notes, shows correct answer and explanation, and lets the learner toggle mastered/not mastered. Filters, mistake reason tags, user notes, AI analysis, retry-from-note, and review-card generation remain pending.
 
 ### Knowledge Points
 
