@@ -42,7 +42,7 @@ Current implementation status:
 - `docker-compose.yml` defines separate `web`, `admin`, and `postgres` services.
 - Database-backed email/password auth and separate learner/admin session cookies are implemented.
 - The first Exam Core workflow is implemented with admin exam hierarchy and knowledge-tree management, learner primary goal selection, and a dashboard goal read path.
-- The first Practice Loop workflow is implemented for single-choice practice, graded attempts, wrong-note auto-collection, mastery toggles, and dashboard weak-node summaries.
+- The first Practice Loop workflow is implemented for single-choice practice, graded attempts, attempt history, wrong-note auto-collection, filters, retry, mastery toggles, and dashboard weak-node summaries.
 - shadcn/ui installation, Playwright specs, and real storage adapters are still pending.
 - Full i18n routing and locale negotiation are not implemented.
 
@@ -98,8 +98,8 @@ Admin APIs live inside the admin app under `/api/...`. If a reverse proxy mounts
 
 Implementation note:
 
-- `apps/web` includes a route shell for every learner route above; `/goals`, `/dashboard`, `/practice`, and `/wrong-notes` now use database-backed workflow data.
-- `apps/admin` includes a route shell for every admin route above; `/exams` and `/knowledge` now contain the first minimal CRUD workflows.
+- `apps/web` includes a route shell for every learner route above; `/goals`, `/dashboard`, `/practice`, `/attempts`, and `/wrong-notes` now use database-backed workflow data.
+- `apps/admin` includes a route shell for every admin route above; `/exams`, `/knowledge`, and `/questions` now contain the first minimal CRUD workflows.
 - Both apps expose `/api/health` for foundation health checks.
 - Admin business APIs are not implemented yet.
 
@@ -121,7 +121,7 @@ Examples:
 - `Postgraduate Exam -> Computer Science -> 2026 -> English I`.
 - `Legal Qualification -> Objective Exam -> 2026 -> Civil Law`.
 
-The first Prisma schema implements this hierarchy with `ExamProgram`, `ExamTrack`, `ExamCycle`, `Subject`, `Syllabus`, `KnowledgeNode`, `Question`, `Paper`, and `Attempt` models. Migrations have been validated against local PostgreSQL. Minimal CRUD exists for the exam hierarchy and knowledge trees; question and paper CRUD are still future work.
+The first Prisma schema implements this hierarchy with `ExamProgram`, `ExamTrack`, `ExamCycle`, `Subject`, `Syllabus`, `KnowledgeNode`, `Question`, `Paper`, and `Attempt` models. Migrations have been validated against local PostgreSQL. Minimal CRUD exists for the exam hierarchy, knowledge trees, and single-choice questions; paper CRUD is still future work.
 
 ## Question Model
 
@@ -153,6 +153,7 @@ Implementation note:
 
 - Prisma uses JSON columns for `payload`, `answerKey`, and `rubric`.
 - `packages/core/src/question-governance.ts` contains the first tested public-visibility rule helper.
+- `packages/core/src/question-admin.ts` contains the first admin single-choice input validation and persistence helper.
 - Additional Zod schemas are still needed before accepting imported or AI-generated question payloads.
 
 ## Papers And Attempts

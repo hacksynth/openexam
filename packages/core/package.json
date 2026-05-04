@@ -12,6 +12,7 @@
     "./password": "./src/password.ts",
     "./practice": "./src/practice.ts",
     "./prisma": "./src/prisma.ts",
+    "./question-admin": "./src/question-admin.ts",
     "./question-governance": "./src/question-governance.ts",
     "./routes": "./src/routes.ts",
     "./study-plan-schema": "./src/study-plan-schema.ts"

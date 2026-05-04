@@ -7,7 +7,7 @@ import { getAttemptResult, getPracticeQuestion } from "@openexam/core/practice";
 import { submitSingleChoiceAnswerAction } from "./actions";
 
 type PracticePageProps = {
-  searchParams: Promise<{ attempt?: string; error?: string }>;
+  searchParams: Promise<{ attempt?: string; error?: string; retry?: string; skip?: string }>;
 };
 
 const sourceTypeLabels: Record<string, string> = {
@@ -23,7 +23,10 @@ export default async function PracticePage({ searchParams }: PracticePageProps) 
   const session = await requireWebSession();
   const params = await searchParams;
   const [state, attemptResult] = await Promise.all([
-    getPracticeQuestion(session.user.id),
+    getPracticeQuestion(session.user.id, {
+      excludeQuestionId: params.skip,
+      retryQuestionId: params.retry
+    }),
     params.attempt ? getAttemptResult(session.user.id, params.attempt) : Promise.resolve(null)
   ]);
 
@@ -35,6 +38,10 @@ export default async function PracticePage({ searchParams }: PracticePageProps) 
 
         {state.status === "no_goal" ? (
           <EmptyState title="尚未选择考试目标" description="先设置主目标，练习题会按目标范围筛选。" actionHref="/goals" actionLabel="选择目标" />
+        ) : null}
+
+        {state.status === "error" ? (
+          <EmptyState title="无法开始重练" description={state.error} actionHref="/wrong-notes" actionLabel="返回错题本" />
         ) : null}
 
         {state.status === "empty" ? (
@@ -118,8 +125,11 @@ function AttemptResultCard({
         </div>
       ) : null}
       <div className="flex flex-wrap gap-3">
-        <Link href={"/practice" as Route} className="pixel-button px-4 py-2">
+        <Link href={`/practice?skip=${result.question.id}` as Route} className="pixel-button px-4 py-2">
           再练一题
+        </Link>
+        <Link href={"/attempts" as Route} className="pixel-button bg-white px-4 py-2">
+          查看作答记录
         </Link>
         <Link href={"/wrong-notes" as Route} className="pixel-button bg-white px-4 py-2">
           查看错题本

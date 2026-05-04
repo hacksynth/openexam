@@ -41,12 +41,18 @@ export type PracticeQuestion = {
 
 export type PracticeQuestionState =
   | { status: "no_goal" }
+  | { status: "error"; goal: NonNullable<PrimaryGoal>; error: string }
   | { status: "empty"; goal: NonNullable<PrimaryGoal> }
   | { status: "ready"; goal: NonNullable<PrimaryGoal>; question: PracticeQuestion };
 
 export type PracticeSubmitResult =
   | { ok: true; attemptId: string; isCorrect: boolean }
   | { ok: false; error: string };
+
+export type PracticeQuestionOptions = {
+  excludeQuestionId?: string | null;
+  retryQuestionId?: string | null;
+};
 
 export function readSingleChoiceOptions(payload: Prisma.JsonValue | null | undefined) {
   if (!isJsonObject(payload) || !Array.isArray(payload.options)) {
@@ -99,18 +105,30 @@ export function gradeSingleChoiceQuestion(input: { answerKey: Prisma.JsonValue |
   } as const;
 }
 
-export async function getPracticeQuestion(userId: string): Promise<PracticeQuestionState> {
+export async function getPracticeQuestion(userId: string, options: PracticeQuestionOptions = {}): Promise<PracticeQuestionState> {
   const goal = await getPrimaryExamGoal(userId);
 
   if (!goal) {
     return { status: "no_goal" };
   }
 
-  const question = await prisma.question.findFirst({
-    where: buildPracticeQuestionWhere(goal),
-    include: practiceQuestionInclude,
-    orderBy: [{ updatedAt: "asc" }]
-  });
+  if (options.retryQuestionId) {
+    const retryQuestion = await getRetryQuestion(userId, goal, options.retryQuestionId);
+
+    if (!retryQuestion) {
+      return { status: "error", goal, error: "错题不存在，或不在当前考试目标范围内。" };
+    }
+
+    const normalizedRetry = toPracticeQuestion(retryQuestion);
+
+    if (!normalizedRetry) {
+      return { status: "error", goal, error: "题目选项配置不完整。" };
+    }
+
+    return { status: "ready", goal, question: normalizedRetry };
+  }
+
+  const question = await selectPracticeQuestion(userId, goal, options.excludeQuestionId);
 
   if (!question) {
     return { status: "empty", goal };
@@ -268,9 +286,74 @@ export async function getAttemptResult(userId: string, attemptId: string) {
   };
 }
 
-export async function listWrongNotes(userId: string) {
-  const notes = await prisma.wrongNote.findMany({
+export async function listAttempts(userId: string) {
+  const attempts = await prisma.attempt.findMany({
     where: { userId },
+    orderBy: [{ submittedAt: "desc" }, { createdAt: "desc" }],
+    include: {
+      answers: {
+        include: {
+          question: {
+            include: {
+              knowledgeBindings: {
+                include: {
+                  knowledgeNode: true
+                }
+              }
+            }
+          },
+          questionVersion: true
+        },
+        orderBy: [{ createdAt: "asc" }]
+      },
+      goal: {
+        include: {
+          program: true,
+          track: true,
+          cycle: true,
+          subject: true
+        }
+      }
+    },
+    take: 50
+  });
+
+  return attempts.map((attempt) => ({
+    id: attempt.id,
+    status: attempt.status,
+    startedAt: attempt.startedAt,
+    submittedAt: attempt.submittedAt,
+    totalScore: attempt.totalScore ?? 0,
+    maxScore: attempt.maxScore ?? 0,
+    goalPath: attempt.goal ? [attempt.goal.program.name, attempt.goal.track?.name, attempt.goal.cycle?.name, attempt.goal.subject?.name].filter(Boolean).join(" / ") : "未绑定目标",
+    answers: attempt.answers.map((answer) => {
+      const answerKey = answer.questionVersion?.answerKey ?? answer.question.answerKey;
+
+      return {
+        id: answer.id,
+        questionId: answer.question.id,
+        isCorrect: Boolean(answer.isCorrect),
+        score: answer.score ?? 0,
+        maxScore: answer.maxScore ?? 0,
+        userAnswer: readSubmittedAnswer(answer.userAnswer),
+        correctAnswer: readSingleChoiceAnswerKey(answerKey),
+        explanation: answer.questionVersion?.explanation ?? answer.question.explanation,
+        question: {
+          id: answer.question.id,
+          stem: answer.questionVersion?.stem ?? answer.question.stem,
+          knowledgeNodes: answer.question.knowledgeBindings.map((binding) => binding.knowledgeNode.title)
+        }
+      };
+    })
+  }));
+}
+
+export async function listWrongNotes(userId: string, options: { mastered?: boolean } = {}) {
+  const notes = await prisma.wrongNote.findMany({
+    where: {
+      userId,
+      ...(typeof options.mastered === "boolean" ? { mastered: options.mastered } : {})
+    },
     orderBy: [{ updatedAt: "desc" }],
     include: {
       question: {
@@ -291,6 +374,7 @@ export async function listWrongNotes(userId: string) {
 
   return notes.map((note) => ({
     id: note.id,
+    questionId: note.questionId,
     mastered: note.mastered,
     errorCount: note.errorCount,
     updatedAt: note.updatedAt,
@@ -357,6 +441,113 @@ export function summarizeWrongNotes(notes: { mastered: boolean; knowledgeNodes: 
       .slice(0, 5)
       .map(([title, count]) => ({ title, count }))
   };
+}
+
+async function getRetryQuestion(userId: string, goal: NonNullable<PrimaryGoal>, questionId: string) {
+  const wrongNote = await prisma.wrongNote.findUnique({
+    where: {
+      userId_questionId: {
+        userId,
+        questionId
+      }
+    },
+    select: {
+      questionId: true
+    }
+  });
+
+  if (!wrongNote) {
+    return null;
+  }
+
+  return prisma.question.findFirst({
+    where: {
+      AND: [
+        buildPracticeQuestionWhere(goal),
+        {
+          id: questionId
+        }
+      ]
+    },
+    include: practiceQuestionInclude
+  });
+}
+
+async function selectPracticeQuestion(userId: string, goal: NonNullable<PrimaryGoal>, excludeQuestionId?: string | null) {
+  const baseWhere = buildPracticeQuestionWhere(goal);
+  const attemptedIds = await listAttemptedQuestionIds(userId, goal);
+  const recentIds = await listRecentQuestionIds(userId, goal);
+  const excludedCurrent = compactIds([excludeQuestionId]);
+
+  return (
+    (await findPracticeQuestion(baseWhere, [...attemptedIds, ...excludedCurrent])) ??
+    (await findPracticeQuestion(baseWhere, [...recentIds, ...excludedCurrent])) ??
+    (await findPracticeQuestion(baseWhere, excludedCurrent)) ??
+    (await findPracticeQuestion(baseWhere, []))
+  );
+}
+
+async function listAttemptedQuestionIds(userId: string, goal: NonNullable<PrimaryGoal>) {
+  const answers = await prisma.attemptAnswer.findMany({
+    where: {
+      attempt: {
+        userId,
+        goalId: goal.id
+      },
+      question: buildPracticeQuestionWhere(goal)
+    },
+    distinct: ["questionId"],
+    select: {
+      questionId: true
+    }
+  });
+
+  return answers.map((answer) => answer.questionId);
+}
+
+async function listRecentQuestionIds(userId: string, goal: NonNullable<PrimaryGoal>) {
+  const answers = await prisma.attemptAnswer.findMany({
+    where: {
+      attempt: {
+        userId,
+        goalId: goal.id
+      },
+      question: buildPracticeQuestionWhere(goal)
+    },
+    orderBy: [{ createdAt: "desc" }],
+    take: 10,
+    select: {
+      questionId: true
+    }
+  });
+
+  return [...new Set(answers.map((answer) => answer.questionId))];
+}
+
+async function findPracticeQuestion(baseWhere: Prisma.QuestionWhereInput, excludedIds: string[]) {
+  const excluded = [...new Set(excludedIds)].filter(Boolean);
+
+  return prisma.question.findFirst({
+    where:
+      excluded.length > 0
+        ? {
+            AND: [
+              baseWhere,
+              {
+                id: {
+                  notIn: excluded
+                }
+              }
+            ]
+          }
+        : baseWhere,
+    include: practiceQuestionInclude,
+    orderBy: [{ updatedAt: "asc" }]
+  });
+}
+
+function compactIds(ids: Array<string | null | undefined>) {
+  return ids.map((id) => id?.trim()).filter((id): id is string => Boolean(id));
 }
 
 function toPracticeQuestion(question: PracticeQuestionRecord): PracticeQuestion | null {

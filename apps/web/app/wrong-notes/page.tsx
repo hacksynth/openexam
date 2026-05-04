@@ -6,14 +6,32 @@ import { listWrongNotes } from "@openexam/core/practice";
 import { setWrongNoteMasteredAction } from "./actions";
 
 type WrongNotesPageProps = {
-  searchParams: Promise<{ error?: string; notice?: string }>;
+  searchParams: Promise<{ error?: string; notice?: string; filter?: string }>;
 };
+
+const filterOptions = [
+  { value: "all", label: "全部" },
+  { value: "pending", label: "未掌握" },
+  { value: "mastered", label: "已掌握" }
+] as const;
 
 export default async function WrongNotesPage({ searchParams }: WrongNotesPageProps) {
   const session = await requireWebSession();
   const params = await searchParams;
-  const notes = await listWrongNotes(session.user.id);
-  const pendingCount = notes.filter((note) => !note.mastered).length;
+  const filter = normalizeFilter(params.filter);
+  const allNotes = await listWrongNotes(session.user.id);
+  const notes = allNotes.filter((note) => {
+    if (filter === "pending") {
+      return !note.mastered;
+    }
+
+    if (filter === "mastered") {
+      return note.mastered;
+    }
+
+    return true;
+  });
+  const pendingCount = allNotes.filter((note) => !note.mastered).length;
 
   return (
     <AppShell section="learner" eyebrow="练习闭环" title="错题本">
@@ -30,9 +48,19 @@ export default async function WrongNotesPage({ searchParams }: WrongNotesPagePro
             <Link href={"/practice" as Route} className="pixel-button px-4 py-2">
               开始练习
             </Link>
+            <Link href={"/attempts" as Route} className="pixel-button bg-white px-4 py-2">
+              作答记录
+            </Link>
             <Link href={"/dashboard" as Route} className="pixel-button bg-white px-4 py-2">
               返回仪表盘
             </Link>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {filterOptions.map((option) => (
+              <Link key={option.value} href={`/wrong-notes?filter=${option.value}` as Route} className={`status-chip px-3 py-2 ${filter === option.value ? "bg-[var(--primary)]" : ""}`}>
+                {option.label}
+              </Link>
+            ))}
           </div>
         </section>
 
@@ -40,7 +68,7 @@ export default async function WrongNotesPage({ searchParams }: WrongNotesPagePro
           <section className="pixel-panel grid gap-4 p-5">
             <div>
               <h2 className="text-2xl font-black">暂无错题</h2>
-              <p className="mt-1 font-bold text-[var(--muted)]">提交错误答案后，这里会显示题目、正确答案、解析和关联知识点。</p>
+              <p className="mt-1 font-bold text-[var(--muted)]">{filter === "all" ? "提交错误答案后，这里会显示题目、正确答案、解析和关联知识点。" : "当前筛选条件下暂无错题。"}</p>
             </div>
             <Link href={"/practice" as Route} className="pixel-button w-fit px-4 py-2">
               去练习
@@ -64,9 +92,14 @@ export default async function WrongNotesPage({ searchParams }: WrongNotesPagePro
                   <form action={setWrongNoteMasteredAction} className="self-start">
                     <input name="wrongNoteId" type="hidden" value={note.id} />
                     <input name="mastered" type="hidden" value={note.mastered ? "false" : "true"} />
-                    <button className="pixel-button whitespace-nowrap px-4 py-2" type="submit">
-                      {note.mastered ? "标记未掌握" : "标记已掌握"}
-                    </button>
+                    <div className="flex flex-wrap justify-start gap-2 lg:justify-end">
+                      <Link href={`/practice?retry=${note.questionId}` as Route} className="pixel-button whitespace-nowrap bg-white px-4 py-2">
+                        重练此题
+                      </Link>
+                      <button className="pixel-button whitespace-nowrap px-4 py-2" type="submit">
+                        {note.mastered ? "标记未掌握" : "标记已掌握"}
+                      </button>
+                    </div>
                   </form>
                 </div>
 
@@ -97,6 +130,10 @@ export default async function WrongNotesPage({ searchParams }: WrongNotesPagePro
       </section>
     </AppShell>
   );
+}
+
+function normalizeFilter(value: string | undefined): (typeof filterOptions)[number]["value"] {
+  return filterOptions.some((option) => option.value === value) ? (value as (typeof filterOptions)[number]["value"]) : "all";
 }
 
 function Feedback({ error, notice }: { error?: string; notice?: string }) {

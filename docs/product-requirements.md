@@ -45,8 +45,8 @@ Current implementation status:
 - Email/password authentication, database-backed sessions, and route protection are implemented for the learner and admin apps.
 - Admin exam hierarchy and knowledge-tree management are started as a minimal CRUD workflow.
 - Learners can save a primary exam goal and see it on the dashboard.
-- The first single-choice practice workflow is implemented with goal-scoped question retrieval, graded attempts, wrong-note auto-collection, wrong-note mastery toggles, and weak-point dashboard summaries.
-- AI provider calls, material uploads, image generation, question/paper CRUD, advanced practice modes, and admin hardening remain future implementation work.
+- The first single-choice practice workflow is implemented with goal-scoped question retrieval, repeat avoidance, graded attempts, attempt history, wrong-note auto-collection, wrong-note filters/retry, mastery toggles, and weak-point dashboard summaries.
+- Admin single-choice question CRUD is implemented for question creation, editing, knowledge binding, source, visibility, and review status. AI provider calls, material uploads, image generation, paper CRUD, advanced practice modes, and admin hardening remain future implementation work.
 
 ## Exam Coverage
 
@@ -106,7 +106,11 @@ The MVP supports these practice modes:
 
 The MVP does not include leaderboards, social check-ins, class assignments, community question lists, or complex adaptive testing.
 
-Implementation note: `/practice` now supports a first goal-scoped single-choice flow. `packages/core/src/practice.ts` retrieves public approved questions for the current goal, persists one-question graded attempts, references the answered question version, and writes wrong notes for incorrect answers.
+Implementation note: `/practice` now supports a first goal-scoped single-choice flow. `packages/core/src/practice.ts` retrieves public approved questions for the current goal, avoids immediate repeats, supports wrong-note retry, persists one-question graded attempts, references the answered question version, and writes wrong notes for incorrect answers.
+
+### Attempt History
+
+Implementation note: `/attempts` lists recent graded practice attempts with score, submitted time, user answer, correct answer, explanation, and retry links.
 
 ### Mock Exams
 
@@ -149,7 +153,7 @@ Required behavior:
 - Filter by exam goal, subject, knowledge node, question type, error count, and recency.
 - Feed status into diagnosis and study plans.
 
-Implementation note: `/wrong-notes` lists auto-collected wrong notes, shows correct answer and explanation, and lets the learner toggle mastered/not mastered. Filters, mistake reason tags, user notes, AI analysis, retry-from-note, and review-card generation remain pending.
+Implementation note: `/wrong-notes` lists auto-collected wrong notes, shows correct answer and explanation, supports all/unmastered/mastered filters, lets the learner toggle mastered/not mastered, and links directly to retry. Mistake reason tags, user notes, AI analysis, and review-card generation remain pending.
 
 ### Knowledge Points
 

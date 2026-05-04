@@ -46,9 +46,9 @@ export const learnerRoutes: RouteItem[] = [
     id: "attempts",
     href: "/attempts",
     label: "作答记录",
-    description: "计时作答、自动保存、答题卡和成绩报告。",
+    description: "练习提交记录、得分、答案、正确答案和解析。",
     section: "learner",
-    status: "planned"
+    status: "foundation"
   },
   {
     id: "wrong-notes",
@@ -137,9 +137,9 @@ export const adminRoutes: RouteItem[] = [
     id: "admin-questions",
     href: "/questions",
     label: "题目",
-    description: "题目审核、来源策略、可见性、版本和下架处理。",
+    description: "单选题创建、编辑、知识点绑定、来源、可见性和审核状态。",
     section: "admin",
-    status: "planned"
+    status: "foundation"
   },
   {
     id: "admin-papers",

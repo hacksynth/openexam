@@ -15,7 +15,7 @@ Current progress:
 - Email/password auth, database-backed sessions, route protection, live PostgreSQL migration validation, and Docker image builds are complete for the foundation slice.
 - Exam core schema exists in Prisma, and the first admin CRUD slice now manages exam hierarchy and knowledge trees.
 - Learners can save a primary exam goal and see that goal on the dashboard.
-- The first Practice Loop slice is implemented for goal-scoped single-choice practice, objective grading, wrong-note auto-collection, and dashboard weak-node summaries.
+- The first Practice Loop slice is implemented for goal-scoped single-choice practice, improved question rotation, objective grading, attempt history, wrong-note filters/retry, and dashboard weak-node summaries.
 - The visible foundation UI uses Simplified Chinese (`zh-CN`) copy.
 
 ## 1. Foundation
@@ -67,7 +67,7 @@ Deliverables:
 - `PaperQuestion`. Schema completed.
 - Source, visibility, and review fields. Schema and rule helper started.
 - Minimal admin CRUD for exams and knowledge trees. Started.
-- Minimal admin CRUD for questions and papers. Pending.
+- Minimal admin CRUD for questions and papers. Started for single-choice questions; papers pending.
 - Original sample data for Ruankao Software Designer. Started with zh-CN seed data.
 - Learner primary exam goal selection. Started.
 
@@ -84,20 +84,20 @@ Acceptance:
 
 Goal: make the core learner loop useful before adding advanced AI.
 
-Status: first single-choice workflow implemented.
+Status: first single-choice workflow implemented and expanded.
 
 Deliverables:
 
 - User exam goals. Started with primary goal selection.
 - Current primary goal selection. Started.
-- Random practice. Started with one goal-scoped public approved single-choice selector.
+- Random practice. Started with goal-scoped public approved single-choice rotation that avoids immediate repeats.
 - Knowledge-node practice. Pending as a direct entry mode; current selector respects goal knowledge scope.
 - Paper practice.
-- Practice session records. Started with one-question graded attempts.
+- Practice session records. Started with one-question graded attempts and a learner history page.
 - Objective answer grading. Started for single-choice questions.
 - Wrong-note auto-collection. Started for incorrect single-choice submissions.
 - Manual favorite/collection.
-- Wrong-note filters and mastery state. Mastery state started; filters pending.
+- Wrong-note filters and mastery state. Started with all/unmastered/mastered filters and retry entry.
 - Basic statistics by goal, subject, question type, difficulty, and knowledge node. Started with pending wrong-note count and weak knowledge-node ranking.
 
 Acceptance:
@@ -254,7 +254,7 @@ Minimum test coverage should include:
 - Study-plan schema validation.
 - Admin import validation.
 
-Current tests cover public question visibility constraints, objective grading, single-choice practice helpers, wrong-note summarization, and study-plan schema validation. The remaining priorities are still required before MVP exit.
+Current tests cover public question visibility constraints, admin single-choice validation, objective grading, single-choice practice helpers, wrong-note summarization, and study-plan schema validation. The remaining priorities are still required before MVP exit.
 
 Browser workflow tests should cover:
 
