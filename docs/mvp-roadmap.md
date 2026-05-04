@@ -15,8 +15,8 @@ Current progress:
 - Email/password auth, database-backed sessions, route protection, live PostgreSQL migration validation, and Docker image builds are complete for the foundation slice.
 - Exam core schema exists in Prisma, and the first admin CRUD slice now manages exam hierarchy and knowledge trees.
 - Learners can save a primary exam goal and see that goal on the dashboard.
-- The first Practice Loop slice is implemented for goal-scoped single-choice practice, improved question rotation, objective grading, paper attempts, attempt history, wrong-note filters/retry, and dashboard weak-node summaries.
-- Admins can create and govern single-choice questions, filter and archive questions, and create ordered public/private papers.
+- The first Practice Loop slice is implemented for goal-scoped single-choice practice, improved question rotation, objective grading, paper attempts, attempt reports, answer-card submission, wrong-note filters/retry, and dashboard weak-node summaries.
+- Admins can create and govern single-choice questions, filter and archive questions, and create/filter/hide ordered public papers.
 - The visible foundation UI uses Simplified Chinese (`zh-CN`) copy.
 
 ## 1. Foundation
@@ -93,8 +93,8 @@ Deliverables:
 - Current primary goal selection. Started.
 - Random practice. Started with goal-scoped public approved single-choice rotation that avoids immediate repeats.
 - Knowledge-node practice. Pending as a direct entry mode; current selector respects goal knowledge scope.
-- Paper practice. Started with public single-choice paper listing, full-paper submission, scoring, and wrong-note ingestion.
-- Practice session records. Started with one-question practice attempts, paper attempts, and a learner history page.
+- Paper practice. Started with public single-choice paper listing, answer card, elapsed-time display, unanswered confirmation, full-paper submission, scoring, reports, and wrong-note ingestion.
+- Practice session records. Started with one-question practice attempts, paper attempts, a learner history page, and per-attempt reports.
 - Objective answer grading. Started for single-choice questions.
 - Wrong-note auto-collection. Started for incorrect single-choice submissions.
 - Manual favorite/collection.
@@ -104,7 +104,7 @@ Deliverables:
 Acceptance:
 
 - A learner can choose a goal, start practice, answer questions, see grading, and review wrong notes.
-- A learner can open a public paper for the current goal, submit objective answers, and see the paper attempt in history.
+- A learner can open a public paper for the current goal, submit objective answers, and review score/knowledge statistics in a report.
 - Wrong answers are recorded with question version references.
 - Basic analysis shows weak knowledge nodes.
 
@@ -180,16 +180,16 @@ Goal: support quasi-formal mock exams and reports.
 
 Deliverables:
 
-- Attempt creation from paper.
-- Timer.
-- Answer sheet.
+- Attempt creation from paper. Started.
+- Timer. Started as non-persistent elapsed-time display.
+- Answer sheet. Started as an answer card with answered/unanswered state.
 - Autosave.
 - Pause/resume records.
 - Submission and scoring.
 - Subjective answer capture.
 - AI-assisted subjective grading.
 - User confirmation or manual score adjustment.
-- Exam score report.
+- Exam score report. Started for objective single-choice papers.
 - Automatic wrong-note ingestion.
 
 Acceptance:
@@ -256,10 +256,10 @@ Minimum test coverage should include:
 - Study-plan schema validation.
 - Admin import validation.
 - Admin question filters/archive/review actions.
-- Admin paper validation.
-- Browser workflow coverage for auth, goal selection, admin content creation, paper submission, wrong-note retry, and non-admin rejection.
+- Admin paper validation, filters, and hide/restore behavior.
+- Browser workflow coverage for auth, goal selection, admin content creation, paper submission/report, unanswered confirmation, paper hide/restore, wrong-note retry, and non-admin rejection.
 
-Current tests cover public question visibility constraints, admin single-choice validation and filters, admin paper validation, objective grading, single-choice practice helpers, wrong-note summarization, study-plan schema validation, and the first Playwright browser workflow. The remaining priorities are still required before MVP exit.
+Current tests cover public question visibility constraints, admin single-choice validation and filters, admin paper validation and filters, paper submission scoring, report statistics, objective grading, single-choice practice helpers, wrong-note summarization, study-plan schema validation, and the first Playwright browser workflow. The remaining priorities are still required before MVP exit.
 
 Browser workflow tests should cover:
 
@@ -267,6 +267,8 @@ Browser workflow tests should cover:
 - Select goal. Started.
 - Practice and wrong-note flow. Started for paper wrong-note retry.
 - Admin question and paper creation. Started.
+- Paper report and unanswered confirmation. Started.
+- Paper hide/restore. Started.
 - Non-admin admin access rejection. Started.
 - Configure BYOK and request AI explanation.
 - Upload material and confirm extracted question.

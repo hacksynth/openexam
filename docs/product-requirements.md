@@ -45,9 +45,9 @@ Current implementation status:
 - Email/password authentication, database-backed sessions, and route protection are implemented for the learner and admin apps.
 - Admin exam hierarchy and knowledge-tree management are started as a minimal CRUD workflow.
 - Learners can save a primary exam goal and see it on the dashboard.
-- The first single-choice practice workflow is implemented with goal-scoped question retrieval, repeat avoidance, graded attempts, paper attempts, attempt history, wrong-note auto-collection, wrong-note filters/retry, mastery toggles, and weak-point dashboard summaries.
+- The first single-choice practice workflow is implemented with goal-scoped question retrieval, repeat avoidance, graded attempts, paper attempts, attempt reports, wrong-note auto-collection, wrong-note filters/retry, mastery toggles, and weak-point dashboard summaries.
 - Admin single-choice question CRUD is implemented for question creation, editing, filtering, review-status changes, archive/restore, knowledge binding, source, visibility, and review status.
-- Admin paper CRUD is implemented for ordered single-choice papers with subject binding, visibility, type, question order, section, number, and score. AI provider calls, material uploads, image generation, advanced practice modes, and admin hardening remain future implementation work.
+- Admin paper CRUD is implemented for ordered single-choice papers with subject binding, visibility, type, question order, section, number, score, filters, and hide/restore controls. AI provider calls, material uploads, image generation, advanced practice modes, and admin hardening remain future implementation work.
 
 ## Exam Coverage
 
@@ -111,7 +111,7 @@ Implementation note: `/practice` now supports a first goal-scoped single-choice 
 
 ### Attempt History
 
-Implementation note: `/attempts` lists recent practice and paper attempts with score, submitted time, user answer, correct answer, explanation, paper title when present, and retry links.
+Implementation note: `/attempts` lists recent practice and paper attempts with score, submitted time, user answer, correct answer, explanation, paper title when present, report links, and retry links. `/attempts/[attemptId]` shows a per-attempt report with score, correct rate, unanswered count, knowledge-node statistics, and per-question review.
 
 ### Mock Exams
 
@@ -137,7 +137,7 @@ Not included:
 - Institution-level exam release.
 - Multi-user same-session exams.
 
-Implementation note: `/papers` now lists public papers for the learner's current goal, and `/papers/[paperId]` supports first-version full-paper single-choice submission. The current implementation intentionally omits timer, autosave, pause/resume, subjective grading, and detailed reports.
+Implementation note: `/papers` now lists public papers for the learner's current goal, and `/papers/[paperId]` supports first-version full-paper single-choice submission with an answer card, elapsed-time display, and unanswered confirmation. Submission redirects to an objective report. The current implementation intentionally omits persistent timer state, autosave, pause/resume, and subjective grading.
 
 ### Wrong Notes
 

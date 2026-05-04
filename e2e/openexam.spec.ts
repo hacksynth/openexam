@@ -48,17 +48,46 @@ test.describe.serial("OpenExam auth, question, paper, and wrong-note flows", () 
     await prisma.$disconnect();
   });
 
-  test("creates content in admin, completes a paper in web, and blocks non-admin access", async ({ browser }) => {
+  test("admin creates a public single-choice question", async ({ browser }) => {
     const adminPage = await newPage(browser);
     await loginAdmin(adminPage);
     await createQuestion(adminPage);
-    await createPaper(adminPage);
+  });
 
+  test("admin creates a public paper", async ({ browser }) => {
+    const adminPage = await newPage(browser);
+    await loginAdmin(adminPage);
+    await createPaper(adminPage);
+  });
+
+  test("learner registers and saves a goal", async ({ browser }) => {
     const webPage = await newPage(browser);
     await registerLearner(webPage);
     await saveGoal(webPage);
+  });
+
+  test("learner confirms unanswered submission and gets a report", async ({ browser }) => {
+    const webPage = await newPage(browser);
+    await loginLearner(webPage);
     await completePaperWithWrongAnswer(webPage);
+  });
+
+  test("learner retries the wrong note", async ({ browser }) => {
+    const webPage = await newPage(browser);
+    await loginLearner(webPage);
     await retryWrongNoteCorrectly(webPage);
+  });
+
+  test("admin hides and restores a paper", async ({ browser }) => {
+    const adminPage = await newPage(browser);
+    const webPage = await newPage(browser);
+
+    await loginAdmin(adminPage);
+    await loginLearner(webPage);
+    await hideAndRestorePaper(adminPage, webPage);
+  });
+
+  test("admin rejects non-admin learner login", async ({ browser }) => {
     await rejectLearnerFromAdmin(browser);
   });
 });
@@ -129,6 +158,14 @@ async function registerLearner(page: Page) {
   await expect(page.getByRole("heading", { name: "仪表盘" })).toBeVisible();
 }
 
+async function loginLearner(page: Page) {
+  await page.goto(`${webUrl}/login`);
+  await page.getByLabel("邮箱").fill(learnerEmail);
+  await page.getByLabel("密码").fill(learnerPassword);
+  await page.getByRole("button", { name: "登录学习端" }).click();
+  await expect(page.getByRole("heading", { name: "仪表盘" })).toBeVisible();
+}
+
 async function saveGoal(page: Page) {
   await page.goto(`${webUrl}/goals`);
   await page.locator('select[name="programId"]').selectOption(fixtureIds.programId);
@@ -146,11 +183,20 @@ async function completePaperWithWrongAnswer(page: Page) {
 
   await paperCard.getByRole("link", { name: "开始作答" }).click();
   await expect(page.locator("body")).toContainText(questionStem);
+  page.once("dialog", async (dialog) => {
+    expect(dialog.message()).toContain("未作答");
+    await dialog.dismiss();
+  });
+  await page.getByRole("button", { name: "提交试卷" }).first().click();
+  await expect(page.getByRole("heading", { name: "试卷" })).toBeVisible();
   await page.locator('input[type="radio"][value="B"]').check();
-  await page.getByRole("button", { name: "提交试卷" }).click();
+  await page.getByRole("button", { name: "提交试卷" }).first().click();
+  await expect(page).toHaveURL(/\/attempts\/[^/?]+/);
+  await expect(page.getByRole("heading", { name: "作答报告" })).toBeVisible();
   await expect(page.getByText("试卷已提交，得分 0 / 1。")).toBeVisible();
   await expect(page.locator("body")).toContainText(paperTitle);
   await expect(page.locator("body")).toContainText(questionStem);
+  await expect(page.locator("body")).toContainText("正确率");
 }
 
 async function retryWrongNoteCorrectly(page: Page) {
@@ -171,6 +217,26 @@ async function rejectLearnerFromAdmin(browser: Browser) {
   await page.getByLabel("密码").fill(learnerPassword);
   await page.getByRole("button", { name: "登录管理端" }).click();
   await expect(page.getByText("该账号没有管理端权限。")).toBeVisible();
+}
+
+async function hideAndRestorePaper(adminPage: Page, webPage: Page) {
+  await adminPage.goto(`${adminUrl}/papers`);
+  await paperAdminCard(adminPage).getByRole("button", { name: "隐藏试卷" }).first().click();
+  await expect(adminPage.getByText("试卷已隐藏。")).toBeVisible();
+
+  await webPage.goto(`${webUrl}/papers`);
+  await expect(webPage.locator("body")).not.toContainText(paperTitle);
+
+  await adminPage.goto(`${adminUrl}/papers?archived=archived`);
+  await paperAdminCard(adminPage).getByRole("button", { name: "恢复公开" }).first().click();
+  await expect(adminPage.getByText("试卷已恢复公开。")).toBeVisible();
+
+  await webPage.goto(`${webUrl}/papers`);
+  await expect(webPage.locator("body")).toContainText(paperTitle);
+}
+
+function paperAdminCard(page: Page) {
+  return page.locator(`section:has(h2:has-text("${paperTitle}"))`).first();
 }
 
 async function seedExamHierarchy() {

@@ -38,7 +38,7 @@ export const learnerRoutes: RouteItem[] = [
     id: "papers",
     href: "/papers",
     label: "试卷",
-    description: "当前目标下的公开试卷、整卷作答和提交记录。",
+    description: "当前目标下的公开试卷、答题卡、整卷作答和提交报告。",
     section: "learner",
     status: "foundation"
   },
@@ -46,7 +46,7 @@ export const learnerRoutes: RouteItem[] = [
     id: "attempts",
     href: "/attempts",
     label: "作答记录",
-    description: "练习提交记录、得分、答案、正确答案和解析。",
+    description: "练习和试卷提交记录、得分、答案、解析和作答报告。",
     section: "learner",
     status: "foundation"
   },
@@ -145,7 +145,7 @@ export const adminRoutes: RouteItem[] = [
     id: "admin-papers",
     href: "/papers",
     label: "试卷",
-    description: "试卷创建、题目绑定、题序、分区、分值和公开状态。",
+    description: "试卷创建、筛选、隐藏恢复、题目绑定、题序、分区、分值和公开状态。",
     section: "admin",
     status: "foundation"
   },

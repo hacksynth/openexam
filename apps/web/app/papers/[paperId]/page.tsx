@@ -3,7 +3,7 @@ import type { Route } from "next";
 import { AppShell } from "@/components/app-shell";
 import { requireWebSession } from "@/lib/auth";
 import { getPaperForAttempt } from "@openexam/core/papers";
-import { submitPaperAttemptAction } from "../actions";
+import { PaperAttemptForm } from "./paper-attempt-form";
 
 type PaperAttemptPageProps = {
   params: Promise<{ paperId: string }>;
@@ -36,45 +36,7 @@ export default async function PaperAttemptPage({ params, searchParams }: PaperAt
               </div>
             </section>
 
-            <form action={submitPaperAttemptAction} className="grid gap-4">
-              <input name="paperId" type="hidden" value={state.paper.id} />
-              {state.paper.questions.map((question) => (
-                <section key={question.id} className="pixel-panel grid gap-4 p-5">
-                  <input name="questionId" type="hidden" value={question.id} />
-                  <div>
-                    <div className="mb-3 flex flex-wrap gap-2">
-                      <span className="status-chip px-2 py-1">第 {question.number} 题</span>
-                      <span className="status-chip px-2 py-1">{question.score} 分</span>
-                      {question.section ? <span className="status-chip px-2 py-1">{question.section}</span> : null}
-                      {question.knowledgeNodes.map((node) => (
-                        <span key={node} className="status-chip px-2 py-1">
-                          {node}
-                        </span>
-                      ))}
-                    </div>
-                    <h3 className="break-words text-xl font-black leading-8">{question.stem}</h3>
-                  </div>
-                  <div className="grid gap-3">
-                    {question.options.map((option) => (
-                      <label key={option.key} className="flex min-w-0 gap-3 border-2 border-black bg-[var(--surface-subtle)] p-3 font-bold">
-                        <input className="mt-1 h-5 w-5 shrink-0 accent-black" name={`answer_${question.id}`} type="radio" value={option.key} />
-                        <span className="min-w-0 break-words">
-                          {option.key}. {option.text}
-                        </span>
-                      </label>
-                    ))}
-                  </div>
-                </section>
-              ))}
-              <div className="pixel-panel flex flex-wrap gap-3 p-5">
-                <button className="pixel-button px-4 py-2" type="submit">
-                  提交试卷
-                </button>
-                <Link href={"/papers" as Route} className="pixel-button bg-white px-4 py-2">
-                  返回试卷
-                </Link>
-              </div>
-            </form>
+            <PaperAttemptForm paper={state.paper} />
           </>
         )}
       </section>

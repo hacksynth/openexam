@@ -89,6 +89,21 @@ export type PaperAttemptState =
       };
     };
 
+export type PaperSubmissionQuestion = {
+  questionId: string;
+  questionVersionId: string | null;
+  answerKey: Prisma.JsonValue | null | undefined;
+  score: number;
+};
+
+export type AttemptReportAnswerSummaryInput = {
+  isCorrect: boolean;
+  score: number;
+  maxScore: number;
+  userAnswer: string;
+  knowledgeNodes: string[];
+};
+
 export async function listAvailablePapers(userId: string) {
   const goal = await getPrimaryExamGoal(userId);
 
@@ -187,56 +202,26 @@ export async function submitPaperAttempt(
   }
 
   const now = new Date();
-  const gradedAnswers: {
-    questionId: string;
-    questionVersionId: string | null;
-    userAnswer: Prisma.InputJsonObject;
-    isCorrect: boolean;
-    score: number;
-    maxScore: number;
-  }[] = [];
+  const grading = gradePaperSubmission(
+    paper.questions.map((paperQuestion) => {
+      const currentVersion = paperQuestion.question.versions.find((version) => version.version === paperQuestion.question.currentVersion) ?? paperQuestion.question.versions[0] ?? null;
 
-  for (const paperQuestion of paper.questions) {
-    const question = paperQuestion.question;
-    const currentVersion = question.versions.find((version) => version.version === question.currentVersion) ?? question.versions[0] ?? null;
-    const answer = (input.answers[question.id] ?? "").trim().toUpperCase();
-    const answerKey = currentVersion?.answerKey ?? question.answerKey;
+      return {
+        questionId: paperQuestion.question.id,
+        questionVersionId: currentVersion?.id ?? null,
+        answerKey: currentVersion?.answerKey ?? paperQuestion.question.answerKey,
+        score: paperQuestion.score
+      };
+    }),
+    input.answers
+  );
 
-    if (!readSingleChoiceAnswerKey(answerKey)) {
-      return { ok: false, error: "试卷包含答案配置不完整的题目。" };
-    }
-
-    const grading = answer
-      ? gradeSingleChoiceQuestion({
-          answerKey,
-          response: answer,
-          maxScore: paperQuestion.score
-        })
-      : {
-          ok: true as const,
-          result: {
-            isCorrect: false,
-            score: 0,
-            maxScore: paperQuestion.score
-          }
-        };
-
-    if (!grading.ok) {
-      return { ok: false, error: grading.error };
-    }
-
-    gradedAnswers.push({
-      questionId: question.id,
-      questionVersionId: currentVersion?.id ?? null,
-      userAnswer: { value: answer },
-      isCorrect: grading.result.isCorrect,
-      score: grading.result.score,
-      maxScore: grading.result.maxScore
-    });
+  if (!grading.ok) {
+    return { ok: false, error: grading.error };
   }
 
-  const maxScore = gradedAnswers.reduce((sum, answer) => sum + answer.maxScore, 0);
-  const totalScore = gradedAnswers.reduce((sum, answer) => sum + answer.score, 0);
+  const maxScore = grading.data.maxScore;
+  const totalScore = grading.data.totalScore;
   const attemptId = await prisma.$transaction(async (tx) => {
     const attempt = await tx.attempt.create({
       data: {
@@ -250,7 +235,7 @@ export async function submitPaperAttempt(
       }
     });
 
-    for (const answer of gradedAnswers) {
+    for (const answer of grading.data.answers) {
       const attemptAnswer = await tx.attemptAnswer.create({
         data: {
           attemptId: attempt.id,
@@ -291,6 +276,182 @@ export async function submitPaperAttempt(
       totalScore,
       maxScore
     }
+  };
+}
+
+export function gradePaperSubmission(questions: PaperSubmissionQuestion[], answers: Record<string, string>) {
+  const gradedAnswers: {
+    questionId: string;
+    questionVersionId: string | null;
+    userAnswer: Prisma.InputJsonObject;
+    isCorrect: boolean;
+    score: number;
+    maxScore: number;
+  }[] = [];
+
+  for (const question of questions) {
+    const answer = (answers[question.questionId] ?? "").trim().toUpperCase();
+
+    if (!readSingleChoiceAnswerKey(question.answerKey)) {
+      return { ok: false, error: "试卷包含答案配置不完整的题目。" } as const;
+    }
+
+    const grading = answer
+      ? gradeSingleChoiceQuestion({
+          answerKey: question.answerKey,
+          response: answer,
+          maxScore: question.score
+        })
+      : {
+          ok: true as const,
+          result: {
+            isCorrect: false,
+            score: 0,
+            maxScore: question.score
+          }
+        };
+
+    if (!grading.ok) {
+      return { ok: false, error: grading.error } as const;
+    }
+
+    gradedAnswers.push({
+      questionId: question.questionId,
+      questionVersionId: question.questionVersionId,
+      userAnswer: { value: answer },
+      isCorrect: grading.result.isCorrect,
+      score: grading.result.score,
+      maxScore: grading.result.maxScore
+    });
+  }
+
+  return {
+    ok: true,
+    data: {
+      answers: gradedAnswers,
+      totalScore: gradedAnswers.reduce((sum, answer) => sum + answer.score, 0),
+      maxScore: gradedAnswers.reduce((sum, answer) => sum + answer.maxScore, 0)
+    }
+  } as const;
+}
+
+export async function getAttemptReport(userId: string, attemptId: string) {
+  const attempt = await prisma.attempt.findFirst({
+    where: {
+      id: attemptId,
+      userId
+    },
+    include: {
+      paper: true,
+      goal: {
+        include: {
+          program: true,
+          track: true,
+          cycle: true,
+          subject: true
+        }
+      },
+      answers: {
+        orderBy: [{ createdAt: "asc" }],
+        include: {
+          questionVersion: true,
+          question: {
+            include: {
+              knowledgeBindings: {
+                include: {
+                  knowledgeNode: true
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  });
+
+  if (!attempt || attempt.answers.length === 0) {
+    return null;
+  }
+
+  const answers = attempt.answers.map((answer, index) => {
+    const answerKey = answer.questionVersion?.answerKey ?? answer.question.answerKey;
+    const knowledgeNodes = answer.question.knowledgeBindings.map((binding) => binding.knowledgeNode.title);
+
+    return {
+      id: answer.id,
+      order: index + 1,
+      questionId: answer.questionId,
+      isCorrect: Boolean(answer.isCorrect),
+      score: answer.score ?? 0,
+      maxScore: answer.maxScore ?? 0,
+      userAnswer: readSubmittedAnswer(answer.userAnswer),
+      correctAnswer: readSingleChoiceAnswerKey(answerKey),
+      explanation: answer.questionVersion?.explanation ?? answer.question.explanation,
+      question: {
+        id: answer.questionId,
+        stem: answer.questionVersion?.stem ?? answer.question.stem,
+        options: readSingleChoiceOptions(answer.questionVersion?.payload ?? answer.question.payload) ?? [],
+        knowledgeNodes
+      }
+    };
+  });
+  const summary = summarizeAttemptReportAnswers(
+    answers.map((answer) => ({
+      isCorrect: answer.isCorrect,
+      score: answer.score,
+      maxScore: answer.maxScore,
+      userAnswer: answer.userAnswer,
+      knowledgeNodes: answer.question.knowledgeNodes
+    }))
+  );
+
+  return {
+    id: attempt.id,
+    kind: attempt.paperId ? "paper" : "practice",
+    status: attempt.status,
+    startedAt: attempt.startedAt,
+    submittedAt: attempt.submittedAt,
+    title: attempt.paper?.title ?? "单题练习",
+    goalPath: attempt.goal ? [attempt.goal.program.name, attempt.goal.track?.name, attempt.goal.cycle?.name, attempt.goal.subject?.name].filter(Boolean).join(" / ") : "未绑定目标",
+    totalScore: attempt.totalScore ?? summary.totalScore,
+    maxScore: attempt.maxScore ?? summary.maxScore,
+    summary,
+    answers
+  };
+}
+
+export function summarizeAttemptReportAnswers(answers: AttemptReportAnswerSummaryInput[]) {
+  const totalQuestions = answers.length;
+  const correctCount = answers.filter((answer) => answer.isCorrect).length;
+  const wrongCount = totalQuestions - correctCount;
+  const unansweredCount = answers.filter((answer) => !answer.userAnswer).length;
+  const totalScore = answers.reduce((sum, answer) => sum + answer.score, 0);
+  const maxScore = answers.reduce((sum, answer) => sum + answer.maxScore, 0);
+  const knowledge = new Map<string, { title: string; total: number; correct: number; wrong: number; score: number; maxScore: number }>();
+
+  for (const answer of answers) {
+    for (const title of answer.knowledgeNodes.length > 0 ? answer.knowledgeNodes : ["未绑定知识点"]) {
+      const current = knowledge.get(title) ?? { title, total: 0, correct: 0, wrong: 0, score: 0, maxScore: 0 };
+
+      current.total += 1;
+      current.correct += answer.isCorrect ? 1 : 0;
+      current.wrong += answer.isCorrect ? 0 : 1;
+      current.score += answer.score;
+      current.maxScore += answer.maxScore;
+      knowledge.set(title, current);
+    }
+  }
+
+  return {
+    totalQuestions,
+    correctCount,
+    wrongCount,
+    unansweredCount,
+    totalScore,
+    maxScore,
+    accuracy: totalQuestions > 0 ? Math.round((correctCount / totalQuestions) * 100) : 0,
+    scoreRate: maxScore > 0 ? Math.round((totalScore / maxScore) * 100) : 0,
+    knowledgeStats: [...knowledge.values()].sort((left, right) => right.wrong - left.wrong || left.title.localeCompare(right.title, "zh-CN"))
   };
 }
 
@@ -508,4 +669,12 @@ function formatPaperSubjectPath(paper: PaperRecord) {
   }
 
   return "未绑定科目";
+}
+
+function readSubmittedAnswer(value: Prisma.JsonValue | null | undefined) {
+  if (value && typeof value === "object" && !Array.isArray(value) && typeof value.value === "string") {
+    return value.value;
+  }
+
+  return "";
 }

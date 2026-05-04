@@ -42,8 +42,8 @@ Current implementation status:
 - `docker-compose.yml` defines separate `web`, `admin`, and `postgres` services.
 - Database-backed email/password auth and separate learner/admin session cookies are implemented.
 - The first Exam Core workflow is implemented with admin exam hierarchy and knowledge-tree management, learner primary goal selection, and a dashboard goal read path.
-- The first Practice Loop workflow is implemented for single-choice practice, paper attempts, graded attempts, attempt history, wrong-note auto-collection, filters, retry, mastery toggles, and dashboard weak-node summaries.
-- Playwright now covers the first critical browser workflow across admin content creation, learner paper submission, wrong-note retry, and role rejection.
+- The first Practice Loop workflow is implemented for single-choice practice, paper attempts, graded attempts, attempt reports, answer-card submission, wrong-note auto-collection, filters, retry, mastery toggles, and dashboard weak-node summaries.
+- Playwright now covers the first critical browser workflow across admin content creation, learner paper submission/reporting, unanswered confirmation, paper hide/restore, wrong-note retry, and role rejection.
 - shadcn/ui installation and real storage adapters are still pending.
 - Full i18n routing and locale negotiation are not implemented.
 
@@ -99,7 +99,7 @@ Admin APIs live inside the admin app under `/api/...`. If a reverse proxy mounts
 
 Implementation note:
 
-- `apps/web` includes a route shell for every learner route above; `/goals`, `/dashboard`, `/practice`, `/papers`, `/attempts`, and `/wrong-notes` now use database-backed workflow data.
+- `apps/web` includes a route shell for every learner route above; `/goals`, `/dashboard`, `/practice`, `/papers`, `/attempts`, `/attempts/[attemptId]`, and `/wrong-notes` now use database-backed workflow data.
 - `apps/admin` includes a route shell for every admin route above; `/exams`, `/knowledge`, `/questions`, and `/papers` now contain the first minimal CRUD workflows.
 - Both apps expose `/api/health` for foundation health checks.
 - Admin business APIs are not implemented yet.
@@ -170,7 +170,9 @@ Rules:
 - `Attempt` records user work.
 - Attempt answers bind to the question version used at answer time.
 
-Implementation note: the current practice workflow creates one graded `Attempt` per submitted single-choice question. The current paper workflow creates one `Attempt` per submitted public paper with multiple `AttemptAnswer` rows. Both store selected answers in `AttemptAnswer.userAnswer` and incorrect objective answers enter `WrongNote`.
+Implementation note: the current practice workflow creates one graded `Attempt` per submitted single-choice question. The current paper workflow creates one `Attempt` per submitted public paper with multiple `AttemptAnswer` rows. Both store selected answers in `AttemptAnswer.userAnswer` and incorrect objective answers enter `WrongNote`. The report helper reads only the current user's attempts and aggregates score, accuracy, unanswered count, and knowledge-node statistics.
+
+Paper hiding is a temporary v1 admin behavior: because the current schema has no `archivedAt` on `Paper`, hiding a paper sets `visibility=private`, and restoring sets it back to `public` after checking bound questions are public and approved. A future migration should add explicit paper archive metadata if private draft papers and archived papers need to be distinguished.
 
 ## Question Versioning
 

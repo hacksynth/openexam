@@ -1,16 +1,27 @@
+import Link from "next/link";
+import type { Route } from "next";
 import { AppShell } from "@/components/app-shell";
 import { requireAdminSession } from "@/lib/auth";
 import { listKnowledgeHierarchy } from "@openexam/core/exam-core";
 import {
+  adminPaperArchiveFilters,
   listAdminPaperQuestionOptions,
   listAdminPapers,
   paperTypeOptions,
   paperVisibilityOptions
 } from "@openexam/core/paper-admin";
-import { createPaperAction, updatePaperAction } from "./actions";
+import { archivePaperAction, createPaperAction, restorePaperAction, updatePaperAction } from "./actions";
 
 type AdminPapersPageProps = {
-  searchParams: Promise<{ error?: string; notice?: string }>;
+  searchParams: Promise<{
+    error?: string;
+    notice?: string;
+    q?: string;
+    subjectId?: string;
+    paperType?: string;
+    visibility?: string;
+    archived?: string;
+  }>;
 };
 
 const inputClass = "min-w-0 border-3 border-black bg-white px-3 py-2 text-sm font-bold";
@@ -29,10 +40,16 @@ const paperTypeLabels: Record<string, string> = {
   practice: "练习卷"
 };
 
+const archivedLabels: Record<string, string> = {
+  active: "可用",
+  archived: "已隐藏",
+  all: "全部"
+};
+
 export default async function AdminPapersPage({ searchParams }: AdminPapersPageProps) {
   await requireAdminSession();
   const params = await searchParams;
-  const [subjects, questionOptions, papers] = await Promise.all([listKnowledgeHierarchy(), listAdminPaperQuestionOptions(), listAdminPapers()]);
+  const [subjects, questionOptions, papers] = await Promise.all([listKnowledgeHierarchy(), listAdminPaperQuestionOptions(), listAdminPapers(params)]);
   const subjectOptions = subjects.map((subject) => ({
     id: subject.id,
     label: `${subject.cycle.track.program.name} / ${subject.cycle.track.name} / ${subject.cycle.name} / ${subject.name}`
@@ -42,6 +59,53 @@ export default async function AdminPapersPage({ searchParams }: AdminPapersPageP
     <AppShell section="admin" eyebrow="试卷治理" title="试卷">
       <section className="grid gap-5">
         <Feedback error={params.error} notice={params.notice} />
+
+        <section className="pixel-panel grid gap-4 p-5">
+          <div>
+            <p className="text-xs font-bold uppercase text-[var(--muted)]">Filters</p>
+            <h2 className="mt-1 text-xl font-black">试卷筛选</h2>
+          </div>
+          <form className="grid gap-3 lg:grid-cols-[1.2fr_1.6fr_1fr_1fr_0.9fr_auto_auto]">
+            <TextField label="关键词" name="q" defaultValue={params.q ?? ""} placeholder="标题" />
+            <SelectField label="科目" name="subjectId" defaultValue={params.subjectId ?? ""}>
+              <option value="">全部科目</option>
+              {subjectOptions.map((subject) => (
+                <option key={subject.id} value={subject.id}>
+                  {subject.label}
+                </option>
+              ))}
+            </SelectField>
+            <SelectField label="类型" name="paperType" defaultValue={params.paperType ?? ""}>
+              <option value="">全部</option>
+              {paperTypeOptions.map((paperType) => (
+                <option key={paperType} value={paperType}>
+                  {paperTypeLabels[paperType]}
+                </option>
+              ))}
+            </SelectField>
+            <SelectField label="可见性" name="visibility" defaultValue={params.visibility ?? ""}>
+              <option value="">全部</option>
+              {paperVisibilityOptions.map((visibility) => (
+                <option key={visibility} value={visibility}>
+                  {visibilityLabels[visibility]}
+                </option>
+              ))}
+            </SelectField>
+            <SelectField label="状态" name="archived" defaultValue={params.archived ?? "active"}>
+              {adminPaperArchiveFilters.map((archived) => (
+                <option key={archived} value={archived}>
+                  {archivedLabels[archived]}
+                </option>
+              ))}
+            </SelectField>
+            <button className="pixel-button self-end px-4 py-2" type="submit">
+              查询
+            </button>
+            <Link href={"/papers" as Route} className="pixel-button self-end bg-white px-4 py-2 text-center">
+              重置
+            </Link>
+          </form>
+        </section>
 
         <section className="pixel-panel grid gap-4 p-5">
           <div>
@@ -76,10 +140,18 @@ export default async function AdminPapersPage({ searchParams }: AdminPapersPageP
                     <span className="status-chip px-2 py-1">{paperTypeLabels[paper.paperType] ?? paper.paperType}</span>
                     <span className="status-chip px-2 py-1">{paper.questionCount} 题</span>
                     <span className="status-chip px-2 py-1">{paper.totalScore} 分</span>
+                    {paper.archived ? <span className="status-chip bg-[var(--danger)] px-2 py-1 text-white">已隐藏</span> : null}
+                    {paper.hasPublicRisk ? <span className="status-chip bg-[var(--danger)] px-2 py-1 text-white">公开风险</span> : null}
                   </div>
                   <h2 className="break-words text-xl font-black leading-8">{paper.title}</h2>
                   <p className="mt-1 break-words text-sm font-bold text-[var(--muted)]">{paper.subjectPath}</p>
                 </div>
+                {paper.hasPublicRisk ? (
+                  <p className="border-2 border-black bg-red-50 p-3 text-sm font-bold text-red-700">
+                    这套公开试卷包含未公开、未审核通过或已归档题目，学习端不会展示风险题目相关内容。
+                  </p>
+                ) : null}
+                <PaperActions paperId={paper.id} archived={paper.archived} />
                 <PaperForm
                   action={updatePaperAction}
                   id={paper.id}
@@ -113,6 +185,12 @@ function PaperForm({
   submitLabel: string;
 }) {
   const existingQuestions = new Map((paper?.questions ?? []).map((question) => [question.questionId, question]));
+  const orderedQuestionOptions = [
+    ...questionOptions
+      .filter((question) => existingQuestions.has(question.id))
+      .sort((left, right) => (existingQuestions.get(left.id)?.order ?? 0) - (existingQuestions.get(right.id)?.order ?? 0)),
+    ...questionOptions.filter((question) => !existingQuestions.has(question.id))
+  ];
 
   return (
     <form action={action} className="grid gap-4">
@@ -145,7 +223,7 @@ function PaperForm({
       </SelectField>
       <div className="grid gap-3">
         <p className="text-sm font-bold text-[var(--muted)]">绑定题目</p>
-        {questionOptions.map((question, index) => {
+        {orderedQuestionOptions.map((question, index) => {
           const existing = existingQuestions.get(question.id);
           const defaultOrder = existing?.order ?? index + 1;
 
@@ -156,6 +234,7 @@ function PaperForm({
                 <span className="min-w-0">
                   <span className="block break-words text-base font-black">{question.stem}</span>
                   <span className="mt-1 flex flex-wrap gap-2">
+                    <span className="status-chip px-2 py-1">{existing ? "已选" : "未选"}</span>
                     <span className="status-chip px-2 py-1">{question.knowledgePath}</span>
                     <span className="status-chip px-2 py-1">{visibilityLabels[question.visibility]}</span>
                     <span className="status-chip px-2 py-1">{question.reviewStatus}</span>
@@ -177,6 +256,28 @@ function PaperForm({
         {submitLabel}
       </button>
     </form>
+  );
+}
+
+function PaperActions({ paperId, archived }: { paperId: string; archived: boolean }) {
+  return (
+    <div className="flex flex-wrap gap-2 border-2 border-black bg-[var(--surface-subtle)] p-3">
+      {archived ? (
+        <form action={restorePaperAction}>
+          <input name="id" type="hidden" value={paperId} />
+          <button className="pixel-button bg-white px-3 py-2 text-sm" type="submit">
+            恢复公开
+          </button>
+        </form>
+      ) : (
+        <form action={archivePaperAction}>
+          <input name="id" type="hidden" value={paperId} />
+          <button className="pixel-button bg-white px-3 py-2 text-sm" type="submit">
+            隐藏试卷
+          </button>
+        </form>
+      )}
+    </div>
   );
 }
 

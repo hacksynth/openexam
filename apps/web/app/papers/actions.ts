@@ -25,5 +25,5 @@ export async function submitPaperAttemptAction(formData: FormData) {
     redirect(`/papers/${paperId}?error=${encodeURIComponent(result.error)}` as Route);
   }
 
-  redirect(`/attempts?notice=${encodeURIComponent(`试卷已提交，得分 ${result.data.totalScore} / ${result.data.maxScore}。`)}` as Route);
+  redirect(`/attempts/${result.data.attemptId}?notice=${encodeURIComponent(`试卷已提交，得分 ${result.data.totalScore} / ${result.data.maxScore}。`)}` as Route);
 }

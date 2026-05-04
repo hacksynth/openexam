@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { validatePaperInput } from "@openexam/core/paper-admin";
+import { normalizeAdminPaperFilters, validatePaperInput } from "@openexam/core/paper-admin";
 
 const validPaper = {
   title: "软考软件设计师基础知识样例卷",
@@ -100,6 +100,34 @@ describe("paper admin validation", () => {
     ).toEqual({
       ok: false,
       error: "分值必须是大于 0 的数字。"
+    });
+  });
+});
+
+describe("admin paper filters", () => {
+  it("normalizes supported filters and defaults to active papers", () => {
+    expect(
+      normalizeAdminPaperFilters({
+        q: "  样例卷  ",
+        subjectId: "subject_1",
+        paperType: "mock",
+        visibility: "public",
+        archived: "all"
+      })
+    ).toEqual({
+      q: "样例卷",
+      subjectId: "subject_1",
+      paperType: "mock",
+      visibility: "public",
+      archived: "all"
+    });
+
+    expect(normalizeAdminPaperFilters({ paperType: "bad", visibility: "bad", archived: "bad" })).toEqual({
+      q: null,
+      subjectId: null,
+      paperType: null,
+      visibility: null,
+      archived: "active"
     });
   });
 });

@@ -68,9 +68,14 @@ export default async function AttemptsPage({ searchParams }: AttemptsPageProps) 
                     <h2 className="break-words text-xl font-black leading-8">{attempt.paperTitle ?? attempt.goalPath}</h2>
                     {attempt.paperTitle ? <p className="mt-1 break-words text-sm font-bold text-[var(--muted)]">{attempt.goalPath}</p> : null}
                   </div>
-                  <Link href={(attempt.kind === "paper" ? "/papers" : "/practice") as Route} className="pixel-button h-fit whitespace-nowrap px-4 py-2">
-                    {attempt.kind === "paper" ? "继续试卷" : "继续练习"}
-                  </Link>
+                  <div className="flex flex-wrap gap-2">
+                    <Link href={`/attempts/${attempt.id}` as Route} className="pixel-button h-fit whitespace-nowrap px-4 py-2">
+                      查看报告
+                    </Link>
+                    <Link href={(attempt.kind === "paper" ? "/papers" : "/practice") as Route} className="pixel-button h-fit whitespace-nowrap bg-white px-4 py-2">
+                      {attempt.kind === "paper" ? "继续试卷" : "继续练习"}
+                    </Link>
+                  </div>
                 </div>
 
                 <div className="grid gap-3">

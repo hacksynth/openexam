@@ -8,6 +8,17 @@ type ActionResult<T = undefined> = T extends undefined
 
 export const paperVisibilityOptions = ["private", "unlisted", "public"] as const;
 export const paperTypeOptions = ["sample", "mock", "past", "practice"] as const;
+export const adminPaperArchiveFilters = ["active", "archived", "all"] as const;
+
+export type AdminPaperArchiveFilter = (typeof adminPaperArchiveFilters)[number];
+
+export type AdminPaperFilters = {
+  q?: string | null;
+  subjectId?: string | null;
+  paperType?: string | null;
+  visibility?: string | null;
+  archived?: string | null;
+};
 
 export type PaperQuestionInput = {
   questionId: string;
@@ -80,8 +91,35 @@ export function validatePaperInput(input: PaperInput) {
   return parsePaperInput(input);
 }
 
-export async function listAdminPapers() {
+export function normalizeAdminPaperFilters(filters: AdminPaperFilters = {}) {
+  return {
+    q: optionalText(filters.q),
+    subjectId: optionalText(filters.subjectId),
+    paperType: parseFilterEnum(filters.paperType, paperTypeOptions),
+    visibility: parseFilterEnum(filters.visibility, paperVisibilityOptions),
+    archived: parseFilterEnum(filters.archived, adminPaperArchiveFilters) ?? "active"
+  };
+}
+
+export async function listAdminPapers(filters: AdminPaperFilters = {}) {
+  const normalized = normalizeAdminPaperFilters(filters);
+  const where: Prisma.PaperWhereInput = {
+    ...(normalized.q
+      ? {
+          title: {
+            contains: normalized.q,
+            mode: "insensitive"
+          }
+        }
+      : {}),
+    ...(normalized.subjectId ? { subjectId: normalized.subjectId } : {}),
+    ...(normalized.paperType ? { paperType: normalized.paperType } : {}),
+    ...(normalized.visibility ? { visibility: normalized.visibility as Visibility } : {}),
+    ...(normalized.archived === "active" && !normalized.visibility ? { visibility: { not: "private" } } : {}),
+    ...(normalized.archived === "archived" && !normalized.visibility ? { visibility: "private" } : {})
+  };
   const papers = await prisma.paper.findMany({
+    where,
     include: adminPaperInclude,
     orderBy: [{ updatedAt: "desc" }],
     take: 100
@@ -200,6 +238,48 @@ export async function updatePaper(id: string, input: PaperInput): Promise<Action
     }
 
     return databaseError(error, "试卷更新失败。");
+  }
+}
+
+export async function setPaperArchived(id: string, archived: boolean): Promise<ActionResult> {
+  if (!id.trim()) {
+    return { ok: false, error: "试卷不存在。" };
+  }
+
+  try {
+    if (!archived) {
+      const paper = await prisma.paper.findUnique({
+        where: { id },
+        include: {
+          questions: {
+            include: {
+              question: true
+            }
+          }
+        }
+      });
+
+      if (!paper) {
+        return { ok: false, error: "试卷不存在。" };
+      }
+
+      const privateQuestion = paper.questions.find((paperQuestion) => paperQuestion.question.visibility !== "public" || paperQuestion.question.reviewStatus !== "approved" || paperQuestion.question.deletedAt);
+
+      if (privateQuestion) {
+        return { ok: false, error: "恢复公开前，请先确保所有绑定题目公开且审核通过。" };
+      }
+    }
+
+    const result = await prisma.paper.updateMany({
+      where: { id },
+      data: {
+        visibility: archived ? "private" : "public"
+      }
+    });
+
+    return result.count > 0 ? { ok: true } : { ok: false, error: "试卷不存在。" };
+  } catch (error) {
+    return databaseError(error, archived ? "试卷隐藏失败。" : "试卷恢复失败。");
   }
 }
 
@@ -368,6 +448,8 @@ function toAdminPaper(paper: AdminPaperRecord) {
     slug: paper.slug,
     paperType: paper.paperType,
     visibility: paper.visibility,
+    archived: paper.visibility === "private",
+    hasPublicRisk: paper.visibility === "public" && paper.questions.some((paperQuestion) => paperQuestion.question.visibility !== "public" || paperQuestion.question.reviewStatus !== "approved"),
     subjectId: paper.subjectId ?? "",
     cycleId: paper.cycleId ?? "",
     updatedAt: paper.updatedAt,
@@ -395,6 +477,16 @@ function parseEnum<const T extends readonly string[]>(value: string | null | und
   }
 
   return { ok: true, value: normalized as T[number] } as const;
+}
+
+function parseFilterEnum<const T extends readonly string[]>(value: string | null | undefined, options: T) {
+  const normalized = value?.trim();
+
+  if (!normalized || !options.includes(normalized as T[number])) {
+    return null;
+  }
+
+  return normalized as T[number];
 }
 
 function parsePositiveInteger(value: string | number | null | undefined) {

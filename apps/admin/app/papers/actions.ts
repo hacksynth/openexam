@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { Route } from "next";
-import { createPaper, updatePaper, type PaperInput } from "@openexam/core/paper-admin";
+import { createPaper, setPaperArchived, updatePaper, type PaperInput } from "@openexam/core/paper-admin";
 import { requireAdminSession } from "@/lib/auth";
 
 type Result = Awaited<ReturnType<typeof createPaper>>;
@@ -16,6 +16,16 @@ export async function createPaperAction(formData: FormData) {
 export async function updatePaperAction(formData: FormData) {
   await requireAdminSession();
   finish(await updatePaper(value(formData, "id"), readPaper(formData)), "试卷已更新。");
+}
+
+export async function archivePaperAction(formData: FormData) {
+  await requireAdminSession();
+  finish(await setPaperArchived(value(formData, "id"), true), "试卷已隐藏。");
+}
+
+export async function restorePaperAction(formData: FormData) {
+  await requireAdminSession();
+  finish(await setPaperArchived(value(formData, "id"), false), "试卷已恢复公开。");
 }
 
 function readPaper(formData: FormData): PaperInput {
