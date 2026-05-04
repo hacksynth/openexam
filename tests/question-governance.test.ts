@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { evaluateQuestionPublication } from "@/lib/question-governance";
+import { evaluateQuestionPublication } from "@openexam/core/question-governance";
 
 describe("evaluateQuestionPublication", () => {
   it("allows approved original public questions", () => {

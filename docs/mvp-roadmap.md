@@ -11,9 +11,9 @@ Foundation -> Exam Core -> Practice Loop -> AI Core -> Materials
 
 Current progress:
 
-- Foundation scaffold is complete enough to run, build, and test.
+- Split foundation scaffold is complete enough to run, build, and test the web and admin apps independently.
 - Exam core schema exists in Prisma, but admin CRUD and migrations against a live database are not complete.
-- Learner/admin routes exist as shell pages; real workflows begin in the next slices.
+- Learner/admin routes exist as shell pages in separate apps; real workflows begin in the next slices.
 
 ## 1. Foundation
 
@@ -23,14 +23,14 @@ Status: partially complete.
 
 Deliverables:
 
-- Next.js App Router project. Completed.
+- Next.js App Router projects for learner and admin. Completed.
 - TypeScript strict configuration. Completed.
 - Tailwind CSS base styling. Completed.
 - shadcn/ui base components. Pending.
 - Prisma with PostgreSQL schema and local compose configuration. Completed.
 - Auth and session layer. Pending.
 - `user` and `admin` roles in schema. Completed.
-- Base layout for learner and admin routes. Completed.
+- Base layout for learner and admin routes in separate apps. Completed.
 - Local asset storage adapter. Pending.
 - Basic environment configuration. Completed.
 - Test setup with Vitest. Completed.
@@ -38,7 +38,7 @@ Deliverables:
 Acceptance:
 
 - A user can register, sign in, and reach `/dashboard`. Pending auth.
-- An admin can reach `/admin`. Route shell completed; authorization pending.
+- An admin can reach the admin app root `/` on the admin service. Route shell completed; authorization pending.
 - PostgreSQL migrations run cleanly. Pending live database validation.
 - Private routes reject anonymous users. Pending auth.
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { studyPlanSchema } from "@/lib/study-plan-schema";
+import { studyPlanSchema } from "@openexam/core/study-plan-schema";
 
 describe("studyPlanSchema", () => {
   it("accepts structured 14-day plans", () => {

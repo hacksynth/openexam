@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { gradeObjectiveAnswer } from "@/lib/grading";
+import { gradeObjectiveAnswer } from "@openexam/core/grading";
 
 describe("gradeObjectiveAnswer", () => {
   it("grades single-choice answers case-insensitively", () => {

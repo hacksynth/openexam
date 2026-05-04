@@ -102,7 +102,7 @@ The design system is the source of truth for UI implementation. Any future proto
 
 ## Current Implementation
 
-The foundation UI implements the first pass of the design direction in `app/globals.css` and shared shell components:
+The foundation UI implements the first pass of the design direction in `apps/web/app/globals.css`, `apps/admin/app/globals.css`, and the shell components in each app:
 
 - Light gray-blue pixel grid background.
 - White hard-edge panels.

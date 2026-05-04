@@ -38,7 +38,7 @@ The MVP must complete this learning loop:
 
 Current implementation status:
 
-- The repository now has a runnable foundation app with landing, learner dashboard shell, admin shell, documented route placeholders, a health API, and initial domain tests.
+- The repository now has separate runnable learner and admin foundation apps with documented route placeholders, health APIs, shared core helpers, and initial domain tests.
 - The app does not yet complete the MVP learning loop.
 - Authentication, real practice sessions, AI provider calls, material uploads, image generation, and admin CRUD remain future implementation work.
 
@@ -98,7 +98,7 @@ The MVP supports these practice modes:
 
 The MVP does not include leaderboards, social check-ins, class assignments, community question lists, or complex adaptive testing.
 
-Implementation note: `lib/grading.ts` contains the first tested objective-grading helper. Practice sessions, question retrieval, submissions, persistence, and wrong-note creation are still pending.
+Implementation note: `packages/core/src/grading.ts` contains the first tested objective-grading helper. Practice sessions, question retrieval, submissions, persistence, and wrong-note creation are still pending.
 
 ### Mock Exams
 
@@ -252,7 +252,7 @@ Diagnosis outputs:
 
 Study plans must be structured task tables, not plain text. Tasks are checkable and can bind to subjects, knowledge nodes, papers, materials, and question sets.
 
-Implementation note: `lib/study-plan-schema.ts` defines the first Zod schema for structured 14-day plans. Plan generation and task completion UI are not implemented yet.
+Implementation note: `packages/core/src/study-plan-schema.ts` defines the first Zod schema for structured 14-day plans. Plan generation and task completion UI are not implemented yet.
 
 ## Question Bank Policy
 

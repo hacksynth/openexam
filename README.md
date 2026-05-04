@@ -4,7 +4,7 @@ OpenExam is a self-hostable AI exam preparation platform for individual learners
 
 ## Status
 
-This repository is in the foundation stage. The app scaffold, route shell, Prisma domain schema, and initial rule tests are in place. The product and architecture source of truth remains in `docs/`.
+This repository is in the foundation stage. The web app, admin app, shared core package, Prisma domain schema, and initial rule tests are in place. The product and architecture source of truth remains in `docs/`.
 
 ## Documentation
 
@@ -25,17 +25,22 @@ This repository is in the foundation stage. The app scaffold, route shell, Prism
 
 ## Development
 
-Install dependencies, then run the local app:
+Install dependencies, then run the local apps in separate terminals:
 
 ```sh
 npm install
-npm run dev
+npm run dev:web
+npm run dev:admin
 ```
+
+The learner web app runs on port `3000`. The admin app runs on port `3001`.
 
 Useful commands:
 
 ```sh
 npm run build
+npm run build:web
+npm run build:admin
 npm run lint
 npm test
 npm run test:e2e
@@ -54,11 +59,17 @@ npm run db:migrate
 npm run db:seed
 ```
 
+For split-container deployment:
+
+```sh
+docker compose up --build web admin postgres
+```
+
 ## Project Layout
 
-- `app/`: Next.js App Router pages and API routes.
-- `components/`: shared UI shell and page primitives.
-- `lib/`: domain helpers, validation schemas, environment parsing, and Prisma client setup.
+- `apps/web/`: learner-facing Next.js application.
+- `apps/admin/`: admin Next.js application.
+- `packages/core/`: shared domain helpers, validation schemas, route metadata, environment parsing, and Prisma client setup.
 - `prisma/`: database schema and seed script.
 - `tests/`: Vitest unit tests.
 - `docs/`: product, architecture, roadmap, and design-system decisions.

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { AppShell } from "@/components/app-shell";
-import { currentGoal, dashboardMetrics, recentJobs, todayTasks, weakKnowledgeNodes } from "@/lib/dashboard-data";
+import { currentGoal, dashboardMetrics, recentJobs, todayTasks, weakKnowledgeNodes } from "@openexam/core/dashboard-data";
 
 export default function DashboardPage() {
   return (

@@ -1,6 +1,7 @@
 import Link from "next/link";
+import type { Route } from "next";
 import { AppShell } from "@/components/app-shell";
-import { adminRoutes } from "@/lib/routes";
+import { adminRoutes } from "@openexam/core/routes";
 
 export default function AdminPage() {
   return (
@@ -19,9 +20,9 @@ export default function AdminPage() {
           <h2 className="mb-4 text-xl font-black">Governance Areas</h2>
           <div className="grid gap-3 md:grid-cols-3">
             {adminRoutes
-              .filter((route) => route.href !== "/admin")
+              .filter((route) => route.href !== "/")
               .map((route) => (
-                <Link key={route.id} href={route.href} className="border-3 border-black bg-white p-4 hover:bg-[var(--primary)]">
+                <Link key={route.id} href={route.href as Route} className="border-3 border-black bg-white p-4 hover:bg-[var(--primary)]">
                   <span className="block text-lg font-black">{route.label}</span>
                   <span className="mt-2 block text-sm leading-6 text-[var(--muted)]">{route.description}</span>
                 </Link>

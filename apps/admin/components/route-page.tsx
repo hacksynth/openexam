@@ -1,5 +1,5 @@
 import { AppShell } from "@/components/app-shell";
-import { getRoute } from "@/lib/routes";
+import { getRoute } from "@openexam/core/routes";
 
 export function RoutePage({ routeId }: { routeId: string }) {
   const route = getRoute(routeId);

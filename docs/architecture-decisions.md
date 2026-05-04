@@ -31,13 +31,13 @@ MVP stack:
 - Vitest for unit and API tests.
 - Playwright for critical browser workflow tests.
 
-Admin and learner UI live in the same Next.js application.
+Admin and learner UI are separate Next.js applications in the same monorepo. They are deployed as separate containers and share only explicit packages such as `packages/core`.
 
 Current implementation status:
 
-- The foundation app is scaffolded with Next.js App Router, TypeScript strict mode, Tailwind CSS, Prisma, PostgreSQL configuration, and Vitest.
+- The foundation web and admin apps are scaffolded with Next.js App Router, TypeScript strict mode, Tailwind CSS, Prisma, PostgreSQL configuration, and Vitest.
 - `package.json` exposes stable scripts for development, build, TypeScript checks, tests, Prisma validation/generation, migrations, and seeding.
-- `docker-compose.yml` defines a local PostgreSQL service matching `.env.example`.
+- `docker-compose.yml` defines separate `web`, `admin`, and `postgres` services.
 - Auth/session implementation, shadcn/ui installation, Playwright specs, and real storage adapters are still pending.
 
 ## Deployment Shape
@@ -46,7 +46,8 @@ The MVP targets self-hosted web deployment.
 
 Included:
 
-- Web application.
+- Learner web application container.
+- Admin application container.
 - PostgreSQL.
 - Local file storage adapter.
 - Optional S3-compatible storage adapter.
@@ -74,26 +75,27 @@ Learner routes:
 - `/ai/tasks`
 - `/profile`
 
-Admin routes:
+Admin app routes, rooted at the admin service or admin domain:
 
-- `/admin`
-- `/admin/exams`
-- `/admin/knowledge`
-- `/admin/questions`
-- `/admin/papers`
-- `/admin/materials`
-- `/admin/ai`
-- `/admin/jobs`
-- `/admin/users`
-- `/admin/audit`
+- `/`
+- `/exams`
+- `/knowledge`
+- `/questions`
+- `/papers`
+- `/materials`
+- `/ai`
+- `/jobs`
+- `/users`
+- `/audit`
 
-Admin APIs use `/api/admin/...`.
+Admin APIs live inside the admin app under `/api/...`. If a reverse proxy mounts the admin app under `/admin`, that prefix is infrastructure-level routing, not an in-app route requirement.
 
 Implementation note:
 
-- The current app includes a route shell for every learner and admin route above.
-- `/api/health` exists for foundation health checks.
-- Admin APIs under `/api/admin/...` are not implemented yet.
+- `apps/web` includes a route shell for every learner route above.
+- `apps/admin` includes a route shell for every admin route above.
+- Both apps expose `/api/health` for foundation health checks.
+- Admin business APIs are not implemented yet.
 
 ## Core Exam Model
 
@@ -144,7 +146,7 @@ Questions are extensible with structured fields:
 Implementation note:
 
 - Prisma uses JSON columns for `payload`, `answerKey`, and `rubric`.
-- `lib/question-governance.ts` contains the first tested public-visibility rule helper.
+- `packages/core/src/question-governance.ts` contains the first tested public-visibility rule helper.
 - Additional Zod schemas are still needed before accepting imported or AI-generated question payloads.
 
 ## Papers And Attempts
@@ -347,7 +349,7 @@ Use Zod or an equivalent schema library. Failed parsing may retry once. Persiste
 
 Implementation note:
 
-- `lib/study-plan-schema.ts` defines and tests the first structured 14-day plan schema.
+- `packages/core/src/study-plan-schema.ts` defines and tests the first structured 14-day plan schema.
 - Other AI output schemas remain pending.
 
 ## Jobs And Async Work

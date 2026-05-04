@@ -1,0 +1,100 @@
+@import "tailwindcss";
+
+:root {
+  --background: #dbe7f3;
+  --grid: rgba(18, 31, 45, 0.08);
+  --ink: #111111;
+  --muted: #4f5d6a;
+  --surface: #ffffff;
+  --surface-subtle: #f5f8fb;
+  --primary: #ffd43b;
+  --primary-ink: #111111;
+  --teal: #00a896;
+  --ai: #7251ff;
+  --danger: #e03131;
+  --shadow: #111111;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-width: 320px;
+}
+
+body {
+  min-height: 100vh;
+  margin: 0;
+  color: var(--ink);
+  background:
+    linear-gradient(var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px),
+    var(--background);
+  background-size: 20px 20px;
+  font-family: "Courier New", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+body::before {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  content: "";
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(255, 255, 255, 0.08),
+    rgba(255, 255, 255, 0.08) 1px,
+    transparent 1px,
+    transparent 4px
+  );
+  mix-blend-mode: overlay;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+:focus-visible {
+  outline: 3px solid var(--primary);
+  outline-offset: 3px;
+}
+
+.pixel-panel {
+  border: 3px solid var(--ink);
+  background: var(--surface);
+  box-shadow: 6px 6px 0 var(--shadow);
+}
+
+.pixel-button {
+  display: inline-flex;
+  min-height: 40px;
+  align-items: center;
+  justify-content: center;
+  border: 3px solid var(--ink);
+  background: var(--primary);
+  color: var(--primary-ink);
+  box-shadow: 4px 4px 0 var(--shadow);
+  font-weight: 800;
+}
+
+.pixel-button:hover {
+  transform: translate(1px, 1px);
+  box-shadow: 3px 3px 0 var(--shadow);
+}
+
+.status-chip {
+  border: 2px solid var(--ink);
+  background: var(--surface-subtle);
+  color: var(--ink);
+  font-size: 0.75rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}

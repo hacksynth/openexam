@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "OpenExam",
-  description: "Self-hostable AI exam preparation platform"
+  title: "OpenExam Admin",
+  description: "Administration console for OpenExam"
 };
 
 export default function RootLayout({

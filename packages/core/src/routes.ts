@@ -1,10 +1,8 @@
-import type { Route } from "next";
-
 export type AppSection = "learner" | "admin";
 
 export type RouteItem = {
   id: string;
-  href: Route;
+  href: `/${string}`;
   label: string;
   description: string;
   section: AppSection;
@@ -113,7 +111,7 @@ export const learnerRoutes: RouteItem[] = [
 export const adminRoutes: RouteItem[] = [
   {
     id: "admin",
-    href: "/admin",
+    href: "/",
     label: "Admin",
     description: "Platform overview for content, jobs, AI usage, users, and audit events.",
     section: "admin",
@@ -121,7 +119,7 @@ export const adminRoutes: RouteItem[] = [
   },
   {
     id: "admin-exams",
-    href: "/admin/exams",
+    href: "/exams",
     label: "Exams",
     description: "Programs, tracks, cycles, subjects, syllabi, and knowledge trees.",
     section: "admin",
@@ -129,7 +127,7 @@ export const adminRoutes: RouteItem[] = [
   },
   {
     id: "admin-knowledge",
-    href: "/admin/knowledge",
+    href: "/knowledge",
     label: "Knowledge",
     description: "Knowledge node governance, weights, classifications, and uncategorized items.",
     section: "admin",
@@ -137,7 +135,7 @@ export const adminRoutes: RouteItem[] = [
   },
   {
     id: "admin-questions",
-    href: "/admin/questions",
+    href: "/questions",
     label: "Questions",
     description: "Question review, source policy, visibility, versions, and takedowns.",
     section: "admin",
@@ -145,7 +143,7 @@ export const adminRoutes: RouteItem[] = [
   },
   {
     id: "admin-papers",
-    href: "/admin/papers",
+    href: "/papers",
     label: "Papers",
     description: "Paper ordering, sections, scores, real papers, and mock sets.",
     section: "admin",
@@ -153,7 +151,7 @@ export const adminRoutes: RouteItem[] = [
   },
   {
     id: "admin-materials",
-    href: "/admin/materials",
+    href: "/materials",
     label: "Materials",
     description: "Uploaded assets, extraction jobs, source references, and processing errors.",
     section: "admin",
@@ -161,7 +159,7 @@ export const adminRoutes: RouteItem[] = [
   },
   {
     id: "admin-ai",
-    href: "/admin/ai",
+    href: "/ai",
     label: "AI",
     description: "Provider presets, task routing, limits, prompt versions, and usage logs.",
     section: "admin",
@@ -169,7 +167,7 @@ export const adminRoutes: RouteItem[] = [
   },
   {
     id: "admin-jobs",
-    href: "/admin/jobs",
+    href: "/jobs",
     label: "Jobs",
     description: "Database-backed queue status, retries, failures, and progress tracking.",
     section: "admin",
@@ -177,7 +175,7 @@ export const adminRoutes: RouteItem[] = [
   },
   {
     id: "admin-users",
-    href: "/admin/users",
+    href: "/users",
     label: "Users",
     description: "User roles, usage limits, AI call totals, and account state.",
     section: "admin",
@@ -185,7 +183,7 @@ export const adminRoutes: RouteItem[] = [
   },
   {
     id: "admin-audit",
-    href: "/admin/audit",
+    href: "/audit",
     label: "Audit",
     description: "Append-only events for visibility, source, model, and admin setting changes.",
     section: "admin",

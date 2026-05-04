@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { adminRoutes, learnerRoutes, type AppSection } from "@/lib/routes";
+import type { Route } from "next";
+import { learnerRoutes, type AppSection } from "@openexam/core/routes";
 
 type AppShellProps = {
   section: AppSection;
@@ -9,9 +10,7 @@ type AppShellProps = {
 };
 
 export function AppShell({ section, title, eyebrow, children }: AppShellProps) {
-  const routes = section === "admin" ? adminRoutes : learnerRoutes;
-  const alternate = section === "admin" ? "/dashboard" : "/admin";
-  const alternateLabel = section === "admin" ? "Learner" : "Admin";
+  const adminUrl = process.env.NEXT_PUBLIC_ADMIN_URL ?? "http://127.0.0.1:3001";
 
   return (
     <main className="mx-auto grid min-h-screen w-full max-w-7xl gap-6 px-4 py-5 md:grid-cols-[240px_1fr] md:px-6">
@@ -21,19 +20,19 @@ export function AppShell({ section, title, eyebrow, children }: AppShellProps) {
           <span className="block text-xl font-black">MVP Console</span>
         </Link>
         <nav aria-label={`${section} navigation`} className="grid gap-2">
-          {routes.map((route) => (
+          {learnerRoutes.map((route) => (
             <Link
               key={route.id}
-              href={route.href}
+              href={route.href as Route}
               className="border-2 border-black bg-white px-3 py-2 text-sm font-bold hover:bg-[var(--primary)]"
             >
               {route.label}
             </Link>
           ))}
         </nav>
-        <Link href={alternate} className="pixel-button mt-5 w-full px-3 py-2 text-sm">
-          {alternateLabel}
-        </Link>
+        <a href={adminUrl} className="pixel-button mt-5 w-full px-3 py-2 text-sm">
+          Admin
+        </a>
       </aside>
 
       <section className="grid content-start gap-5">

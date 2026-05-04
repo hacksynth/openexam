@@ -1,0 +1,19 @@
+{
+  "name": "@openexam/core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./dashboard-data": "./src/dashboard-data.ts",
+    "./env": "./src/env.ts",
+    "./grading": "./src/grading.ts",
+    "./prisma": "./src/prisma.ts",
+    "./question-governance": "./src/question-governance.ts",
+    "./routes": "./src/routes.ts",
+    "./study-plan-schema": "./src/study-plan-schema.ts"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.19.0",
+    "zod": "^4.1.13"
+  }
+}

@@ -7,7 +7,7 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      "@": new URL(".", import.meta.url).pathname
+      "@openexam/core": new URL("./packages/core/src", import.meta.url).pathname
     }
   }
 });

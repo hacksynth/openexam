@@ -1,4 +1,36 @@
 services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    environment:
+      DATABASE_URL: "postgresql://openexam:openexam@postgres:5432/openexam?schema=public"
+      NEXT_PUBLIC_WEB_URL: "http://127.0.0.1:3000"
+      NEXT_PUBLIC_ADMIN_URL: "http://127.0.0.1:3001"
+      STORAGE_DRIVER: "local"
+      LOCAL_STORAGE_DIR: "./storage"
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  admin:
+    build:
+      context: .
+      dockerfile: Dockerfile.admin
+    environment:
+      DATABASE_URL: "postgresql://openexam:openexam@postgres:5432/openexam?schema=public"
+      NEXT_PUBLIC_WEB_URL: "http://127.0.0.1:3000"
+      NEXT_PUBLIC_ADMIN_URL: "http://127.0.0.1:3001"
+      STORAGE_DRIVER: "local"
+      LOCAL_STORAGE_DIR: "./storage"
+    ports:
+      - "3001:3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   postgres:
     image: postgres:17-alpine
     container_name: openexam-postgres
