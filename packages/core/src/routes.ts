@@ -24,7 +24,7 @@ export const learnerRoutes: RouteItem[] = [
     label: "考试目标",
     description: "考试项目、方向、批次、目标日期、目标分和每日学习时间。",
     section: "learner",
-    status: "planned"
+    status: "foundation"
   },
   {
     id: "practice",
@@ -123,7 +123,7 @@ export const adminRoutes: RouteItem[] = [
     label: "考试",
     description: "考试项目、方向、批次、科目、大纲和知识树。",
     section: "admin",
-    status: "planned"
+    status: "foundation"
   },
   {
     id: "admin-knowledge",
@@ -131,7 +131,7 @@ export const adminRoutes: RouteItem[] = [
     label: "知识",
     description: "知识节点治理、权重、分类和未归类内容。",
     section: "admin",
-    status: "planned"
+    status: "foundation"
   },
   {
     id: "admin-questions",

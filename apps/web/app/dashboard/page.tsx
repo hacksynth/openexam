@@ -1,8 +1,13 @@
 import Link from "next/link";
 import { AppShell } from "@/components/app-shell";
-import { currentGoal, dashboardMetrics, recentJobs, todayTasks, weakKnowledgeNodes } from "@openexam/core/dashboard-data";
+import { requireWebSession } from "@/lib/auth";
+import { dashboardMetrics, recentJobs, todayTasks, weakKnowledgeNodes } from "@openexam/core/dashboard-data";
+import { formatDateInput, formatGoalPath, getPrimaryExamGoal } from "@openexam/core/exam-core";
 
-export default function DashboardPage() {
+export default async function DashboardPage() {
+  const session = await requireWebSession();
+  const currentGoal = await getPrimaryExamGoal(session.user.id);
+
   return (
     <AppShell section="learner" eyebrow="学习端基础版" title="仪表盘">
       <section className="grid gap-5">
@@ -19,16 +24,23 @@ export default function DashboardPage() {
           <section className="pixel-panel grid gap-4 p-5">
             <div>
               <p className="text-xs font-bold uppercase text-[var(--muted)]">当前考试目标</p>
-              <h2 className="mt-2 text-2xl font-black">
-                {currentGoal.program} / {currentGoal.track}
-              </h2>
-              <p className="mt-1 font-bold text-[var(--muted)]">
-                {currentGoal.cycle} / 目标日期 {currentGoal.targetDate} / 每日 {currentGoal.dailyMinutes} 分钟
-              </p>
+              {currentGoal ? (
+                <>
+                  <h2 className="mt-2 text-2xl font-black">{formatGoalPath(currentGoal)}</h2>
+                  <p className="mt-1 font-bold text-[var(--muted)]">
+                    目标日期 {formatDateInput(currentGoal.targetDate) || "未设置"} / 目标分 {currentGoal.targetScore ?? "未设置"} / 每日 {currentGoal.dailyMinutes} 分钟
+                  </p>
+                </>
+              ) : (
+                <>
+                  <h2 className="mt-2 text-2xl font-black">尚未选择考试目标</h2>
+                  <p className="mt-1 font-bold text-[var(--muted)]">先设置主目标，后续练习、分析和计划都会围绕它展开。</p>
+                </>
+              )}
             </div>
             <div className="flex flex-wrap gap-3">
-              <Link href="/practice" className="pixel-button px-4 py-2">
-                继续练习
+              <Link href="/goals" className="pixel-button px-4 py-2">
+                {currentGoal ? "调整目标" : "选择目标"}
               </Link>
               <Link href="/wrong-notes" className="pixel-button bg-white px-4 py-2">
                 复习错题

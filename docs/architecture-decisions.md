@@ -40,7 +40,8 @@ Current implementation status:
 - The foundation web and admin apps are scaffolded with Next.js App Router, TypeScript strict mode, Tailwind CSS, Prisma, PostgreSQL configuration, and Vitest.
 - `package.json` exposes stable scripts for development, build, TypeScript checks, tests, Prisma validation/generation, migrations, and seeding.
 - `docker-compose.yml` defines separate `web`, `admin`, and `postgres` services.
-- Database-backed auth/session implementation is started.
+- Database-backed email/password auth and separate learner/admin session cookies are implemented.
+- The first Exam Core workflow is implemented with admin exam hierarchy and knowledge-tree management, learner primary goal selection, and a dashboard goal read path.
 - shadcn/ui installation, Playwright specs, and real storage adapters are still pending.
 - Full i18n routing and locale negotiation are not implemented.
 
@@ -96,8 +97,8 @@ Admin APIs live inside the admin app under `/api/...`. If a reverse proxy mounts
 
 Implementation note:
 
-- `apps/web` includes a route shell for every learner route above.
-- `apps/admin` includes a route shell for every admin route above.
+- `apps/web` includes a route shell for every learner route above; `/goals` and `/dashboard` now use database-backed goal data.
+- `apps/admin` includes a route shell for every admin route above; `/exams` and `/knowledge` now contain the first minimal CRUD workflows.
 - Both apps expose `/api/health` for foundation health checks.
 - Admin business APIs are not implemented yet.
 
@@ -119,7 +120,7 @@ Examples:
 - `Postgraduate Exam -> Computer Science -> 2026 -> English I`.
 - `Legal Qualification -> Objective Exam -> 2026 -> Civil Law`.
 
-The first Prisma schema implements this hierarchy with `ExamProgram`, `ExamTrack`, `ExamCycle`, `Subject`, `Syllabus`, `KnowledgeNode`, `Question`, `Paper`, and `Attempt` models. CRUD screens and migrations against a live PostgreSQL instance are still future work.
+The first Prisma schema implements this hierarchy with `ExamProgram`, `ExamTrack`, `ExamCycle`, `Subject`, `Syllabus`, `KnowledgeNode`, `Question`, `Paper`, and `Attempt` models. Migrations have been validated against local PostgreSQL. Minimal CRUD exists for the exam hierarchy and knowledge trees; question and paper CRUD are still future work.
 
 ## Question Model
 

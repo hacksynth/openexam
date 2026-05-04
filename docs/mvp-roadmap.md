@@ -12,15 +12,16 @@ Foundation -> Exam Core -> Practice Loop -> AI Core -> Materials
 Current progress:
 
 - Split foundation scaffold is complete enough to run, build, and test the web and admin apps independently.
-- Exam core schema exists in Prisma, but admin CRUD and migrations against a live database are not complete.
-- Learner/admin routes exist as shell pages in separate apps; real workflows begin in the next slices.
+- Email/password auth, database-backed sessions, route protection, live PostgreSQL migration validation, and Docker image builds are complete for the foundation slice.
+- Exam core schema exists in Prisma, and the first admin CRUD slice now manages exam hierarchy and knowledge trees.
+- Learners can save a primary exam goal and see that goal on the dashboard.
 - The visible foundation UI uses Simplified Chinese (`zh-CN`) copy.
 
 ## 1. Foundation
 
 Goal: create the base application that all later work depends on.
 
-Status: partially complete.
+Status: mostly complete.
 
 Deliverables:
 
@@ -29,7 +30,7 @@ Deliverables:
 - Tailwind CSS base styling. Completed.
 - shadcn/ui base components. Pending.
 - Prisma with PostgreSQL schema and local compose configuration. Completed.
-- Auth and session layer. Started with email/password and database sessions.
+- Auth and session layer. Completed for email/password and database sessions.
 - `user` and `admin` roles in schema. Completed.
 - Base layout for learner and admin routes in separate apps. Completed.
 - Local asset storage adapter. Pending.
@@ -38,16 +39,17 @@ Deliverables:
 
 Acceptance:
 
-- A user can register, sign in, and reach `/dashboard`. Implemented at application level; database migration validation pending.
-- An admin can reach the admin app root `/` on the admin service. Implemented with seeded admin credentials; database migration validation pending.
-- PostgreSQL migrations run cleanly. Pending live database validation.
-- Private routes reject anonymous users. Implemented at application level.
+- A user can register, sign in, and reach `/dashboard`. Completed.
+- An admin can reach the admin app root `/` on the admin service. Completed with seeded admin credentials.
+- PostgreSQL migrations run cleanly. Completed against local Docker PostgreSQL.
+- Private routes reject anonymous users. Completed for learner and admin routes.
+- Docker images for `web` and `admin` build successfully. Completed.
 
 ## 2. Exam Core
 
 Goal: establish generalized multi-exam data structures before building workflows.
 
-Status: schema started; workflow UI pending.
+Status: minimal data workflow started.
 
 Deliverables:
 
@@ -63,12 +65,16 @@ Deliverables:
 - `Paper`. Schema completed.
 - `PaperQuestion`. Schema completed.
 - Source, visibility, and review fields. Schema and rule helper started.
-- Minimal admin CRUD for exams, knowledge trees, questions, and papers.
-- Original sample data for Ruankao Software Designer. Seed script started.
+- Minimal admin CRUD for exams and knowledge trees. Started.
+- Minimal admin CRUD for questions and papers. Pending.
+- Original sample data for Ruankao Software Designer. Started with zh-CN seed data.
+- Learner primary exam goal selection. Started.
 
 Acceptance:
 
 - Admin can create the Ruankao Software Designer hierarchy.
+- Admin can create syllabus and knowledge nodes.
+- Learner can save one primary exam goal and dashboard reads it.
 - Admin can create a paper with ordered questions.
 - A question can bind to multiple weighted knowledge nodes.
 - Public question constraints prevent unknown-source public publishing.
@@ -79,8 +85,8 @@ Goal: make the core learner loop useful before adding advanced AI.
 
 Deliverables:
 
-- User exam goals.
-- Current primary goal selection.
+- User exam goals. Started with primary goal selection.
+- Current primary goal selection. Started.
 - Random practice.
 - Knowledge-node practice.
 - Paper practice.

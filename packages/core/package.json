@@ -7,6 +7,7 @@
     "./dashboard-data": "./src/dashboard-data.ts",
     "./auth": "./src/auth.ts",
     "./env": "./src/env.ts",
+    "./exam-core": "./src/exam-core.ts",
     "./grading": "./src/grading.ts",
     "./password": "./src/password.ts",
     "./prisma": "./src/prisma.ts",

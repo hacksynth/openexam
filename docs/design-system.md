@@ -114,5 +114,7 @@ The foundation UI implements the first pass of the design direction in `apps/web
 - Square controls without pill styling.
 - Monospace type stack.
 - Light CRT scanline overlay.
+- Dense form layouts for admin CRUD and learner goal selection.
+- Truncated account labels in sidebars so long names and emails do not cause horizontal overflow.
 
 Theme switching is not implemented yet. Current colors are CSS custom properties on `:root`; future theme presets should override those tokens without changing layout or density.

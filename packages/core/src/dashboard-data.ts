@@ -1,11 +1,3 @@
-export const currentGoal = {
-  program: "软考",
-  track: "软件设计师",
-  cycle: "2026 上半年",
-  targetDate: "2026-05-24",
-  dailyMinutes: 90
-};
-
 export const dashboardMetrics = [
   { label: "今日任务", value: "3", tone: "primary" },
   { label: "待复习错题", value: "12", tone: "danger" },

@@ -40,10 +40,12 @@ The MVP must complete this learning loop:
 
 Current implementation status:
 
-- The repository now has separate runnable learner and admin foundation apps with documented route placeholders, health APIs, shared core helpers, and initial domain tests.
+- The repository now has separate runnable learner and admin foundation apps with health APIs, shared core helpers, and initial domain tests.
 - The app does not yet complete the MVP learning loop.
-- Email/password authentication and route protection are started.
-- Real practice sessions, AI provider calls, material uploads, image generation, and admin CRUD remain future implementation work.
+- Email/password authentication, database-backed sessions, and route protection are implemented for the learner and admin apps.
+- Admin exam hierarchy and knowledge-tree management are started as a minimal CRUD workflow.
+- Learners can save a primary exam goal and see it on the dashboard.
+- Real practice sessions, AI provider calls, material uploads, image generation, question/paper CRUD, and admin hardening remain future implementation work.
 
 ## Exam Coverage
 
@@ -51,9 +53,9 @@ The architecture must support multiple exam families, but the MVP only needs to 
 
 MVP content focus:
 
-- Exam program: Ruankao.
-- Exam track: Software Designer.
-- Exam sessions: basic knowledge and application technology.
+- Exam program: 软考.
+- Exam track: 软件设计师.
+- Exam sessions: 基础知识 and 应用技术.
 - Other exams such as gaokao, postgraduate exams, and legal qualification exams may exist as empty templates.
 
 ## Core User Workflows
@@ -73,7 +75,7 @@ After login, the first screen is a learner dashboard, not a marketing page. It s
 
 The unauthenticated landing page stays lightweight: product introduction, login/register, open-source and self-hosting notes.
 
-Implementation note: the current `/dashboard` page is a static foundation shell that shows representative goal, task, weak-point, wrong-note, and job-status areas. It is not yet backed by authentication or database records.
+Implementation note: the current `/dashboard` page is authenticated and reads the user's primary exam goal from the database. Task, weak-point, wrong-note, and job-status areas still use representative foundation data until the practice loop is implemented.
 
 ### Exam Goals
 
@@ -87,6 +89,8 @@ Each goal records:
 - Daily available study time.
 
 AI plans and diagnoses are generated for one goal at a time.
+
+Implementation note: `/goals` now supports creating or updating the current primary goal from available exam hierarchy data. The app enforces one primary goal per user in application logic.
 
 ### Practice
 
