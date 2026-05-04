@@ -13,6 +13,8 @@ type AppShellProps = {
 
 export async function AppShell({ section, title, eyebrow, children }: AppShellProps) {
   const session = await requireWebSession();
+  const accountLabel = session.user.name?.trim() || session.user.email;
+  const accountTitle = session.user.name ? `${session.user.name} <${session.user.email}>` : session.user.email;
 
   return (
     <main className="mx-auto grid min-h-screen w-full max-w-7xl gap-6 px-4 py-5 md:grid-cols-[240px_1fr] md:px-6">
@@ -32,8 +34,10 @@ export async function AppShell({ section, title, eyebrow, children }: AppShellPr
             </Link>
           ))}
         </nav>
-        <form action={logoutAction} className="mt-5 grid gap-3 border-t-3 border-black pt-4">
-          <p className="text-xs font-bold text-[var(--muted)]">{session.user.email}</p>
+        <form action={logoutAction} className="mt-5 grid min-w-0 gap-3 border-t-3 border-black pt-4">
+          <p className="min-w-0 truncate text-xs font-bold text-[var(--muted)]" title={accountTitle}>
+            {accountLabel}
+          </p>
           <button className="pixel-button w-full px-3 py-2 text-sm" type="submit">
             退出登录
           </button>
