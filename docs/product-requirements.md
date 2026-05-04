@@ -36,6 +36,12 @@ The MVP must complete this learning loop:
 11. Generate a wrong-note review card image.
 12. Let an administrator inspect question sources, AI usage, job status, and user usage.
 
+Current implementation status:
+
+- The repository now has a runnable foundation app with landing, learner dashboard shell, admin shell, documented route placeholders, a health API, and initial domain tests.
+- The app does not yet complete the MVP learning loop.
+- Authentication, real practice sessions, AI provider calls, material uploads, image generation, and admin CRUD remain future implementation work.
+
 ## Exam Coverage
 
 The architecture must support multiple exam families, but the MVP only needs to fully implement one exam track.
@@ -64,6 +70,8 @@ After login, the first screen is a learner dashboard, not a marketing page. It s
 
 The unauthenticated landing page stays lightweight: product introduction, login/register, open-source and self-hosting notes.
 
+Implementation note: the current `/dashboard` page is a static foundation shell that shows representative goal, task, weak-point, wrong-note, and job-status areas. It is not yet backed by authentication or database records.
+
 ### Exam Goals
 
 Users can save multiple exam goals, but the core loop focuses on one current primary goal at a time.
@@ -89,6 +97,8 @@ The MVP supports these practice modes:
 - Case-analysis practice for Ruankao application-technology questions.
 
 The MVP does not include leaderboards, social check-ins, class assignments, community question lists, or complex adaptive testing.
+
+Implementation note: `lib/grading.ts` contains the first tested objective-grading helper. Practice sessions, question retrieval, submissions, persistence, and wrong-note creation are still pending.
 
 ### Mock Exams
 
@@ -241,6 +251,8 @@ Diagnosis outputs:
 - Plan suggestions.
 
 Study plans must be structured task tables, not plain text. Tasks are checkable and can bind to subjects, knowledge nodes, papers, materials, and question sets.
+
+Implementation note: `lib/study-plan-schema.ts` defines the first Zod schema for structured 14-day plans. Plan generation and task completion UI are not implemented yet.
 
 ## Question Bank Policy
 

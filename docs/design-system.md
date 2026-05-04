@@ -99,3 +99,18 @@ Every theme must keep:
 ## Implementation Note
 
 The design system is the source of truth for UI implementation. Any future prototype should follow this document and should not introduce separate visual rules without updating this file.
+
+## Current Implementation
+
+The foundation UI implements the first pass of the design direction in `app/globals.css` and shared shell components:
+
+- Light gray-blue pixel grid background.
+- White hard-edge panels.
+- Thick black outlines.
+- Blocky black shadows.
+- Bright yellow primary actions.
+- Square controls without pill styling.
+- Monospace type stack.
+- Light CRT scanline overlay.
+
+Theme switching is not implemented yet. Current colors are CSS custom properties on `:root`; future theme presets should override those tokens without changing layout or density.

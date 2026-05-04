@@ -9,50 +9,61 @@ Foundation -> Exam Core -> Practice Loop -> AI Core -> Materials
 -> Plan & Analysis -> Exam Simulation -> Image & Jobs -> Admin Hardening
 ```
 
+Current progress:
+
+- Foundation scaffold is complete enough to run, build, and test.
+- Exam core schema exists in Prisma, but admin CRUD and migrations against a live database are not complete.
+- Learner/admin routes exist as shell pages; real workflows begin in the next slices.
+
 ## 1. Foundation
 
 Goal: create the base application that all later work depends on.
 
+Status: partially complete.
+
 Deliverables:
 
-- Next.js App Router project.
-- TypeScript strict configuration.
-- Tailwind CSS and shadcn/ui base components.
-- Prisma with PostgreSQL.
-- Auth and session layer.
-- `user` and `admin` roles.
-- Base layout for learner and admin routes.
-- Local asset storage adapter.
-- Basic environment configuration.
-- Test setup with Vitest.
+- Next.js App Router project. Completed.
+- TypeScript strict configuration. Completed.
+- Tailwind CSS base styling. Completed.
+- shadcn/ui base components. Pending.
+- Prisma with PostgreSQL schema and local compose configuration. Completed.
+- Auth and session layer. Pending.
+- `user` and `admin` roles in schema. Completed.
+- Base layout for learner and admin routes. Completed.
+- Local asset storage adapter. Pending.
+- Basic environment configuration. Completed.
+- Test setup with Vitest. Completed.
 
 Acceptance:
 
-- A user can register, sign in, and reach `/dashboard`.
-- An admin can reach `/admin`.
-- PostgreSQL migrations run cleanly.
-- Private routes reject anonymous users.
+- A user can register, sign in, and reach `/dashboard`. Pending auth.
+- An admin can reach `/admin`. Route shell completed; authorization pending.
+- PostgreSQL migrations run cleanly. Pending live database validation.
+- Private routes reject anonymous users. Pending auth.
 
 ## 2. Exam Core
 
 Goal: establish generalized multi-exam data structures before building workflows.
 
+Status: schema started; workflow UI pending.
+
 Deliverables:
 
-- `ExamProgram`.
-- `ExamTrack`.
-- `ExamCycle`.
-- `Subject`.
-- `Syllabus`.
-- `KnowledgeNode`.
-- `Question`.
-- `QuestionVersion`.
-- `QuestionKnowledgeNode`.
-- `Paper`.
-- `PaperQuestion`.
-- Source, visibility, and review fields.
+- `ExamProgram`. Schema completed.
+- `ExamTrack`. Schema completed.
+- `ExamCycle`. Schema completed.
+- `Subject`. Schema completed.
+- `Syllabus`. Schema completed.
+- `KnowledgeNode`. Schema completed.
+- `Question`. Schema completed.
+- `QuestionVersion`. Schema completed.
+- `QuestionKnowledgeNode`. Schema completed.
+- `Paper`. Schema completed.
+- `PaperQuestion`. Schema completed.
+- Source, visibility, and review fields. Schema and rule helper started.
 - Minimal admin CRUD for exams, knowledge trees, questions, and papers.
-- Original sample data for Ruankao Software Designer.
+- Original sample data for Ruankao Software Designer. Seed script started.
 
 Acceptance:
 
@@ -232,6 +243,8 @@ Minimum test coverage should include:
 - Material extraction confirmation gating.
 - Study-plan schema validation.
 - Admin import validation.
+
+Current tests cover public question visibility constraints, objective grading, and study-plan schema validation. The remaining priorities are still required before MVP exit.
 
 Browser workflow tests should cover:
 

@@ -33,6 +33,13 @@ MVP stack:
 
 Admin and learner UI live in the same Next.js application.
 
+Current implementation status:
+
+- The foundation app is scaffolded with Next.js App Router, TypeScript strict mode, Tailwind CSS, Prisma, PostgreSQL configuration, and Vitest.
+- `package.json` exposes stable scripts for development, build, TypeScript checks, tests, Prisma validation/generation, migrations, and seeding.
+- `docker-compose.yml` defines a local PostgreSQL service matching `.env.example`.
+- Auth/session implementation, shadcn/ui installation, Playwright specs, and real storage adapters are still pending.
+
 ## Deployment Shape
 
 The MVP targets self-hosted web deployment.
@@ -82,6 +89,12 @@ Admin routes:
 
 Admin APIs use `/api/admin/...`.
 
+Implementation note:
+
+- The current app includes a route shell for every learner and admin route above.
+- `/api/health` exists for foundation health checks.
+- Admin APIs under `/api/admin/...` are not implemented yet.
+
 ## Core Exam Model
 
 The core model is rooted in exam programs, not question banks.
@@ -99,6 +112,8 @@ Examples:
 - `Ruankao -> Intermediate -> Software Designer -> 2026 H1 -> Basic Knowledge`.
 - `Postgraduate Exam -> Computer Science -> 2026 -> English I`.
 - `Legal Qualification -> Objective Exam -> 2026 -> Civil Law`.
+
+The first Prisma schema implements this hierarchy with `ExamProgram`, `ExamTrack`, `ExamCycle`, `Subject`, `Syllabus`, `KnowledgeNode`, `Question`, `Paper`, and `Attempt` models. CRUD screens and migrations against a live PostgreSQL instance are still future work.
 
 ## Question Model
 
@@ -125,6 +140,12 @@ Questions are extensible with structured fields:
 - `reviewStatus`
 
 `payload`, `answerKey`, and `rubric` should use JSONB and schema validation.
+
+Implementation note:
+
+- Prisma uses JSON columns for `payload`, `answerKey`, and `rubric`.
+- `lib/question-governance.ts` contains the first tested public-visibility rule helper.
+- Additional Zod schemas are still needed before accepting imported or AI-generated question payloads.
 
 ## Papers And Attempts
 
@@ -323,6 +344,11 @@ Plain text is acceptable for:
 - Wrong-note cause explanation.
 
 Use Zod or an equivalent schema library. Failed parsing may retry once. Persistent failure becomes a failed job with an error summary.
+
+Implementation note:
+
+- `lib/study-plan-schema.ts` defines and tests the first structured 14-day plan schema.
+- Other AI output schemas remain pending.
 
 ## Jobs And Async Work
 
