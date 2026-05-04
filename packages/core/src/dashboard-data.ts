@@ -1,33 +1,33 @@
 export const currentGoal = {
-  program: "Ruankao",
-  track: "Software Designer",
-  cycle: "2026 H1",
+  program: "软考",
+  track: "软件设计师",
+  cycle: "2026 上半年",
   targetDate: "2026-05-24",
   dailyMinutes: 90
 };
 
 export const dashboardMetrics = [
-  { label: "Tasks Today", value: "3", tone: "primary" },
-  { label: "Wrong Notes Due", value: "12", tone: "danger" },
-  { label: "Weak Nodes", value: "5", tone: "teal" },
-  { label: "AI Jobs", value: "2", tone: "ai" }
+  { label: "今日任务", value: "3", tone: "primary" },
+  { label: "待复习错题", value: "12", tone: "danger" },
+  { label: "薄弱知识点", value: "5", tone: "teal" },
+  { label: "AI 任务", value: "2", tone: "ai" }
 ] as const;
 
 export const todayTasks = [
-  "Practice 20 basic knowledge questions",
-  "Retry wrong notes tagged memory gap",
-  "Review data structure knowledge nodes"
+  "完成 20 道基础知识练习",
+  "重练标记为记忆漏洞的错题",
+  "复习数据结构相关知识点"
 ];
 
 export const weakKnowledgeNodes = [
-  "UML modeling",
-  "Database normalization",
-  "Network security basics",
-  "Algorithm complexity",
-  "Software testing strategy"
+  "UML 建模",
+  "数据库规范化",
+  "网络安全基础",
+  "算法复杂度",
+  "软件测试策略"
 ];
 
 export const recentJobs = [
-  { label: "Wrong-note explanation", status: "completed" },
-  { label: "Material question extraction", status: "queued" }
+  { label: "错题 AI 解析", status: "已完成" },
+  { label: "资料题目抽取", status: "排队中" }
 ];

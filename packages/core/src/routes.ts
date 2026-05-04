@@ -13,96 +13,96 @@ export const learnerRoutes: RouteItem[] = [
   {
     id: "dashboard",
     href: "/dashboard",
-    label: "Dashboard",
-    description: "Current goal, tasks, weak points, wrong notes, and AI job status.",
+    label: "仪表盘",
+    description: "当前目标、今日任务、薄弱点、错题和 AI 任务状态。",
     section: "learner",
     status: "foundation"
   },
   {
     id: "goals",
     href: "/goals",
-    label: "Goals",
-    description: "Exam program, track, cycle, target date, score target, and daily time.",
+    label: "考试目标",
+    description: "考试项目、方向、批次、目标日期、目标分和每日学习时间。",
     section: "learner",
     status: "planned"
   },
   {
     id: "practice",
     href: "/practice",
-    label: "Practice",
-    description: "Random, knowledge-node, real-paper, wrong-note, and AI-generated practice.",
+    label: "练习",
+    description: "随机练习、知识点练习、真题练习、错题重练和 AI 生成练习。",
     section: "learner",
     status: "planned"
   },
   {
     id: "papers",
     href: "/papers",
-    label: "Papers",
-    description: "Real papers, mock papers, and focused paper sets.",
+    label: "试卷",
+    description: "真题卷、模拟卷和专项练习卷。",
     section: "learner",
     status: "planned"
   },
   {
     id: "attempts",
     href: "/attempts",
-    label: "Attempts",
-    description: "Timed attempts, autosave state, answer sheets, and score reports.",
+    label: "作答记录",
+    description: "计时作答、自动保存、答题卡和成绩报告。",
     section: "learner",
     status: "planned"
   },
   {
     id: "wrong-notes",
     href: "/wrong-notes",
-    label: "Wrong Notes",
-    description: "Mistake tags, mastery state, AI explanations, retries, and review cards.",
+    label: "错题本",
+    description: "错误原因、掌握状态、AI 解析、重练和复习卡片。",
     section: "learner",
     status: "planned"
   },
   {
     id: "knowledge",
     href: "/knowledge",
-    label: "Knowledge",
-    description: "Syllabus trees, related questions, common mistakes, and mastery signals.",
+    label: "知识点",
+    description: "大纲知识树、关联题目、常见错误和掌握度信号。",
     section: "learner",
     status: "planned"
   },
   {
     id: "materials",
     href: "/materials",
-    label: "Materials",
-    description: "Uploads, extraction jobs, candidate questions, and private confirmation.",
+    label: "资料",
+    description: "资料上传、抽取任务、候选题目和私有确认流程。",
     section: "learner",
     status: "planned"
   },
   {
     id: "plan",
     href: "/plan",
-    label: "Plan",
-    description: "Structured 14-day study plans grounded in goals and performance data.",
+    label: "学习计划",
+    description: "基于目标和练习数据生成的结构化 14 天计划。",
     section: "learner",
     status: "planned"
   },
   {
     id: "analysis",
     href: "/analysis",
-    label: "Analysis",
-    description: "Weak-point ranking, score risks, mastery, and recommended next actions.",
+    label: "学习分析",
+    description: "薄弱点排序、分数风险、掌握度和下一步建议。",
     section: "learner",
     status: "planned"
   },
   {
     id: "ai-tasks",
     href: "/ai/tasks",
-    label: "AI Tasks",
-    description: "AI explanations, extraction, image generation, diagnosis, and job progress.",
+    label: "AI 任务",
+    description: "AI 解析、题目抽取、图片生成、诊断和任务进度。",
     section: "learner",
     status: "planned"
   },
   {
     id: "profile",
     href: "/profile",
-    label: "Profile",
-    description: "Account settings, BYOK provider keys, usage limits, and data deletion.",
+    label: "个人设置",
+    description: "账号设置、个人 API Key、使用限制和数据删除。",
     section: "learner",
     status: "planned"
   }
@@ -112,48 +112,48 @@ export const adminRoutes: RouteItem[] = [
   {
     id: "admin",
     href: "/",
-    label: "Admin",
-    description: "Platform overview for content, jobs, AI usage, users, and audit events.",
+    label: "管理台",
+    description: "内容、任务、AI 用量、用户和审计事件概览。",
     section: "admin",
     status: "foundation"
   },
   {
     id: "admin-exams",
     href: "/exams",
-    label: "Exams",
-    description: "Programs, tracks, cycles, subjects, syllabi, and knowledge trees.",
+    label: "考试",
+    description: "考试项目、方向、批次、科目、大纲和知识树。",
     section: "admin",
     status: "planned"
   },
   {
     id: "admin-knowledge",
     href: "/knowledge",
-    label: "Knowledge",
-    description: "Knowledge node governance, weights, classifications, and uncategorized items.",
+    label: "知识",
+    description: "知识节点治理、权重、分类和未归类内容。",
     section: "admin",
     status: "planned"
   },
   {
     id: "admin-questions",
     href: "/questions",
-    label: "Questions",
-    description: "Question review, source policy, visibility, versions, and takedowns.",
+    label: "题目",
+    description: "题目审核、来源策略、可见性、版本和下架处理。",
     section: "admin",
     status: "planned"
   },
   {
     id: "admin-papers",
     href: "/papers",
-    label: "Papers",
-    description: "Paper ordering, sections, scores, real papers, and mock sets.",
+    label: "试卷",
+    description: "试卷题序、分区、分值、真题卷和模拟卷。",
     section: "admin",
     status: "planned"
   },
   {
     id: "admin-materials",
     href: "/materials",
-    label: "Materials",
-    description: "Uploaded assets, extraction jobs, source references, and processing errors.",
+    label: "资料",
+    description: "上传资产、抽取任务、来源引用和处理错误。",
     section: "admin",
     status: "planned"
   },
@@ -161,37 +161,47 @@ export const adminRoutes: RouteItem[] = [
     id: "admin-ai",
     href: "/ai",
     label: "AI",
-    description: "Provider presets, task routing, limits, prompt versions, and usage logs.",
+    description: "模型预设、任务路由、限制、提示词版本和用量日志。",
     section: "admin",
     status: "planned"
   },
   {
     id: "admin-jobs",
     href: "/jobs",
-    label: "Jobs",
-    description: "Database-backed queue status, retries, failures, and progress tracking.",
+    label: "任务",
+    description: "数据库队列状态、重试、失败和进度追踪。",
     section: "admin",
     status: "planned"
   },
   {
     id: "admin-users",
     href: "/users",
-    label: "Users",
-    description: "User roles, usage limits, AI call totals, and account state.",
+    label: "用户",
+    description: "用户角色、使用限制、AI 调用量和账号状态。",
     section: "admin",
     status: "planned"
   },
   {
     id: "admin-audit",
     href: "/audit",
-    label: "Audit",
-    description: "Append-only events for visibility, source, model, and admin setting changes.",
+    label: "审计",
+    description: "可见性、来源、模型和管理设置变更的追加式事件。",
     section: "admin",
     status: "planned"
   }
 ];
 
 export const allRoutes = [...learnerRoutes, ...adminRoutes];
+
+export const routeStatusLabels: Record<RouteItem["status"], string> = {
+  foundation: "基础版",
+  planned: "规划中"
+};
+
+export const sectionLabels: Record<AppSection, string> = {
+  learner: "学习端",
+  admin: "管理端"
+};
 
 export function getRoute(id: string) {
   const route = allRoutes.find((item) => item.id === id);

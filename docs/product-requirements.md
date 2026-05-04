@@ -12,6 +12,8 @@ The product is not a school, training institution, proctoring system, payment pl
 
 The MVP serves individual exam candidates.
 
+The first product version uses Simplified Chinese (`zh-CN`) as the default UI language. Full i18n remains outside the MVP.
+
 The system is multi-user by design, but roles are limited to:
 
 - `user`: learner-facing workflows.

@@ -19,6 +19,8 @@ The base visual language is:
 
 The UI must stay readable for long study sessions, practice workflows, data tables, admin review, and AI task monitoring.
 
+The first implementation uses Simplified Chinese (`zh-CN`) interface text. Layouts must leave enough room for Chinese labels in dense navigation, tables, and controls.
+
 ## Theme Switching
 
 OpenExam supports switchable retro game-inspired color themes.

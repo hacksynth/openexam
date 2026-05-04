@@ -33,12 +33,15 @@ MVP stack:
 
 Admin and learner UI are separate Next.js applications in the same monorepo. They are deployed as separate containers and share only explicit packages such as `packages/core`.
 
+The first UI locale is `zh-CN`. Product-facing copy should be written in Simplified Chinese until the project explicitly adds an i18n layer.
+
 Current implementation status:
 
 - The foundation web and admin apps are scaffolded with Next.js App Router, TypeScript strict mode, Tailwind CSS, Prisma, PostgreSQL configuration, and Vitest.
 - `package.json` exposes stable scripts for development, build, TypeScript checks, tests, Prisma validation/generation, migrations, and seeding.
 - `docker-compose.yml` defines separate `web`, `admin`, and `postgres` services.
 - Auth/session implementation, shadcn/ui installation, Playwright specs, and real storage adapters are still pending.
+- Full i18n routing and locale negotiation are not implemented.
 
 ## Deployment Shape
 

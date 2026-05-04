@@ -6,6 +6,8 @@ OpenExam is a self-hostable AI exam preparation platform for individual learners
 
 This repository is in the foundation stage. The web app, admin app, shared core package, Prisma domain schema, and initial rule tests are in place. The product and architecture source of truth remains in `docs/`.
 
+The first product version targets Simplified Chinese (`zh-CN`) UI copy by default.
+
 ## Documentation
 
 - `docs/product-requirements.md`: product scope, workflows, and non-goals.

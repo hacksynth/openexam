@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { Route } from "next";
-import { adminRoutes, type AppSection } from "@openexam/core/routes";
+import { adminRoutes, sectionLabels, type AppSection } from "@openexam/core/routes";
 
 type AppShellProps = {
   section: AppSection;
@@ -15,9 +15,9 @@ export function AppShell({ section, title, eyebrow, children }: AppShellProps) {
       <aside className="pixel-panel h-fit p-4">
         <Link href="/" className="mb-5 block border-b-3 border-black pb-4">
           <span className="block text-xs font-bold uppercase text-[var(--muted)]">OpenExam</span>
-          <span className="block text-xl font-black">MVP Console</span>
+          <span className="block text-xl font-black">管理端</span>
         </Link>
-        <nav aria-label={`${section} navigation`} className="grid gap-2">
+        <nav aria-label={`${sectionLabels[section]}导航`} className="grid gap-2">
           {adminRoutes.map((route) => (
             <Link
               key={route.id}

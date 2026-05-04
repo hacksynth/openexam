@@ -14,6 +14,7 @@ Current progress:
 - Split foundation scaffold is complete enough to run, build, and test the web and admin apps independently.
 - Exam core schema exists in Prisma, but admin CRUD and migrations against a live database are not complete.
 - Learner/admin routes exist as shell pages in separate apps; real workflows begin in the next slices.
+- The visible foundation UI uses Simplified Chinese (`zh-CN`) copy.
 
 ## 1. Foundation
 

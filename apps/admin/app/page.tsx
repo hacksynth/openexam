@@ -5,10 +5,10 @@ import { adminRoutes } from "@openexam/core/routes";
 
 export default function AdminPage() {
   return (
-    <AppShell section="admin" eyebrow="admin foundation" title="Admin">
+    <AppShell section="admin" eyebrow="管理端基础版" title="管理台">
       <section className="grid gap-5">
         <div className="grid gap-4 md:grid-cols-4">
-          {["Public Reviews", "Queued Jobs", "AI Calls", "Audit Events"].map((label, index) => (
+          {["公开审核", "队列任务", "AI 调用", "审计事件"].map((label, index) => (
             <article key={label} className="pixel-panel p-4">
               <p className="text-xs font-bold uppercase text-[var(--muted)]">{label}</p>
               <p className="mt-2 text-4xl font-black">{[0, 2, 0, 0][index]}</p>
@@ -17,7 +17,7 @@ export default function AdminPage() {
         </div>
 
         <section className="pixel-panel p-5">
-          <h2 className="mb-4 text-xl font-black">Governance Areas</h2>
+          <h2 className="mb-4 text-xl font-black">治理模块</h2>
           <div className="grid gap-3 md:grid-cols-3">
             {adminRoutes
               .filter((route) => route.href !== "/")
