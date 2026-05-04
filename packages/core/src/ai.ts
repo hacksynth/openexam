@@ -17,6 +17,7 @@ export type AiTextRequest = {
   instructions: string;
   input: string;
   maxOutputTokens?: number | null;
+  temperature?: number | null;
 };
 
 export type AiTextResponse = {
@@ -45,6 +46,17 @@ export type WrongNoteAiContext = {
   officialExplanation: string | null;
   knowledgeNodes: string[];
   errorCount: number;
+};
+
+export type AiProviderPresetInput = {
+  id?: string;
+  provider: string;
+  model: string;
+  label: string;
+  defaultForTask?: string | null;
+  temperature?: string | number | null;
+  maxTokens?: string | number | null;
+  enabled?: string | boolean | null;
 };
 
 const openAiProvider = AiProvider.openai;
@@ -268,10 +280,113 @@ export async function listUserAiCalls(userId: string, db: AiDatabase = prisma) {
     promptVersion: call.promptVersion,
     inputContextSource: call.inputContextSource,
     status: call.status,
+    usage: call.usage,
+    durationMs: call.updatedAt.getTime() - call.createdAt.getTime(),
     errorSummary: call.errorSummary,
     createdAt: call.createdAt,
     updatedAt: call.updatedAt
   }));
+}
+
+export async function listAdminAiProviderPresets(db: AiDatabase = prisma) {
+  return db.aiProviderPreset.findMany({
+    orderBy: [{ provider: "asc" }, { enabled: "desc" }, { updatedAt: "desc" }]
+  });
+}
+
+export async function upsertAiProviderPreset(input: AiProviderPresetInput, db: AiDatabase = prisma): Promise<ActionResult> {
+  const parsed = parseAiProviderPresetInput(input);
+
+  if (!parsed.ok) {
+    return parsed;
+  }
+
+  try {
+    if (input.id?.trim()) {
+      await db.aiProviderPreset.update({
+        where: { id: input.id.trim() },
+        data: parsed.data
+      });
+    } else {
+      await db.aiProviderPreset.upsert({
+        where: {
+          provider_model: {
+            provider: parsed.data.provider,
+            model: parsed.data.model
+          }
+        },
+        update: parsed.data,
+        create: parsed.data
+      });
+    }
+
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: formatPresetWriteError(error) };
+  }
+}
+
+export async function setAiProviderPresetEnabled(id: string, enabled: boolean, db: AiDatabase = prisma): Promise<ActionResult> {
+  const presetId = id.trim();
+
+  if (!presetId) {
+    return { ok: false, error: "模型预设不存在。" };
+  }
+
+  try {
+    await db.aiProviderPreset.update({
+      where: { id: presetId },
+      data: { enabled }
+    });
+
+    return { ok: true };
+  } catch {
+    return { ok: false, error: "模型预设不存在。" };
+  }
+}
+
+export async function retryFailedAiCall(
+  userId: string,
+  aiCallId: string,
+  options: {
+    db?: AiDatabase;
+    env?: NodeJS.ProcessEnv;
+    generateText?: AiTextGenerator;
+  } = {}
+): Promise<ActionResult<{ analysis: string; aiCallId: string; retryOfAiCallId: string }>> {
+  const db = options.db ?? prisma;
+  const failedCall = await db.aiCall.findFirst({
+    where: {
+      id: aiCallId,
+      userId,
+      status: "failed",
+      taskType: wrongNoteTask
+    }
+  });
+
+  if (!failedCall) {
+    return { ok: false, error: "只能重试当前账号下失败的题目解析任务。" };
+  }
+
+  const wrongNoteId = parseWrongNoteSource(failedCall.inputContextSource);
+
+  if (!wrongNoteId) {
+    return { ok: false, error: "这条 AI 任务缺少可重试的错题来源。" };
+  }
+
+  const result = await generateWrongNoteAiAnalysis(userId, wrongNoteId, options);
+
+  if (!result.ok) {
+    return result;
+  }
+
+  return {
+    ok: true,
+    data: {
+      ...result.data,
+      retryOfAiCallId: failedCall.id
+    }
+  };
 }
 
 export async function generateWrongNoteAiAnalysis(
@@ -329,7 +444,8 @@ export async function generateWrongNoteAiAnalysis(
         model: preset.model,
         instructions: prompt.instructions,
         input: prompt.input,
-        maxOutputTokens: preset.maxOutputTokens
+        maxOutputTokens: preset.maxOutputTokens,
+        temperature: preset.temperature
       });
     }
 
@@ -400,7 +516,8 @@ export async function generateOpenAiText(request: AiTextRequest): Promise<AiText
     model: request.model,
     instructions: request.instructions,
     input: request.input,
-    max_output_tokens: request.maxOutputTokens ?? defaultMaxOutputTokens
+    max_output_tokens: request.maxOutputTokens ?? defaultMaxOutputTokens,
+    temperature: request.temperature ?? undefined
   });
 
   return {
@@ -421,7 +538,8 @@ async function resolveWrongNotePreset(db: AiDatabase) {
 
   return {
     model: preset?.model ?? defaultOpenAiModel,
-    maxOutputTokens: preset?.maxTokens ?? defaultMaxOutputTokens
+    maxOutputTokens: preset?.maxTokens ?? defaultMaxOutputTokens,
+    temperature: preset?.temperature ?? null
   };
 }
 
@@ -508,6 +626,131 @@ function normalizeOpenAiBaseUrl(value: string | null | undefined) {
   const normalized = value?.trim();
 
   return normalized || null;
+}
+
+function parseAiProviderPresetInput(input: AiProviderPresetInput): ActionResult<{
+  provider: AiProvider;
+  model: string;
+  label: string;
+  capabilities: string[];
+  defaultForTask: AiTaskType | null;
+  temperature: number | null;
+  maxTokens: number | null;
+  enabled: boolean;
+}> {
+  if (input.provider.trim() !== openAiProvider) {
+    return { ok: false, error: "首版仅支持 OpenAI 模型预设。" };
+  }
+
+  const model = input.model.trim();
+  const label = input.label.trim() || model;
+  const defaultForTask = parseAiTaskType(input.defaultForTask);
+  const temperature = parseOptionalNumber(input.temperature, "temperature");
+  const maxTokens = parseOptionalInteger(input.maxTokens, "max tokens");
+
+  if (!model) {
+    return { ok: false, error: "请输入模型名称。" };
+  }
+
+  if (!temperature.ok) {
+    return temperature;
+  }
+
+  if (!maxTokens.ok) {
+    return maxTokens;
+  }
+
+  if (temperature.data !== null && (temperature.data < 0 || temperature.data > 2)) {
+    return { ok: false, error: "temperature 必须在 0 到 2 之间。" };
+  }
+
+  if (maxTokens.data !== null && maxTokens.data < 1) {
+    return { ok: false, error: "max tokens 必须大于 0。" };
+  }
+
+  return {
+    ok: true,
+    data: {
+      provider: openAiProvider,
+      model,
+      label,
+      capabilities: ["text"],
+      defaultForTask,
+      temperature: temperature.data,
+      maxTokens: maxTokens.data,
+      enabled: parseBoolean(input.enabled)
+    }
+  };
+}
+
+function parseAiTaskType(value: string | null | undefined) {
+  const normalized = value?.trim();
+
+  if (!normalized) {
+    return null;
+  }
+
+  return Object.values(AiTaskType).includes(normalized as AiTaskType) ? (normalized as AiTaskType) : null;
+}
+
+function parseOptionalNumber(value: string | number | null | undefined, label: string): ActionResult<number | null> {
+  const normalized = typeof value === "number" ? String(value) : value?.trim();
+
+  if (!normalized) {
+    return { ok: true, data: null };
+  }
+
+  const parsed = Number(normalized);
+
+  if (!Number.isFinite(parsed)) {
+    return { ok: false, error: `${label} 必须是数字。` };
+  }
+
+  return { ok: true, data: parsed };
+}
+
+function parseOptionalInteger(value: string | number | null | undefined, label: string): ActionResult<number | null> {
+  const parsed = parseOptionalNumber(value, label);
+
+  if (!parsed.ok || parsed.data === null) {
+    return parsed;
+  }
+
+  if (!Number.isInteger(parsed.data)) {
+    return { ok: false, error: `${label} 必须是整数。` };
+  }
+
+  return parsed;
+}
+
+function parseBoolean(value: string | boolean | null | undefined) {
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  return value === "true" || value === "on" || value === "1";
+}
+
+function parseWrongNoteSource(value: string | null) {
+  const prefix = "wrong_note:";
+
+  if (!value?.startsWith(prefix)) {
+    return null;
+  }
+
+  return value.slice(prefix.length).trim() || null;
+}
+
+function formatPresetWriteError(error: unknown) {
+  if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
+    return "模型预设不存在。";
+  }
+
+  if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+    return "同一 provider 下模型名称不能重复。";
+  }
+
+  return "模型预设保存失败。";
 }
 
 function formatAiError(error: unknown) {

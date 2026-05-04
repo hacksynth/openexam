@@ -163,7 +163,7 @@ export const adminRoutes: RouteItem[] = [
     label: "AI",
     description: "模型预设、任务路由、限制、提示词版本和用量日志。",
     section: "admin",
-    status: "planned"
+    status: "foundation"
   },
   {
     id: "admin-jobs",

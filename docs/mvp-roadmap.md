@@ -118,8 +118,8 @@ Deliverables:
 - Optional platform provider settings. Started with `OPENAI_API_KEY` fallback.
 - Encrypted API key storage. Started for OpenAI keys with AES-256-GCM.
 - Text provider adapters. Started with OpenAI Responses API.
-- Model presets and task routing. Started with seeded OpenAI `explain_question` preset.
-- AI call logs. Started with learner-visible recent call history.
+- Model presets and task routing. Started with seeded and admin-managed OpenAI `explain_question` presets.
+- AI call logs. Started with learner-visible recent call history, duration/usage display, error summaries, and failed wrong-note retry.
 - Usage limits.
 - Prompt versioning. Started with `wrong-note-explain-v1`.
 - Single-question AI explanation.
@@ -270,7 +270,7 @@ Browser workflow tests should cover:
 - Paper report and unanswered confirmation. Started.
 - Paper hide/restore. Started.
 - Non-admin admin access rejection. Started.
-- Configure BYOK and request AI explanation.
+- Configure BYOK and request AI explanation. Started with an OpenAI-compatible mock browser workflow, including failure and retry.
 - Upload material and confirm extracted question.
 - Generate plan.
 

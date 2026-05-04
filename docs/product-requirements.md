@@ -47,7 +47,7 @@ Current implementation status:
 - Learners can save a primary exam goal and see it on the dashboard.
 - The first single-choice practice workflow is implemented with goal-scoped question retrieval, repeat avoidance, graded attempts, paper attempts, attempt reports, wrong-note auto-collection, wrong-note knowledge filters/retry, mastery toggles, and weak-point dashboard summaries.
 - Admin single-choice question CRUD is implemented for question creation, JSON import, editing, filtering, review-status changes, archive/restore, knowledge binding, source, visibility, and review status.
-- Admin paper CRUD is implemented for ordered single-choice papers with subject binding, visibility, type, question order, section, number, score, archivedAt-based filters, and hide/restore controls. OpenAI BYOK and wrong-note AI analysis are started; material uploads, image generation, advanced practice modes, and deeper admin hardening remain future implementation work.
+- Admin paper CRUD is implemented for ordered single-choice papers with subject binding, visibility, type, question order, section, number, score, archivedAt-based filters, and hide/restore controls. OpenAI BYOK, wrong-note AI analysis, AI call logs, failed-call retry, and admin model presets are started; material uploads, image generation, advanced practice modes, and deeper admin hardening remain future implementation work.
 
 ## Exam Coverage
 
@@ -211,7 +211,7 @@ Supported providers:
 - Claude.
 - Gemini.
 
-The MVP uses bring-your-own-key as the primary model. Platform keys are optional for demos, trials, or administrator-managed usage. All provider calls go through the backend. The current implementation supports OpenAI BYOK first, with `OPENAI_API_KEY` as fallback and `OPENAI_BASE_URL` for OpenAI-compatible gateways.
+The MVP uses bring-your-own-key as the primary model. Platform keys are optional for demos, trials, or administrator-managed usage. All provider calls go through the backend. The current implementation supports OpenAI BYOK first, with `OPENAI_API_KEY` as fallback, `OPENAI_BASE_URL` for OpenAI-compatible gateways, learner-visible AI call logs, and admin-managed OpenAI model presets.
 
 AI features:
 
@@ -305,4 +305,4 @@ The MVP does not include:
 
 ## Acceptance Criteria
 
-The MVP is accepted when a self-hosted instance can complete the full loop described in "MVP Scope", with PostgreSQL persistence, private user data isolation, AI provider configuration, material import, wrong-note review-card generation, and minimal admin governance for sources, jobs, and usage.
+The MVP is accepted when a self-hosted instance can complete the full loop described in "MVP Scope", with PostgreSQL persistence, private user data isolation, AI provider configuration, material import, wrong-note review-card generation, and minimal admin governance for sources, jobs, models, and usage.

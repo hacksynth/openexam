@@ -57,6 +57,8 @@ Set `ADMIN_EMAIL` and `ADMIN_PASSWORD` before seeding if you want to bootstrap a
 
 Set `AI_KEY_ENCRYPTION_SECRET` before saving BYOK provider keys. `OPENAI_API_KEY` is optional and acts as the platform fallback when a learner has not saved a personal key. Set `OPENAI_BASE_URL` when using an OpenAI-compatible gateway.
 
+Playwright starts a local OpenAI-compatible mock server on `127.0.0.1:8317` for AI browser tests, so `npm run test:e2e` exercises the real Responses API adapter without calling an external model.
+
 For local PostgreSQL:
 
 ```sh

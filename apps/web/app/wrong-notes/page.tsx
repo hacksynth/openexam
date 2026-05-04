@@ -4,6 +4,7 @@ import { AppShell } from "@/components/app-shell";
 import { requireWebSession } from "@/lib/auth";
 import { listWrongNotes, summarizeWrongNotes } from "@openexam/core/practice";
 import { generateWrongNoteAiAnalysisAction, setWrongNoteMasteredAction } from "./actions";
+import { AiAnalysisSubmitButton } from "./submit-button";
 
 type WrongNotesPageProps = {
   searchParams: Promise<{ error?: string; notice?: string; filter?: string; knowledgeNodeId?: string }>;
@@ -182,9 +183,7 @@ export default async function WrongNotesPage({ searchParams }: WrongNotesPagePro
                 <form action={generateWrongNoteAiAnalysisAction}>
                   <input name="wrongNoteId" type="hidden" value={note.id} />
                   <input name="returnTo" type="hidden" value={currentHref} />
-                  <button className="pixel-button w-fit bg-white px-4 py-2" type="submit">
-                    {note.aiAnalysis ? "重新生成 AI 解析" : "生成 AI 解析"}
-                  </button>
+                  <AiAnalysisSubmitButton hasAnalysis={Boolean(note.aiAnalysis)} />
                 </form>
               </article>
             ))}

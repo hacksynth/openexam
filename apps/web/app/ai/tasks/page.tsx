@@ -1,6 +1,11 @@
 import { AppShell } from "@/components/app-shell";
 import { requireWebSession } from "@/lib/auth";
 import { listUserAiCalls } from "@openexam/core/ai";
+import { retryAiCallAction } from "./actions";
+
+type AiTasksPageProps = {
+  searchParams: Promise<{ error?: string; notice?: string }>;
+};
 
 const statusLabels: Record<string, string> = {
   queued: "排队中",
@@ -21,13 +26,16 @@ const taskLabels: Record<string, string> = {
   chat_with_context: "上下文对话"
 };
 
-export default async function AiTasksPage() {
+export default async function AiTasksPage({ searchParams }: AiTasksPageProps) {
   const session = await requireWebSession();
+  const params = await searchParams;
   const calls = await listUserAiCalls(session.user.id);
 
   return (
     <AppShell section="learner" eyebrow="AI 任务" title="AI 任务">
       <section className="grid gap-5">
+        <Feedback error={params.error} notice={params.notice} />
+
         <section className="pixel-panel grid gap-4 p-5">
           <div>
             <p className="text-xs font-bold uppercase text-[var(--muted)]">Calls</p>
@@ -49,8 +57,20 @@ export default async function AiTasksPage() {
                     <span className="status-chip px-2 py-1">{call.model}</span>
                     <span className="status-chip px-2 py-1">{formatDate(call.createdAt)}</span>
                   </div>
-                  <p className="mt-3 break-words text-sm font-bold text-[var(--muted)]">Prompt {call.promptVersion}</p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <span className="status-chip px-2 py-1">Prompt {call.promptVersion}</span>
+                    <span className="status-chip px-2 py-1">耗时 {formatDuration(call.durationMs)}</span>
+                    {formatUsage(call.usage) ? <span className="status-chip px-2 py-1">{formatUsage(call.usage)}</span> : null}
+                  </div>
                   {call.errorSummary ? <p className="mt-2 border-2 border-black bg-red-50 p-3 text-sm font-bold text-red-700">{call.errorSummary}</p> : null}
+                  {call.status === "failed" && call.taskType === "explain_question" ? (
+                    <form action={retryAiCallAction} className="mt-3">
+                      <input name="aiCallId" type="hidden" value={call.id} />
+                      <button className="pixel-button bg-white px-3 py-2 text-sm" type="submit">
+                        重试
+                      </button>
+                    </form>
+                  ) : null}
                 </article>
               ))}
             </div>
@@ -58,6 +78,18 @@ export default async function AiTasksPage() {
         </section>
       </section>
     </AppShell>
+  );
+}
+
+function Feedback({ error, notice }: { error?: string; notice?: string }) {
+  if (!error && !notice) {
+    return null;
+  }
+
+  return (
+    <p className={`border-3 border-black p-3 text-sm font-bold ${error ? "bg-red-50 text-red-700" : "bg-[var(--primary)] text-black"}`}>
+      {error || notice}
+    </p>
   );
 }
 
@@ -72,4 +104,25 @@ function formatDate(value: Date) {
   })
     .format(value)
     .replaceAll("/", "-");
+}
+
+function formatDuration(value: number) {
+  const duration = Math.max(0, value);
+
+  if (duration < 1000) {
+    return `${duration}ms`;
+  }
+
+  return `${(duration / 1000).toFixed(1)}s`;
+}
+
+function formatUsage(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return "";
+  }
+
+  const usage = value as Record<string, unknown>;
+  const total = usage.total_tokens;
+
+  return typeof total === "number" ? `Token ${total}` : "";
 }

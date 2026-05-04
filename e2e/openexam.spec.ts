@@ -15,6 +15,7 @@ const questionStem = "E2E 单选题：事务原子性最准确的含义是什么
 const importedQuestionStem = "E2E 单选题：隔离性用于解决什么问题？";
 const paperTitle = "E2E 基础知识样例卷";
 const paperSlug = "e2e-paper-basic-sample";
+const aiPresetModel = "gpt-5.4-e2e";
 
 let fixtureIds: {
   programId: string;
@@ -27,6 +28,7 @@ let fixtureIds: {
 test.describe.serial("OpenExam auth, question, paper, and wrong-note flows", () => {
   test.beforeAll(async () => {
     await cleanupE2eData();
+    await resetOpenAiMock();
     fixtureIds = await seedExamHierarchy();
     await prisma.user.upsert({
       where: { email: adminEmail },
@@ -65,6 +67,12 @@ test.describe.serial("OpenExam auth, question, paper, and wrong-note flows", () 
     const adminPage = await newPage(browser);
     await loginAdmin(adminPage);
     await createPaper(adminPage);
+  });
+
+  test("admin configures an AI model preset", async ({ browser }) => {
+    const adminPage = await newPage(browser);
+    await loginAdmin(adminPage);
+    await configureAdminAiPreset(adminPage);
   });
 
   test("learner registers and saves a goal", async ({ browser }) => {
@@ -109,6 +117,10 @@ async function newPage(browser: Browser) {
   const context = await browser.newContext();
 
   return context.newPage();
+}
+
+async function resetOpenAiMock() {
+  await fetch("http://127.0.0.1:8317/reset", { method: "POST" }).catch(() => undefined);
 }
 
 async function loginAdmin(page: Page) {
@@ -267,6 +279,38 @@ async function configureByokAndGenerateWrongNoteAnalysis(page: Page) {
   await expect(page.getByRole("heading", { name: "AI 任务" })).toBeVisible();
   await expect(page.locator("body")).toContainText("题目解析");
   await expect(page.locator("body")).toContainText("成功");
+  await expect(page.locator("body")).toContainText(aiPresetModel);
+
+  await page.goto(`${webUrl}/profile`);
+  await page.getByLabel("API Key").fill("sk-e2e-openai-fail-once");
+  await page.getByRole("button", { name: "保存 Key" }).click();
+  await expect(page.getByText("OpenAI API Key 已保存。")).toBeVisible();
+
+  await page.goto(`${webUrl}/wrong-notes?knowledgeNodeId=${fixtureIds.knowledgeNodeId}`);
+  await page.locator("section").filter({ hasText: questionStem }).first().getByRole("button", { name: "重新生成 AI 解析" }).click();
+  await expect(page.getByText(/Mock OpenAI failure/)).toBeVisible();
+
+  await page.goto(`${webUrl}/ai/tasks`);
+  await expect(page.locator("body")).toContainText("失败");
+  await expect(page.locator("body")).toContainText("Mock OpenAI failure");
+  await page.locator("article").filter({ hasText: "Mock OpenAI failure" }).first().getByRole("button", { name: "重试" }).click();
+  await expect(page.getByText("错题 AI 解析已重试成功。")).toBeVisible();
+  await expect(page.locator("body")).toContainText("成功");
+  await expect(page.locator("body")).toContainText(aiPresetModel);
+}
+
+async function configureAdminAiPreset(page: Page) {
+  await page.goto(`${adminUrl}/ai`);
+  const form = page.locator('form:has(button:has-text("新增预设"))').first();
+
+  await form.locator('input[name="model"]').fill(aiPresetModel);
+  await form.locator('input[name="label"]').fill("E2E OpenAI Mock");
+  await form.locator('select[name="defaultForTask"]').selectOption("explain_question");
+  await form.locator('input[name="temperature"]').fill("0.2");
+  await form.locator('input[name="maxTokens"]').fill("640");
+  await form.getByRole("button", { name: "新增预设" }).click();
+  await expect(page.getByText("模型预设已保存。")).toBeVisible();
+  await expect(page.locator("body")).toContainText(aiPresetModel);
 }
 
 async function rejectLearnerFromAdmin(browser: Browser) {
@@ -441,6 +485,8 @@ async function cleanupE2eData() {
   if (paperIds.length > 0) {
     await prisma.paper.deleteMany({ where: { id: { in: paperIds } } });
   }
+
+  await prisma.aiProviderPreset.deleteMany({ where: { model: aiPresetModel } });
 
   if (questionIds.length > 0) {
     await prisma.questionVersion.deleteMany({ where: { questionId: { in: questionIds } } });

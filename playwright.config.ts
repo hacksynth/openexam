@@ -2,7 +2,7 @@ import { defineConfig } from "@playwright/test";
 
 const databaseUrl = process.env.DATABASE_URL ?? "postgresql://openexam:openexam@localhost:5432/openexam?schema=public";
 const sessionSecret = process.env.SESSION_SECRET ?? "openexam-e2e-session-secret";
-const fakeAiResponse = process.env.OPENEXAM_FAKE_AI_RESPONSE ?? "AI E2E 解析：原子性要求事务中的操作要么全部成功，要么全部失败。";
+const openAiBaseUrl = process.env.OPENAI_BASE_URL ?? "http://127.0.0.1:8317/v1";
 
 export default defineConfig({
   testDir: "./e2e",
@@ -16,6 +16,12 @@ export default defineConfig({
   },
   webServer: [
     {
+      command: "node e2e/openai-mock.mjs",
+      url: "http://127.0.0.1:8317/health",
+      reuseExistingServer: true,
+      timeout: 30_000
+    },
+    {
       command: "npm run dev:web",
       url: "http://127.0.0.1:3000",
       reuseExistingServer: true,
@@ -24,7 +30,7 @@ export default defineConfig({
         DATABASE_URL: databaseUrl,
         SESSION_SECRET: sessionSecret,
         AI_KEY_ENCRYPTION_SECRET: "openexam-e2e-ai-key-secret",
-        OPENEXAM_FAKE_AI_RESPONSE: fakeAiResponse,
+        OPENAI_BASE_URL: openAiBaseUrl,
         PORT: "3000"
       }
     },

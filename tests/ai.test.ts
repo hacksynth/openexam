@@ -4,6 +4,8 @@ import {
   decryptAiSecret,
   encryptAiSecret,
   generateWrongNoteAiAnalysis,
+  retryFailedAiCall,
+  upsertAiProviderPreset,
   providerKeyHint,
   resolveAiEncryptionSecret,
   resolveOpenAiCredential
@@ -170,6 +172,37 @@ describe("wrong-note AI analysis", () => {
     );
   });
 
+  it("retries a failed wrong-note AI call", async () => {
+    const calls: { method: string; args?: unknown }[] = [];
+    const db = createAiDb(calls);
+
+    await expect(
+      retryFailedAiCall("user_1", "failed_1", {
+        db: db as never,
+        generateText: async () => ({ text: "重试后的 AI 解析。", usage: { total_tokens: 16 } })
+      })
+    ).resolves.toEqual({
+      ok: true,
+      data: {
+        analysis: "重试后的 AI 解析。",
+        aiCallId: "call_1",
+        retryOfAiCallId: "failed_1"
+      }
+    });
+    expect(calls).toContainEqual(
+      expect.objectContaining({
+        method: "aiCall.findFirst",
+        args: expect.objectContaining({
+          where: expect.objectContaining({
+            id: "failed_1",
+            userId: "user_1",
+            status: "failed"
+          })
+        })
+      })
+    );
+  });
+
   it("keeps the old analysis and records a failed call when generation fails", async () => {
     const calls: { method: string; args?: unknown }[] = [];
     const db = createAiDb(calls);
@@ -201,12 +234,74 @@ describe("wrong-note AI analysis", () => {
   });
 });
 
+describe("AI provider presets", () => {
+  it("saves OpenAI model presets for task routing", async () => {
+    const calls: { method: string; args?: unknown }[] = [];
+    const db = {
+      aiProviderPreset: {
+        upsert: async (args: unknown) => {
+          calls.push({ method: "aiProviderPreset.upsert", args });
+          return args;
+        }
+      }
+    };
+
+    await expect(
+      upsertAiProviderPreset(
+        {
+          provider: "openai",
+          model: "gpt-5.4-e2e",
+          label: "",
+          defaultForTask: "explain_question",
+          temperature: "0.2",
+          maxTokens: "640",
+          enabled: true
+        },
+        db as never
+      )
+    ).resolves.toEqual({ ok: true });
+    expect(calls).toContainEqual(
+      expect.objectContaining({
+        method: "aiProviderPreset.upsert",
+        args: expect.objectContaining({
+          create: expect.objectContaining({
+            provider: "openai",
+            model: "gpt-5.4-e2e",
+            label: "gpt-5.4-e2e",
+            defaultForTask: "explain_question",
+            temperature: 0.2,
+            maxTokens: 640,
+            enabled: true
+          })
+        })
+      })
+    );
+  });
+
+  it("validates preset token limits", async () => {
+    await expect(
+      upsertAiProviderPreset({
+        provider: "openai",
+        model: "gpt-5.4-e2e",
+        label: "E2E",
+        defaultForTask: "explain_question",
+        maxTokens: "0",
+        enabled: true
+      })
+    ).resolves.toEqual({
+      ok: false,
+      error: "max tokens 必须大于 0。"
+    });
+  });
+});
+
 function createAiDb(calls: { method: string; args?: unknown }[]) {
   return {
     aiProviderPreset: {
       findFirst: async () => ({
         model: "gpt-5.5",
-        maxTokens: 700
+        maxTokens: 700,
+        temperature: null
       })
     },
     wrongNote: {
@@ -243,6 +338,13 @@ function createAiDb(calls: { method: string; args?: unknown }[]) {
       }
     },
     aiCall: {
+      findFirst: async (args: unknown) => {
+        calls.push({ method: "aiCall.findFirst", args });
+        return {
+          id: "failed_1",
+          inputContextSource: "wrong_note:wrong_1"
+        };
+      },
       create: async (args: unknown) => {
         calls.push({ method: "aiCall.create", args });
         return { id: "call_1" };
