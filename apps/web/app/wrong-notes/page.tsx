@@ -3,7 +3,7 @@ import type { Route } from "next";
 import { AppShell } from "@/components/app-shell";
 import { requireWebSession } from "@/lib/auth";
 import { listWrongNotes, summarizeWrongNotes } from "@openexam/core/practice";
-import { setWrongNoteMasteredAction } from "./actions";
+import { generateWrongNoteAiAnalysisAction, setWrongNoteMasteredAction } from "./actions";
 
 type WrongNotesPageProps = {
   searchParams: Promise<{ error?: string; notice?: string; filter?: string; knowledgeNodeId?: string }>;
@@ -20,6 +20,7 @@ export default async function WrongNotesPage({ searchParams }: WrongNotesPagePro
   const params = await searchParams;
   const filter = normalizeFilter(params.filter);
   const knowledgeNodeId = params.knowledgeNodeId?.trim() || "";
+  const currentHref = wrongNoteHref(filter, knowledgeNodeId);
   const allNotes = await listWrongNotes(session.user.id);
   const notes = allNotes.filter((note) => {
     if (knowledgeNodeId && !note.knowledgeNodes.some((node) => node.id === knowledgeNodeId)) {
@@ -170,6 +171,21 @@ export default async function WrongNotesPage({ searchParams }: WrongNotesPagePro
                     </div>
                   ) : null}
                 </div>
+
+                {note.aiAnalysis ? (
+                  <div className="border-2 border-black bg-[var(--ai-soft)] p-3">
+                    <p className="text-sm font-bold text-[var(--muted)]">AI 解析</p>
+                    <p className="mt-1 whitespace-pre-line leading-7">{note.aiAnalysis}</p>
+                  </div>
+                ) : null}
+
+                <form action={generateWrongNoteAiAnalysisAction}>
+                  <input name="wrongNoteId" type="hidden" value={note.id} />
+                  <input name="returnTo" type="hidden" value={currentHref} />
+                  <button className="pixel-button w-fit bg-white px-4 py-2" type="submit">
+                    {note.aiAnalysis ? "重新生成 AI 解析" : "生成 AI 解析"}
+                  </button>
+                </form>
               </article>
             ))}
           </section>

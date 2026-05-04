@@ -94,17 +94,17 @@ export const learnerRoutes: RouteItem[] = [
     id: "ai-tasks",
     href: "/ai/tasks",
     label: "AI 任务",
-    description: "AI 解析、题目抽取、图片生成、诊断和任务进度。",
+    description: "AI 解析调用记录、模型、提示词版本、状态和错误摘要。",
     section: "learner",
-    status: "planned"
+    status: "foundation"
   },
   {
     id: "profile",
     href: "/profile",
     label: "个人设置",
-    description: "账号设置、个人 API Key、使用限制和数据删除。",
+    description: "账号设置、OpenAI BYOK、使用限制和数据删除。",
     section: "learner",
-    status: "planned"
+    status: "foundation"
   }
 ];
 

@@ -79,6 +79,12 @@ test.describe.serial("OpenExam auth, question, paper, and wrong-note flows", () 
     await completePaperWithWrongAnswer(webPage);
   });
 
+  test("learner configures BYOK and generates wrong-note AI analysis", async ({ browser }) => {
+    const webPage = await newPage(browser);
+    await loginLearner(webPage);
+    await configureByokAndGenerateWrongNoteAnalysis(webPage);
+  });
+
   test("learner retries the wrong note", async ({ browser }) => {
     const webPage = await newPage(browser);
     await loginLearner(webPage);
@@ -245,6 +251,24 @@ async function retryWrongNoteCorrectly(page: Page) {
   await expect(page.locator("section").filter({ hasText: questionStem }).first()).toContainText("已掌握");
 }
 
+async function configureByokAndGenerateWrongNoteAnalysis(page: Page) {
+  await page.goto(`${webUrl}/profile`);
+  await page.getByLabel("API Key").fill("sk-e2e-openai-test-key");
+  await page.getByRole("button", { name: "保存 Key" }).click();
+  await expect(page.getByText("OpenAI API Key 已保存。")).toBeVisible();
+  await expect(page.locator("body")).toContainText("已配置");
+
+  await page.goto(`${webUrl}/wrong-notes?knowledgeNodeId=${fixtureIds.knowledgeNodeId}`);
+  await page.locator("section").filter({ hasText: questionStem }).first().getByRole("button", { name: "生成 AI 解析" }).click();
+  await expect(page.getByText("AI 解析已生成。")).toBeVisible();
+  await expect(page.locator("body")).toContainText("AI E2E 解析");
+
+  await page.goto(`${webUrl}/ai/tasks`);
+  await expect(page.getByRole("heading", { name: "AI 任务" })).toBeVisible();
+  await expect(page.locator("body")).toContainText("题目解析");
+  await expect(page.locator("body")).toContainText("成功");
+}
+
 async function rejectLearnerFromAdmin(browser: Browser) {
   const page = await newPage(browser);
 
@@ -396,6 +420,8 @@ async function cleanupE2eData() {
   }
 
   if (userIds.length > 0) {
+    await prisma.aiCall.deleteMany({ where: { userId: { in: userIds } } });
+    await prisma.userProviderKey.deleteMany({ where: { userId: { in: userIds } } });
     await prisma.session.deleteMany({ where: { userId: { in: userIds } } });
     await prisma.examGoal.deleteMany({ where: { userId: { in: userIds } } });
     await prisma.user.deleteMany({ where: { id: { in: userIds } } });

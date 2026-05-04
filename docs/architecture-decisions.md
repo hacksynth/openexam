@@ -277,7 +277,7 @@ Implementation rules:
 
 Text providers:
 
-- OpenAI.
+- OpenAI. Started for synchronous wrong-note explanations through the Responses API.
 - Claude.
 - Gemini.
 
@@ -292,6 +292,13 @@ Provider keys:
 - Platform keys are optional fallback or demo configuration.
 - All AI calls go through the backend.
 - User keys must be encrypted at rest and deletable.
+
+Implementation note:
+
+- `/profile` lets learners save/delete an OpenAI BYOK key. Keys are encrypted with AES-256-GCM using `AI_KEY_ENCRYPTION_SECRET`; only a short key hint is displayed.
+- If a learner has no BYOK key, `OPENAI_API_KEY` may be used as a platform fallback.
+- `/wrong-notes` can synchronously generate a plain-text AI analysis for one wrong note and stores it in `WrongNote.aiAnalysis`.
+- `/ai/tasks` lists the user's recent `AiCall` records.
 
 Each AI task records:
 
@@ -373,6 +380,7 @@ Use Zod or an equivalent schema library. Failed parsing may retry once. Persiste
 Implementation note:
 
 - `packages/core/src/study-plan-schema.ts` defines and tests the first structured 14-day plan schema.
+- `packages/core/src/ai.ts` defines the first plain-text wrong-note prompt version, `wrong-note-explain-v1`.
 - Other AI output schemas remain pending.
 
 ## Jobs And Async Work

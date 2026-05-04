@@ -117,7 +117,8 @@ The foundation UI implements the first pass of the design direction in `apps/web
 - Dense form layouts for admin CRUD and learner goal selection.
 - Goal-scoped practice cards with stable answer option rows and explicit result feedback.
 - Paper list and full-paper answer forms with stable question blocks, answer-card chips, elapsed-time display, score chips, radio rows, unanswered confirmation, and explicit submit actions.
-- Attempt history, attempt report, and wrong-note review cards with status chips, paper/practice labels, knowledge chips, retry actions, knowledge filters, metrics, and long-stem wrapping.
+- Attempt history, attempt report, and wrong-note review cards with status chips, paper/practice labels, knowledge chips, retry actions, knowledge filters, metrics, AI analysis blocks, and long-stem wrapping.
+- Profile and AI task pages with dense BYOK forms, key-status chips, model/status chips, and failed-call error panels.
 - Admin single-choice editing and JSON import forms with dense square inputs, filter controls, review/archive action rows, select controls, and textarea rows for stems, import payloads, and explanations.
 - Admin paper forms with dense filters, hide/restore actions, selected/unselected question binding rows, square checkboxes, and compact score/order inputs.
 - Truncated account labels in sidebars so long names and emails do not cause horizontal overflow.

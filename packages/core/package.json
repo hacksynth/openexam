@@ -14,6 +14,7 @@
     "./papers": "./src/papers.ts",
     "./practice": "./src/practice.ts",
     "./prisma": "./src/prisma.ts",
+    "./ai": "./src/ai.ts",
     "./question-admin": "./src/question-admin.ts",
     "./question-governance": "./src/question-governance.ts",
     "./routes": "./src/routes.ts",
@@ -21,6 +22,7 @@
   },
   "dependencies": {
     "@prisma/client": "^6.19.0",
+    "openai": "^6.36.0",
     "zod": "^4.1.13"
   }
 }

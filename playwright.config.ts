@@ -2,6 +2,7 @@ import { defineConfig } from "@playwright/test";
 
 const databaseUrl = process.env.DATABASE_URL ?? "postgresql://openexam:openexam@localhost:5432/openexam?schema=public";
 const sessionSecret = process.env.SESSION_SECRET ?? "openexam-e2e-session-secret";
+const fakeAiResponse = process.env.OPENEXAM_FAKE_AI_RESPONSE ?? "AI E2E 解析：原子性要求事务中的操作要么全部成功，要么全部失败。";
 
 export default defineConfig({
   testDir: "./e2e",
@@ -22,6 +23,8 @@ export default defineConfig({
       env: {
         DATABASE_URL: databaseUrl,
         SESSION_SECRET: sessionSecret,
+        AI_KEY_ENCRYPTION_SECRET: "openexam-e2e-ai-key-secret",
+        OPENEXAM_FAKE_AI_RESPONSE: fakeAiResponse,
         PORT: "3000"
       }
     },

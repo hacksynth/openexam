@@ -55,6 +55,8 @@ Copy `.env.example` to `.env` and update `DATABASE_URL`, `SESSION_SECRET`, `NEXT
 
 Set `ADMIN_EMAIL` and `ADMIN_PASSWORD` before seeding if you want to bootstrap an admin login.
 
+Set `AI_KEY_ENCRYPTION_SECRET` before saving BYOK provider keys. `OPENAI_API_KEY` is optional and acts as the platform fallback when a learner has not saved a personal key.
+
 For local PostgreSQL:
 
 ```sh

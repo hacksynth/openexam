@@ -368,6 +368,7 @@ export async function listWrongNotes(userId: string, options: { mastered?: boole
     mastered: note.mastered,
     errorCount: note.errorCount,
     updatedAt: note.updatedAt,
+    aiAnalysis: note.aiAnalysis,
     stem: note.question.versions[0]?.stem ?? note.question.stem,
     explanation: note.question.versions[0]?.explanation ?? note.question.explanation,
     correctAnswer: readSingleChoiceAnswerKey(note.question.versions[0]?.answerKey ?? note.question.answerKey),

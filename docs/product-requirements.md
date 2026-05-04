@@ -47,7 +47,7 @@ Current implementation status:
 - Learners can save a primary exam goal and see it on the dashboard.
 - The first single-choice practice workflow is implemented with goal-scoped question retrieval, repeat avoidance, graded attempts, paper attempts, attempt reports, wrong-note auto-collection, wrong-note knowledge filters/retry, mastery toggles, and weak-point dashboard summaries.
 - Admin single-choice question CRUD is implemented for question creation, JSON import, editing, filtering, review-status changes, archive/restore, knowledge binding, source, visibility, and review status.
-- Admin paper CRUD is implemented for ordered single-choice papers with subject binding, visibility, type, question order, section, number, score, archivedAt-based filters, and hide/restore controls. AI provider calls, material uploads, image generation, advanced practice modes, and deeper admin hardening remain future implementation work.
+- Admin paper CRUD is implemented for ordered single-choice papers with subject binding, visibility, type, question order, section, number, score, archivedAt-based filters, and hide/restore controls. OpenAI BYOK and wrong-note AI analysis are started; material uploads, image generation, advanced practice modes, and deeper admin hardening remain future implementation work.
 
 ## Exam Coverage
 
@@ -211,7 +211,7 @@ Supported providers:
 - Claude.
 - Gemini.
 
-The MVP uses bring-your-own-key as the primary model. Platform keys are optional for demos, trials, or administrator-managed usage. All provider calls go through the backend.
+The MVP uses bring-your-own-key as the primary model. Platform keys are optional for demos, trials, or administrator-managed usage. All provider calls go through the backend. The current implementation supports OpenAI BYOK first, with `OPENAI_API_KEY` as fallback.
 
 AI features:
 

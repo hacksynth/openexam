@@ -1,4 +1,6 @@
 import {
+  AiProvider,
+  AiTaskType,
   PrismaClient,
   QuestionKind,
   ReviewStatus,
@@ -12,6 +14,7 @@ const prisma = new PrismaClient();
 
 async function main() {
   await seedAdminUser();
+  await seedAiPresets();
 
   const program = await prisma.examProgram.upsert({
     where: { slug: "ruankao" },
@@ -237,6 +240,33 @@ async function main() {
       section: "基础知识",
       score: 1
     }))
+  });
+}
+
+async function seedAiPresets() {
+  await prisma.aiProviderPreset.upsert({
+    where: {
+      provider_model: {
+        provider: AiProvider.openai,
+        model: "gpt-5.5"
+      }
+    },
+    update: {
+      label: "OpenAI GPT-5.5",
+      capabilities: ["text"],
+      defaultForTask: AiTaskType.explain_question,
+      maxTokens: 700,
+      enabled: true
+    },
+    create: {
+      provider: AiProvider.openai,
+      model: "gpt-5.5",
+      label: "OpenAI GPT-5.5",
+      capabilities: ["text"],
+      defaultForTask: AiTaskType.explain_question,
+      maxTokens: 700,
+      enabled: true
+    }
   });
 }
 

@@ -114,22 +114,22 @@ Goal: add safe provider integration and the first high-value AI actions.
 
 Deliverables:
 
-- User BYOK settings for OpenAI, Claude, and Gemini.
-- Optional platform provider settings.
-- Encrypted API key storage.
-- Text provider adapters.
-- Model presets and task routing.
-- AI call logs.
+- User BYOK settings for OpenAI, Claude, and Gemini. Started with OpenAI BYOK.
+- Optional platform provider settings. Started with `OPENAI_API_KEY` fallback.
+- Encrypted API key storage. Started for OpenAI keys with AES-256-GCM.
+- Text provider adapters. Started with OpenAI Responses API.
+- Model presets and task routing. Started with seeded OpenAI `explain_question` preset.
+- AI call logs. Started with learner-visible recent call history.
 - Usage limits.
-- Prompt versioning.
+- Prompt versioning. Started with `wrong-note-explain-v1`.
 - Single-question AI explanation.
-- Wrong-note AI explanation.
+- Wrong-note AI explanation. Started as synchronous short task.
 - Context-bound AI chat.
 
 Acceptance:
 
-- A BYOK user can generate an AI explanation for a question.
-- AI calls record provider, model, task, prompt version, and status.
+- A BYOK user can generate an AI explanation for a question. Started for wrong notes.
+- AI calls record provider, model, task, prompt version, and status. Started.
 - Disabled or over-limit AI usage fails clearly.
 
 ## 5. Materials

@@ -11,6 +11,8 @@ services:
       LOCAL_STORAGE_DIR: "./storage"
       SESSION_SECRET: "${SESSION_SECRET:-openexam-local-session-secret}"
       SESSION_DAYS: "${SESSION_DAYS:-14}"
+      AI_KEY_ENCRYPTION_SECRET: "${AI_KEY_ENCRYPTION_SECRET:-openexam-local-ai-key-encryption-secret}"
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
     ports:
       - "3000:3000"
     depends_on:
@@ -34,6 +36,8 @@ services:
       LOCAL_STORAGE_DIR: "./storage"
       SESSION_SECRET: "${SESSION_SECRET:-openexam-local-session-secret}"
       SESSION_DAYS: "${SESSION_DAYS:-14}"
+      AI_KEY_ENCRYPTION_SECRET: "${AI_KEY_ENCRYPTION_SECRET:-openexam-local-ai-key-encryption-secret}"
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
     ports:
       - "3001:3001"
     depends_on:
