@@ -33,4 +33,4 @@ ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 COPY --from=builder /app ./
 EXPOSE 3000
-CMD ["sh", "-c", "if [ -f apps/web/.next/standalone/apps/web/server.js ]; then exec node apps/web/.next/standalone/apps/web/server.js; fi; exec node apps/web/.next/standalone/server.js"]
+CMD ["sh", "-c", "npx prisma migrate deploy && if [ -f apps/web/.next/standalone/apps/web/server.js ]; then exec node apps/web/.next/standalone/apps/web/server.js; fi; exec node apps/web/.next/standalone/server.js"]
