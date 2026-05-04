@@ -64,6 +64,8 @@ const wrongNoteTask = AiTaskType.explain_question;
 const wrongNotePromptVersion = "wrong-note-explain-v1";
 const defaultOpenAiModel = "gpt-5.5";
 const defaultMaxOutputTokens = 700;
+const defaultDailyAiCallLimit = 50;
+const defaultDailyPlatformTokenLimit = 100000;
 
 export function providerKeyHint(apiKey: string) {
   const normalized = apiKey.trim();
@@ -280,12 +282,86 @@ export async function listUserAiCalls(userId: string, db: AiDatabase = prisma) {
     promptVersion: call.promptVersion,
     inputContextSource: call.inputContextSource,
     status: call.status,
+    credentialSource: call.credentialSource,
     usage: call.usage,
     durationMs: call.updatedAt.getTime() - call.createdAt.getTime(),
     errorSummary: call.errorSummary,
     createdAt: call.createdAt,
     updatedAt: call.updatedAt
   }));
+}
+
+export async function assertAiUsageAllowed(
+  userId: string,
+  credentialSource: "byok" | "platform",
+  db: AiDatabase = prisma,
+  env: NodeJS.ProcessEnv = process.env
+): Promise<ActionResult> {
+  const dayStart = startOfLocalDay(new Date());
+  const dailyLimit = parsePositiveInteger(env.OPENEXAM_DAILY_AI_CALL_LIMIT, defaultDailyAiCallLimit);
+  const userCallCount = await db.aiCall.count({
+    where: {
+      userId,
+      createdAt: {
+        gte: dayStart
+      },
+      status: {
+        not: "canceled"
+      }
+    }
+  });
+
+  if (userCallCount >= dailyLimit) {
+    return { ok: false, error: `今日 AI 调用次数已达到上限 ${dailyLimit} 次。` };
+  }
+
+  if (credentialSource !== "platform") {
+    return { ok: true };
+  }
+
+  const platformLimit = parsePositiveInteger(env.OPENEXAM_DAILY_PLATFORM_TOKEN_LIMIT, defaultDailyPlatformTokenLimit);
+  const calls = await db.aiCall.findMany({
+    where: {
+      credentialSource: "platform",
+      createdAt: {
+        gte: dayStart
+      },
+      status: "succeeded"
+    },
+    select: {
+      usage: true
+    }
+  });
+  const usedTokens = calls.reduce((sum, call) => sum + readTotalTokens(call.usage), 0);
+
+  if (usedTokens >= platformLimit) {
+    return { ok: false, error: `平台 Key 今日 Token 预算已达到上限 ${platformLimit}。` };
+  }
+
+  return { ok: true };
+}
+
+export async function getAiUsageOverview(db: AiDatabase = prisma) {
+  const dayStart = startOfLocalDay(new Date());
+  const calls = await db.aiCall.findMany({
+    where: {
+      createdAt: {
+        gte: dayStart
+      }
+    },
+    select: {
+      status: true,
+      credentialSource: true,
+      usage: true
+    }
+  });
+
+  return {
+    todayCalls: calls.length,
+    todayFailures: calls.filter((call) => call.status === "failed").length,
+    platformCalls: calls.filter((call) => call.credentialSource === "platform").length,
+    platformTokens: calls.filter((call) => call.credentialSource === "platform").reduce((sum, call) => sum + readTotalTokens(call.usage), 0)
+  };
 }
 
 export async function listAdminAiProviderPresets(db: AiDatabase = prisma) {
@@ -436,6 +512,22 @@ export async function generateWrongNoteAiAnalysis(
 
         await markAiCallFailed(aiCall.id, error, db);
         return { ok: false, error };
+      }
+
+      if (credential?.ok) {
+        const usageAllowed = await assertAiUsageAllowed(userId, credential.data.source, db, env);
+
+        if (!usageAllowed.ok) {
+          await markAiCallFailed(aiCall.id, usageAllowed.error, db);
+          return usageAllowed;
+        }
+
+        await db.aiCall.update({
+          where: { id: aiCall.id },
+          data: {
+            credentialSource: credential.data.source
+          }
+        });
       }
 
       result = await (options.generateText ?? generateOpenAiText)({
@@ -612,6 +704,27 @@ function deriveEncryptionKey(secret: string) {
 
 function estimateTokens(text: string) {
   return Math.max(1, Math.ceil(text.length / 4));
+}
+
+function startOfLocalDay(value: Date) {
+  return new Date(value.getFullYear(), value.getMonth(), value.getDate());
+}
+
+function parsePositiveInteger(value: string | undefined, fallback: number) {
+  const parsed = Number(value);
+
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+export function readTotalTokens(value: Prisma.JsonValue | null | undefined) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return 0;
+  }
+
+  const usage = value as Record<string, unknown>;
+  const total = usage.total_tokens ?? usage.totalTokens;
+
+  return typeof total === "number" && Number.isFinite(total) ? total : 0;
 }
 
 function readFakeAiResponse(env: NodeJS.ProcessEnv) {

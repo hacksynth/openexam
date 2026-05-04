@@ -35,7 +35,7 @@ Deliverables:
 - Auth and session layer. Completed for email/password and database sessions.
 - `user` and `admin` roles in schema. Completed.
 - Base layout for learner and admin routes in separate apps. Completed.
-- Local asset storage adapter. Pending.
+- Local asset storage adapter. Started for material uploads.
 - Basic environment configuration. Completed.
 - Test setup with Vitest and Playwright. Completed for the current core and browser workflow slice.
 
@@ -120,7 +120,7 @@ Deliverables:
 - Text provider adapters. Started with OpenAI Responses API.
 - Model presets and task routing. Started with seeded and admin-managed OpenAI `explain_question` presets.
 - AI call logs. Started with learner-visible recent call history, duration/usage display, error summaries, and failed wrong-note retry.
-- Usage limits.
+- Usage limits. Started with daily AI call and platform token caps.
 - Prompt versioning. Started with `wrong-note-explain-v1`.
 - Single-question AI explanation.
 - Wrong-note AI explanation. Started as synchronous short task.
@@ -138,13 +138,13 @@ Goal: support user-owned content without building a full knowledge-base product.
 
 Deliverables:
 
-- Material upload.
-- Material binding to exam goal, subject, or syllabus.
-- Text extraction for supported formats.
+- Material upload. Started for TXT, Markdown, and PDF local storage.
+- Material binding to exam goal, subject, or syllabus. Started with subject binding.
+- Text extraction for supported formats. Started for TXT/Markdown; PDF OCR remains pending.
 - OCR pipeline placeholder or first OCR implementation.
-- AI question extraction job.
-- Candidate-question review UI.
-- Manual confirmation into private question bank.
+- AI question extraction job. Started with admin-triggered database Jobs.
+- Candidate-question review UI. Started in admin materials.
+- Manual confirmation into private question bank. Started for single-choice candidates.
 - Material-based AI chat context.
 
 Acceptance:

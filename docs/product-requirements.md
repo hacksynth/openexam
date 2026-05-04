@@ -47,7 +47,7 @@ Current implementation status:
 - Learners can save a primary exam goal and see it on the dashboard.
 - The first single-choice practice workflow is implemented with goal-scoped question retrieval, repeat avoidance, graded attempts, paper attempts, attempt reports, wrong-note auto-collection, wrong-note knowledge filters/retry, mastery toggles, and weak-point dashboard summaries.
 - Admin single-choice question CRUD is implemented for question creation, JSON import, editing, filtering, review-status changes, archive/restore, knowledge binding, source, visibility, and review status.
-- Admin paper CRUD is implemented for ordered single-choice papers with subject binding, visibility, type, question order, section, number, score, archivedAt-based filters, and hide/restore controls. OpenAI BYOK, wrong-note AI analysis, AI call logs, failed-call retry, and admin model presets are started; material uploads, image generation, advanced practice modes, and deeper admin hardening remain future implementation work.
+- Admin paper CRUD is implemented for ordered single-choice papers with subject binding, visibility, type, question order, section, number, score, archivedAt-based filters, and hide/restore controls. OpenAI BYOK, wrong-note AI analysis, AI call logs, failed-call retry, admin model presets, material uploads, admin-triggered extraction jobs, AI candidate questions, and basic usage protection are started; image generation, advanced practice modes, and deeper admin hardening remain future implementation work.
 
 ## Exam Coverage
 
@@ -199,6 +199,8 @@ Required workflow:
 6. Allow materials to be used as AI chat context.
 7. Track import status, source, and processing errors.
 
+Implementation note: TXT, Markdown, and PDF uploads are started with local storage. TXT/Markdown can be processed by admin-triggered jobs. PDF upload is accepted, but scanned PDF/OCR extraction remains pending and fails clearly during processing.
+
 The MVP does not include full vector search, automatic copyright determination, knowledge graph fusion, video parsing, or large-scale batch-processing UI.
 
 ## AI Features
@@ -211,7 +213,7 @@ Supported providers:
 - Claude.
 - Gemini.
 
-The MVP uses bring-your-own-key as the primary model. Platform keys are optional for demos, trials, or administrator-managed usage. All provider calls go through the backend. The current implementation supports OpenAI BYOK first, with `OPENAI_API_KEY` as fallback, `OPENAI_BASE_URL` for OpenAI-compatible gateways, learner-visible AI call logs, and admin-managed OpenAI model presets.
+The MVP uses bring-your-own-key as the primary model. Platform keys are optional for demos, trials, or administrator-managed usage. All provider calls go through the backend. The current implementation supports OpenAI BYOK first, with `OPENAI_API_KEY` as fallback, `OPENAI_BASE_URL` for OpenAI-compatible gateways, learner-visible AI call logs, admin-managed OpenAI model presets, daily call limits, and platform token budget protection.
 
 AI features:
 

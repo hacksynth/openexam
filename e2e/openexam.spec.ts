@@ -13,9 +13,11 @@ const learnerEmail = "e2e.learner@openexam.local";
 const learnerPassword = "learner1234";
 const questionStem = "E2E 单选题：事务原子性最准确的含义是什么？";
 const importedQuestionStem = "E2E 单选题：隔离性用于解决什么问题？";
+const extractedQuestionStem = "E2E 资料抽题：事务原子性最准确的含义是什么？";
 const paperTitle = "E2E 基础知识样例卷";
 const paperSlug = "e2e-paper-basic-sample";
 const aiPresetModel = "gpt-5.4-e2e";
+const materialTitle = "E2E 事务资料";
 
 let fixtureIds: {
   programId: string;
@@ -97,6 +99,16 @@ test.describe.serial("OpenExam auth, question, paper, and wrong-note flows", () 
     const webPage = await newPage(browser);
     await loginLearner(webPage);
     await retryWrongNoteCorrectly(webPage);
+  });
+
+  test("learner uploads material and admin confirms extracted question", async ({ browser }) => {
+    const webPage = await newPage(browser);
+    const adminPage = await newPage(browser);
+
+    await loginLearner(webPage);
+    await uploadMaterial(webPage);
+    await loginAdmin(adminPage);
+    await processMaterialJobAndConfirmQuestion(adminPage);
   });
 
   test("admin hides and restores a paper", async ({ browser }) => {
@@ -299,6 +311,40 @@ async function configureByokAndGenerateWrongNoteAnalysis(page: Page) {
   await expect(page.locator("body")).toContainText(aiPresetModel);
 }
 
+async function uploadMaterial(page: Page) {
+  await page.goto(`${webUrl}/materials`);
+  await page.locator('input[name="title"]').fill(materialTitle);
+  await page.locator('input[name="sourceLicense"]').fill("E2E 原创");
+  await page.locator('select[name="subjectId"]').selectOption(fixtureIds.subjectId);
+  await page.locator('input[name="file"]').setInputFiles({
+    name: "e2e-transaction.md",
+    mimeType: "text/markdown",
+    buffer: Buffer.from("事务原子性表示事务中的所有操作要么全部成功，要么全部失败。隔离性用于控制并发事务之间的相互影响。", "utf8")
+  });
+  await page.getByRole("button", { name: "上传并创建抽题任务" }).click();
+  await expect(page.getByText("资料已上传，抽题任务已进入队列。")).toBeVisible();
+  await expect(page.locator("body")).toContainText(materialTitle);
+}
+
+async function processMaterialJobAndConfirmQuestion(page: Page) {
+  await page.goto(`${adminUrl}/jobs?status=queued`);
+  await expect(page.getByRole("heading", { name: "任务", exact: true })).toBeVisible();
+  await expect(page.locator("body")).toContainText(materialTitle);
+  await page.locator("article").filter({ hasText: materialTitle }).first().getByRole("button", { name: "立即处理" }).click();
+  await expect(page).toHaveURL(/\/jobs\?notice=/);
+  await expect(page.locator("body")).toContainText("任务已处理。");
+
+  await page.goto(`${adminUrl}/materials`);
+  await expect(page.getByRole("heading", { name: "资料", exact: true })).toBeVisible();
+  await expect(page.locator("body")).toContainText(extractedQuestionStem);
+  await page.locator("article").filter({ hasText: extractedQuestionStem }).first().getByRole("button", { name: "确认入题库" }).click();
+  await expect(page.getByText("候选题已确认并加入题库。")).toBeVisible();
+
+  await page.goto(`${adminUrl}/questions?q=${encodeURIComponent(extractedQuestionStem)}`);
+  await expect(page.locator("body")).toContainText(extractedQuestionStem);
+  await expect(page.locator("body")).toContainText("AI 生成");
+}
+
 async function configureAdminAiPreset(page: Page) {
   await page.goto(`${adminUrl}/ai`);
   const form = page.locator('form:has(button:has-text("新增预设"))').first();
@@ -408,9 +454,16 @@ async function cleanupE2eData() {
   const userIds = users.map((user) => user.id);
   const questions = await prisma.question.findMany({
     where: {
-      stem: {
-        startsWith: "E2E 单选题"
-      }
+      OR: [
+        {
+          stem: {
+            startsWith: "E2E 单选题"
+          }
+        },
+        {
+          stem: extractedQuestionStem
+        }
+      ]
     },
     select: { id: true }
   });
@@ -436,6 +489,20 @@ async function cleanupE2eData() {
         })
       : [];
   const attemptIds = attempts.map((attempt) => attempt.id);
+  const materials = await prisma.material.findMany({
+    where: {
+      OR: [
+        ...(userIds.length > 0 ? [{ ownerId: { in: userIds } }] : []),
+        {
+          title: {
+            startsWith: "E2E "
+          }
+        }
+      ]
+    },
+    select: { id: true, storageKey: true }
+  });
+  const materialIds = materials.map((material) => material.id);
 
   if (userIds.length > 0 || questionIds.length > 0) {
     await prisma.wrongNote.deleteMany({
@@ -463,12 +530,27 @@ async function cleanupE2eData() {
     await prisma.attempt.deleteMany({ where: { id: { in: attemptIds } } });
   }
 
+  if (materialIds.length > 0) {
+    await prisma.materialQuestionCandidate.deleteMany({ where: { materialId: { in: materialIds } } });
+    await prisma.asset.deleteMany({ where: { materialId: { in: materialIds } } });
+    await prisma.job.deleteMany({
+      where: {
+        OR: [
+          ...(userIds.length > 0 ? [{ userId: { in: userIds } }] : []),
+          {
+            type: "extract_material_questions"
+          }
+        ]
+      }
+    });
+    await prisma.material.deleteMany({ where: { id: { in: materialIds } } });
+  }
+
   if (userIds.length > 0) {
     await prisma.aiCall.deleteMany({ where: { userId: { in: userIds } } });
     await prisma.userProviderKey.deleteMany({ where: { userId: { in: userIds } } });
     await prisma.session.deleteMany({ where: { userId: { in: userIds } } });
     await prisma.examGoal.deleteMany({ where: { userId: { in: userIds } } });
-    await prisma.user.deleteMany({ where: { id: { in: userIds } } });
   }
 
   if (paperIds.length > 0 || questionIds.length > 0) {
@@ -492,5 +574,9 @@ async function cleanupE2eData() {
     await prisma.questionVersion.deleteMany({ where: { questionId: { in: questionIds } } });
     await prisma.questionKnowledgeNode.deleteMany({ where: { questionId: { in: questionIds } } });
     await prisma.question.deleteMany({ where: { id: { in: questionIds } } });
+  }
+
+  if (userIds.length > 0) {
+    await prisma.user.deleteMany({ where: { id: { in: userIds } } });
   }
 }

@@ -122,6 +122,7 @@ The foundation UI implements the first pass of the design direction in `apps/web
 - Admin single-choice editing and JSON import forms with dense square inputs, filter controls, review/archive action rows, select controls, and textarea rows for stems, import payloads, and explanations.
 - Admin paper forms with dense filters, hide/restore actions, selected/unselected question binding rows, square checkboxes, and compact score/order inputs.
 - Admin AI preset forms with compact model, task-route, temperature, max-token, enable/disable controls, and status chips.
+- Material upload, job queue, candidate-question, and user-usage pages with dense forms, status chips, error panels, and compact action rows.
 - Truncated account labels in sidebars so long names and emails do not cause horizontal overflow.
 
 Theme switching is not implemented yet. Current colors are CSS custom properties on `:root`; future theme presets should override those tokens without changing layout or density.

@@ -57,6 +57,8 @@ Set `ADMIN_EMAIL` and `ADMIN_PASSWORD` before seeding if you want to bootstrap a
 
 Set `AI_KEY_ENCRYPTION_SECRET` before saving BYOK provider keys. `OPENAI_API_KEY` is optional and acts as the platform fallback when a learner has not saved a personal key. Set `OPENAI_BASE_URL` when using an OpenAI-compatible gateway.
 
+Set `OPENEXAM_DAILY_AI_CALL_LIMIT`, `OPENEXAM_DAILY_PLATFORM_TOKEN_LIMIT`, and `OPENEXAM_UPLOAD_MAX_BYTES` to control AI usage and material upload size. Material uploads use local storage at `LOCAL_STORAGE_DIR`; admin `/jobs` processes queued extraction jobs without a separate worker container.
+
 Playwright starts a local OpenAI-compatible mock server on `127.0.0.1:8317` for AI browser tests, so `npm run test:e2e` exercises the real Responses API adapter without calling an external model.
 
 For local PostgreSQL:

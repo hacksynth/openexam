@@ -42,6 +42,8 @@ export default defineConfig({
       env: {
         DATABASE_URL: databaseUrl,
         SESSION_SECRET: sessionSecret,
+        AI_KEY_ENCRYPTION_SECRET: "openexam-e2e-ai-key-secret",
+        OPENAI_BASE_URL: openAiBaseUrl,
         PORT: "3001"
       }
     }

@@ -72,7 +72,7 @@ export const learnerRoutes: RouteItem[] = [
     label: "资料",
     description: "资料上传、抽取任务、候选题目和私有确认流程。",
     section: "learner",
-    status: "planned"
+    status: "foundation"
   },
   {
     id: "plan",
@@ -155,7 +155,7 @@ export const adminRoutes: RouteItem[] = [
     label: "资料",
     description: "上传资产、抽取任务、来源引用和处理错误。",
     section: "admin",
-    status: "planned"
+    status: "foundation"
   },
   {
     id: "admin-ai",
@@ -171,7 +171,7 @@ export const adminRoutes: RouteItem[] = [
     label: "任务",
     description: "数据库队列状态、重试、失败和进度追踪。",
     section: "admin",
-    status: "planned"
+    status: "foundation"
   },
   {
     id: "admin-users",
@@ -179,7 +179,7 @@ export const adminRoutes: RouteItem[] = [
     label: "用户",
     description: "用户角色、使用限制、AI 调用量和账号状态。",
     section: "admin",
-    status: "planned"
+    status: "foundation"
   },
   {
     id: "admin-audit",

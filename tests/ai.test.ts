@@ -3,6 +3,7 @@ import {
   buildWrongNotePrompt,
   decryptAiSecret,
   encryptAiSecret,
+  assertAiUsageAllowed,
   generateWrongNoteAiAnalysis,
   retryFailedAiCall,
   upsertAiProviderPreset,
@@ -291,6 +292,51 @@ describe("AI provider presets", () => {
     ).resolves.toEqual({
       ok: false,
       error: "max tokens 必须大于 0。"
+    });
+  });
+});
+
+describe("AI usage limits", () => {
+  it("blocks users over the daily AI call limit", async () => {
+    const db = {
+      aiCall: {
+        count: async () => 2,
+        findMany: async () => []
+      }
+    };
+
+    await expect(
+      assertAiUsageAllowed("user_1", "byok", db as never, {
+        OPENEXAM_DAILY_AI_CALL_LIMIT: "2"
+      })
+    ).resolves.toEqual({
+      ok: false,
+      error: "今日 AI 调用次数已达到上限 2 次。"
+    });
+  });
+
+  it("blocks platform-key usage over the token budget", async () => {
+    const db = {
+      aiCall: {
+        count: async () => 1,
+        findMany: async () => [
+          {
+            usage: {
+              total_tokens: 120
+            }
+          }
+        ]
+      }
+    };
+
+    await expect(
+      assertAiUsageAllowed("user_1", "platform", db as never, {
+        OPENEXAM_DAILY_AI_CALL_LIMIT: "10",
+        OPENEXAM_DAILY_PLATFORM_TOKEN_LIMIT: "100"
+      })
+    ).resolves.toEqual({
+      ok: false,
+      error: "平台 Key 今日 Token 预算已达到上限 100。"
     });
   });
 });

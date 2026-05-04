@@ -411,10 +411,33 @@ model Material {
   extractionState String   @default("pending")
   sourceLicense   String?
   assets          Asset[]
+  candidates      MaterialQuestionCandidate[]
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
   @@index([ownerId])
+}
+
+model MaterialQuestionCandidate {
+  id                  String   @id @default(cuid())
+  materialId          String
+  material            Material @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  jobId               String?
+  stem                String
+  payload             Json
+  answerKey           Json
+  explanation         String?
+  difficulty          Int?
+  knowledgeNodeId     String?
+  sourceRef           String?
+  status              String   @default("pending")
+  confirmedQuestionId String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([materialId, status])
+  @@index([jobId])
+  @@index([confirmedQuestionId])
 }
 
 model Asset {
@@ -475,6 +498,7 @@ model AiCall {
   tokenEstimate      Int?
   imageCount         Int?
   status             AiCallStatus @default(queued)
+  credentialSource   String?
   usage              Json?
   errorSummary       String?
   createdAt          DateTime     @default(now())

@@ -37,7 +37,28 @@ const server = createServer(async (request, response) => {
       return;
     }
 
-    const text = "AI E2E 解析：原子性要求事务中的操作要么全部成功，要么全部失败。复习时要区分原子性和隔离性。";
+    const isExtraction = String(body.input ?? "").includes("资料正文");
+    const knowledgeNodeId = String(body.input ?? "").match(/(cm[a-z0-9]+)/)?.[1] ?? "";
+    const text = isExtraction
+      ? JSON.stringify({
+          questions: [
+            {
+              stem: "E2E 资料抽题：事务原子性最准确的含义是什么？",
+              options: {
+                A: "事务中的操作要么全部成功，要么全部失败。",
+                B: "并发事务之间互不影响。",
+                C: "事务提交后数据永久保存。",
+                D: "事务执行前后数据库满足约束。"
+              },
+              answer: "A",
+              explanation: "原子性强调事务不可分割，不能只成功一部分。",
+              difficulty: 2,
+              knowledgeNodeId,
+              sourceRef: "E2E 资料第 1 段"
+            }
+          ]
+        })
+      : "AI E2E 解析：原子性要求事务中的操作要么全部成功，要么全部失败。复习时要区分原子性和隔离性。";
 
     sendJson(response, 200, {
       id: `resp_mock_${Date.now()}`,

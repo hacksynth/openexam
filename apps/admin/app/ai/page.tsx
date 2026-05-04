@@ -1,7 +1,7 @@
 import { AiProvider, AiTaskType } from "@prisma/client";
 import { AppShell } from "@/components/app-shell";
 import { requireAdminSession } from "@/lib/auth";
-import { listAdminAiProviderPresets } from "@openexam/core/ai";
+import { getAiUsageOverview, listAdminAiProviderPresets } from "@openexam/core/ai";
 import { disableAiProviderPresetAction, enableAiProviderPresetAction, upsertAiProviderPresetAction } from "./actions";
 
 type AdminAiPageProps = {
@@ -25,12 +25,31 @@ const taskLabels: Record<string, string> = {
 export default async function AdminAiPage({ searchParams }: AdminAiPageProps) {
   await requireAdminSession();
   const params = await searchParams;
-  const presets = await listAdminAiProviderPresets();
+  const [presets, usage] = await Promise.all([listAdminAiProviderPresets(), getAiUsageOverview()]);
 
   return (
     <AppShell section="admin" eyebrow="AI 配置" title="AI">
       <section className="grid gap-5">
         <Feedback error={params.error} notice={params.notice} />
+
+        <section className="grid gap-4 md:grid-cols-4">
+          <article className="pixel-panel p-4">
+            <p className="text-xs font-bold uppercase text-[var(--muted)]">今日调用</p>
+            <p className="mt-2 text-4xl font-black">{usage.todayCalls}</p>
+          </article>
+          <article className="pixel-panel p-4">
+            <p className="text-xs font-bold uppercase text-[var(--muted)]">失败</p>
+            <p className="mt-2 text-4xl font-black">{usage.todayFailures}</p>
+          </article>
+          <article className="pixel-panel p-4">
+            <p className="text-xs font-bold uppercase text-[var(--muted)]">平台调用</p>
+            <p className="mt-2 text-4xl font-black">{usage.platformCalls}</p>
+          </article>
+          <article className="pixel-panel p-4">
+            <p className="text-xs font-bold uppercase text-[var(--muted)]">平台 Token</p>
+            <p className="mt-2 text-4xl font-black">{usage.platformTokens}</p>
+          </article>
+        </section>
 
         <section className="pixel-panel grid gap-4 p-5">
           <div>

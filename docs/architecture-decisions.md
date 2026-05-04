@@ -44,7 +44,7 @@ Current implementation status:
 - The first Exam Core workflow is implemented with admin exam hierarchy and knowledge-tree management, learner primary goal selection, and a dashboard goal read path.
 - The first Practice Loop workflow is implemented for single-choice practice, paper attempts, graded attempts, attempt reports, answer-card submission, wrong-note auto-collection, filters, retry, mastery toggles, and dashboard weak-node summaries.
 - Playwright now covers the first critical browser workflow across admin content creation/import, learner paper submission/reporting, unanswered confirmation, paper hide/restore, wrong-note retry, and role rejection.
-- shadcn/ui installation and real storage adapters are still pending.
+- shadcn/ui installation and S3 storage adapters are still pending.
 - Full i18n routing and locale negotiation are not implemented.
 
 ## Deployment Shape
@@ -56,7 +56,7 @@ Included:
 - Learner web application container.
 - Admin application container.
 - PostgreSQL.
-- Local file storage adapter.
+- Local file storage adapter. Started for material uploads under `LOCAL_STORAGE_DIR`.
 - Optional S3-compatible storage adapter.
 
 Not included as MVP targets:
@@ -300,6 +300,7 @@ Implementation note:
 - `/wrong-notes` can synchronously generate or regenerate a plain-text AI analysis for one wrong note and stores it in `WrongNote.aiAnalysis`.
 - `/ai/tasks` lists the user's recent `AiCall` records with model, status, prompt version, duration, token usage, error summary, and retry for failed wrong-note explanations.
 - Admin `/ai` manages OpenAI model presets, default task routing, temperature, max tokens, and enabled state.
+- Material extraction jobs use the same OpenAI-compatible text adapter and write pending `MaterialQuestionCandidate` records before admin confirmation creates private questions.
 
 Each AI task records:
 
@@ -450,6 +451,8 @@ Default storage is local `storage/`. Production can configure S3-compatible stor
 
 Private files are served through authenticated backend routes, not direct public URLs. AI-generated images are private assets by default.
 
+Implementation note: local material upload storage is implemented for TXT, Markdown, and PDF files. TXT/Markdown extraction jobs read UTF-8 text directly; PDF OCR/text extraction is still pending and fails with an explicit processing error.
+
 ## Admin Surface
 
 MVP admin pages:
@@ -474,11 +477,11 @@ The MVP does not include payment or subscriptions.
 Required controls:
 
 - AI call logs.
-- User daily/monthly call limits.
+- User daily/monthly call limits. Started with `OPENEXAM_DAILY_AI_CALL_LIMIT`.
 - Image generation limits.
-- Upload size limits.
-- Admin usage view.
-- Platform-key budget protection.
+- Upload size limits. Started with `OPENEXAM_UPLOAD_MAX_BYTES`.
+- Admin usage view. Started in `/users` and `/ai`.
+- Platform-key budget protection. Started with `OPENEXAM_DAILY_PLATFORM_TOKEN_LIMIT`.
 
 The learner UI shows usage and limits, not exact cost. BYOK users are told provider billing belongs to their provider account.
 
