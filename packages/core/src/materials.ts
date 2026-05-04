@@ -492,13 +492,13 @@ function resolveLocalStorageRoot(value: string) {
     return value;
   }
 
-  const cwd = process.cwd();
+  const cwd = /*turbopackIgnore: true*/ process.cwd();
 
   if (path.basename(path.dirname(cwd)) === "apps") {
-    return path.resolve(cwd, "../..", value);
+    return path.resolve(/*turbopackIgnore: true*/ cwd, "../..", value);
   }
 
-  return path.resolve(cwd, value);
+  return path.resolve(/*turbopackIgnore: true*/ cwd, value);
 }
 
 function safeFileName(value: string) {

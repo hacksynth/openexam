@@ -1,4 +1,4 @@
-import { expect, test, type Browser, type Page } from "@playwright/test";
+import { expect, test, type Browser, type Locator, type Page } from "@playwright/test";
 import { PrismaClient, UserRole } from "@prisma/client";
 import { hashPassword } from "@openexam/core/password";
 
@@ -152,12 +152,12 @@ async function createQuestion(page: Page) {
   await form.locator('input[name="optionB"]').fill("事务可以被多个用户同时修改。");
   await form.locator('input[name="optionC"]').fill("事务提交后可以任意回滚。");
   await form.locator('input[name="optionD"]').fill("事务只保证查询速度。");
-  await form.locator('select[name="answer"]').selectOption("A");
+  await choosePixelSelect(form, "answer", "A");
   await form.locator('input[name="difficulty"]').fill("2");
-  await form.locator('select[name="visibility"]').selectOption("public");
-  await form.locator('select[name="reviewStatus"]').selectOption("approved");
-  await form.locator('select[name="sourceType"]').selectOption("original");
-  await form.locator('select[name="knowledgeNodeId"]').selectOption(fixtureIds.knowledgeNodeId);
+  await choosePixelSelect(form, "visibility", "public");
+  await choosePixelSelect(form, "reviewStatus", "approved");
+  await choosePixelSelect(form, "sourceType", "original");
+  await choosePixelSelect(form, "knowledgeNodeId", fixtureIds.knowledgeNodeId);
   await form.locator('textarea[name="explanation"]').fill("原子性要求事务作为不可分割的工作单元执行。");
   await form.getByRole("button", { name: "新增题目" }).click();
   await expect(page.getByText("题目已创建。")).toBeVisible();
@@ -196,9 +196,9 @@ async function createPaper(page: Page) {
 
   await form.locator('input[name="title"]').fill(paperTitle);
   await form.locator('input[name="slug"]').fill(paperSlug);
-  await form.locator('select[name="paperType"]').selectOption("sample");
-  await form.locator('select[name="visibility"]').selectOption("public");
-  await form.locator('select[name="subjectId"]').selectOption(fixtureIds.subjectId);
+  await choosePixelSelect(form, "paperType", "sample");
+  await choosePixelSelect(form, "visibility", "public");
+  await choosePixelSelect(form, "subjectId", fixtureIds.subjectId);
 
   const questionRow = form.locator("section").filter({ hasText: questionStem }).last();
   await questionRow.getByRole("checkbox").check();
@@ -231,10 +231,10 @@ async function loginLearner(page: Page) {
 
 async function saveGoal(page: Page) {
   await page.goto(`${webUrl}/goals`);
-  await page.locator('select[name="programId"]').selectOption(fixtureIds.programId);
-  await page.locator('select[name="trackId"]').selectOption(fixtureIds.trackId);
-  await page.locator('select[name="cycleId"]').selectOption(fixtureIds.cycleId);
-  await page.locator('select[name="subjectId"]').selectOption(fixtureIds.subjectId);
+  await choosePixelSelect(page, "programId", fixtureIds.programId);
+  await choosePixelSelect(page, "trackId", fixtureIds.trackId);
+  await choosePixelSelect(page, "cycleId", fixtureIds.cycleId);
+  await choosePixelSelect(page, "subjectId", fixtureIds.subjectId);
   await page.locator('input[name="dailyMinutes"]').fill("45");
   await page.getByRole("button", { name: "保存主目标" }).click();
   await expect(page.getByText("考试目标已保存。")).toBeVisible();
@@ -315,7 +315,7 @@ async function uploadMaterial(page: Page) {
   await page.goto(`${webUrl}/materials`);
   await page.locator('input[name="title"]').fill(materialTitle);
   await page.locator('input[name="sourceLicense"]').fill("E2E 原创");
-  await page.locator('select[name="subjectId"]').selectOption(fixtureIds.subjectId);
+  await choosePixelSelect(page, "subjectId", fixtureIds.subjectId);
   await page.locator('input[name="file"]').setInputFiles({
     name: "e2e-transaction.md",
     mimeType: "text/markdown",
@@ -351,7 +351,7 @@ async function configureAdminAiPreset(page: Page) {
 
   await form.locator('input[name="model"]').fill(aiPresetModel);
   await form.locator('input[name="label"]').fill("E2E OpenAI Mock");
-  await form.locator('select[name="defaultForTask"]').selectOption("explain_question");
+  await choosePixelSelect(form, "defaultForTask", "explain_question");
   await form.locator('input[name="temperature"]').fill("0.2");
   await form.locator('input[name="maxTokens"]').fill("640");
   await form.getByRole("button", { name: "新增预设" }).click();
@@ -387,6 +387,21 @@ async function hideAndRestorePaper(adminPage: Page, webPage: Page) {
 
 function paperAdminCard(page: Page) {
   return page.locator(`section:has(h2:has-text("${paperTitle}"))`).first();
+}
+
+async function choosePixelSelect(scope: Page | Locator, name: string, value: string) {
+  const root = scope.locator(`.pixel-select:has(input[name="${name}"])`).first();
+  const input = root.locator(`input[name="${name}"]`);
+
+  await root.locator(".pixel-select-trigger").click();
+  await expect(root.getByRole("listbox")).toBeVisible();
+  await expect(root.getByRole("option").first()).toBeVisible();
+  await root.locator(`.pixel-select-option[data-value="${escapeCssAttribute(value)}"]`).click();
+  await expect(input).toHaveValue(value);
+}
+
+function escapeCssAttribute(value: string) {
+  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
 
 async function seedExamHierarchy() {

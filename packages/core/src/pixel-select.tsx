@@ -36,6 +36,8 @@ type OptionProps = {
 export function PixelSelect({ children, className = "", defaultValue, name, required = false }: PixelSelectProps) {
   const id = useId();
   const rootRef = useRef<HTMLDivElement>(null);
+  const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const typeaheadRef = useRef<{ query: string; timeout: ReturnType<typeof setTimeout> | null }>({ query: "", timeout: null });
   const options = useMemo(() => getOptions(children), [children]);
   const initialValue = defaultValue ?? options.find((option) => !option.disabled)?.value ?? "";
   const [open, setOpen] = useState(false);
@@ -61,6 +63,36 @@ export function PixelSelect({ children, className = "", defaultValue, name, requ
     return () => document.removeEventListener("pointerdown", handlePointerDown);
   }, [open]);
 
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    optionRefs.current[activeIndex]?.scrollIntoView({ block: "nearest" });
+  }, [activeIndex, open]);
+
+  useEffect(() => {
+    const existingOption = options.find((option) => option.value === value);
+
+    if (existingOption && !existingOption.disabled) {
+      return;
+    }
+
+    const fallbackValue = defaultValue ?? options.find((option) => !option.disabled)?.value ?? "";
+    const fallbackIndex = options.findIndex((option) => option.value === fallbackValue);
+
+    setValue(fallbackValue);
+    setActiveIndex(Math.max(0, fallbackIndex));
+  }, [defaultValue, options, value]);
+
+  useEffect(() => {
+    return () => {
+      if (typeaheadRef.current.timeout) {
+        clearTimeout(typeaheadRef.current.timeout);
+      }
+    };
+  }, []);
+
   function selectOption(option: PixelSelectOption, index: number) {
     if (option.disabled) {
       return;
@@ -85,6 +117,26 @@ export function PixelSelect({ children, className = "", defaultValue, name, requ
         setActiveIndex(nextIndex);
         return;
       }
+    }
+  }
+
+  function searchOptions(key: string) {
+    if (typeaheadRef.current.timeout) {
+      clearTimeout(typeaheadRef.current.timeout);
+    }
+
+    const query = `${typeaheadRef.current.query}${key.toLocaleLowerCase()}`;
+    typeaheadRef.current.query = query;
+    typeaheadRef.current.timeout = setTimeout(() => {
+      typeaheadRef.current.query = "";
+      typeaheadRef.current.timeout = null;
+    }, 700);
+
+    const matchIndex = findMatchingOption(options, query, activeIndex);
+
+    if (matchIndex >= 0) {
+      setOpen(true);
+      setActiveIndex(matchIndex);
     }
   }
 
@@ -131,6 +183,12 @@ export function PixelSelect({ children, className = "", defaultValue, name, requ
 
     if (event.key === "Escape") {
       setOpen(false);
+      return;
+    }
+
+    if (event.key.length === 1 && !event.altKey && !event.ctrlKey && !event.metaKey) {
+      event.preventDefault();
+      searchOptions(event.key);
     }
   }
 
@@ -159,10 +217,14 @@ export function PixelSelect({ children, className = "", defaultValue, name, requ
               className="pixel-select-option"
               data-active={index === activeIndex || undefined}
               data-disabled={option.disabled || undefined}
+              data-value={option.value}
               id={`${id}-option-${index}`}
               key={`${option.value}-${index}`}
               onClick={() => selectOption(option, index)}
               onMouseEnter={() => setActiveIndex(index)}
+              ref={(element) => {
+                optionRefs.current[index] = element;
+              }}
               role="option"
               tabIndex={-1}
               type="button"
@@ -206,6 +268,29 @@ function getLabel(node: ReactNode): string {
 function findLastEnabledIndex(options: PixelSelectOption[]) {
   for (let index = options.length - 1; index >= 0; index -= 1) {
     if (!options[index]?.disabled) {
+      return index;
+    }
+  }
+
+  return -1;
+}
+
+function findMatchingOption(options: PixelSelectOption[], query: string, activeIndex: number) {
+  if (!query) {
+    return -1;
+  }
+
+  const normalizedQuery = query.toLocaleLowerCase();
+
+  for (let offset = 1; offset <= options.length; offset += 1) {
+    const index = (activeIndex + offset) % options.length;
+    const option = options[index];
+
+    if (!option || option.disabled) {
+      continue;
+    }
+
+    if (option.label.toLocaleLowerCase().startsWith(normalizedQuery)) {
       return index;
     }
   }
