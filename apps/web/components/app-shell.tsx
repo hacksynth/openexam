@@ -1,6 +1,8 @@
 import Link from "next/link";
 import type { Route } from "next";
 import { learnerRoutes, sectionLabels, type AppSection } from "@openexam/core/routes";
+import { requireWebSession } from "@/lib/auth";
+import { logoutAction } from "@/app/logout/actions";
 
 type AppShellProps = {
   section: AppSection;
@@ -9,7 +11,9 @@ type AppShellProps = {
   children: React.ReactNode;
 };
 
-export function AppShell({ section, title, eyebrow, children }: AppShellProps) {
+export async function AppShell({ section, title, eyebrow, children }: AppShellProps) {
+  const session = await requireWebSession();
+
   return (
     <main className="mx-auto grid min-h-screen w-full max-w-7xl gap-6 px-4 py-5 md:grid-cols-[240px_1fr] md:px-6">
       <aside className="pixel-panel h-fit p-4">
@@ -28,6 +32,12 @@ export function AppShell({ section, title, eyebrow, children }: AppShellProps) {
             </Link>
           ))}
         </nav>
+        <form action={logoutAction} className="mt-5 grid gap-3 border-t-3 border-black pt-4">
+          <p className="text-xs font-bold text-[var(--muted)]">{session.user.email}</p>
+          <button className="pixel-button w-full px-3 py-2 text-sm" type="submit">
+            退出登录
+          </button>
+        </form>
       </aside>
 
       <section className="grid content-start gap-5">

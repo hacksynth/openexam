@@ -5,8 +5,10 @@
   "type": "module",
   "exports": {
     "./dashboard-data": "./src/dashboard-data.ts",
+    "./auth": "./src/auth.ts",
     "./env": "./src/env.ts",
     "./grading": "./src/grading.ts",
+    "./password": "./src/password.ts",
     "./prisma": "./src/prisma.ts",
     "./question-governance": "./src/question-governance.ts",
     "./routes": "./src/routes.ts",

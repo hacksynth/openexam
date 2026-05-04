@@ -40,7 +40,8 @@ Current implementation status:
 - The foundation web and admin apps are scaffolded with Next.js App Router, TypeScript strict mode, Tailwind CSS, Prisma, PostgreSQL configuration, and Vitest.
 - `package.json` exposes stable scripts for development, build, TypeScript checks, tests, Prisma validation/generation, migrations, and seeding.
 - `docker-compose.yml` defines separate `web`, `admin`, and `postgres` services.
-- Auth/session implementation, shadcn/ui installation, Playwright specs, and real storage adapters are still pending.
+- Database-backed auth/session implementation is started.
+- shadcn/ui installation, Playwright specs, and real storage adapters are still pending.
 - Full i18n routing and locale negotiation are not implemented.
 
 ## Deployment Shape
@@ -248,10 +249,19 @@ Rules:
 The MVP supports:
 
 - Email/password registration and login.
-- Session-based authentication.
+- Database-backed session authentication.
 - Roles: `user`, `admin`.
 
 No complex RBAC is included in the MVP.
+
+Implementation rules:
+
+- Passwords are hashed with Node `crypto.scrypt`; plaintext passwords are never stored.
+- Session cookies store only random tokens; the database stores token hashes.
+- Learner and admin apps use separate cookies: `openexam_web_session` and `openexam_admin_session`.
+- The learner app allows registration and login.
+- The admin app allows login only; admin users are created through seed/bootstrap configuration.
+- The first version does not include email verification or password reset.
 
 ## AI Provider Architecture
 

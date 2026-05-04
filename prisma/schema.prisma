@@ -12,6 +12,11 @@ enum UserRole {
   admin
 }
 
+enum SessionApp {
+  web
+  admin
+}
+
 enum QuestionKind {
   single_choice
   multiple_choice
@@ -103,7 +108,22 @@ model User {
   aiCalls        AiCall[]
   jobs           Job[]
   providerKeys   UserProviderKey[]
+  sessions       Session[]
   auditLogs      AuditLog[]        @relation("AuditActor")
+}
+
+model Session {
+  id         String     @id @default(cuid())
+  tokenHash  String     @unique
+  app        SessionApp
+  userId     String
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt  DateTime
+  lastSeenAt DateTime?
+  createdAt  DateTime   @default(now())
+
+  @@index([userId, app])
+  @@index([expiresAt])
 }
 
 model ExamProgram {

@@ -9,6 +9,8 @@ services:
       NEXT_PUBLIC_ADMIN_URL: "http://127.0.0.1:3001"
       STORAGE_DRIVER: "local"
       LOCAL_STORAGE_DIR: "./storage"
+      SESSION_SECRET: "${SESSION_SECRET:-openexam-local-session-secret}"
+      SESSION_DAYS: "${SESSION_DAYS:-14}"
     ports:
       - "3000:3000"
     depends_on:
@@ -25,6 +27,8 @@ services:
       NEXT_PUBLIC_ADMIN_URL: "http://127.0.0.1:3001"
       STORAGE_DRIVER: "local"
       LOCAL_STORAGE_DIR: "./storage"
+      SESSION_SECRET: "${SESSION_SECRET:-openexam-local-session-secret}"
+      SESSION_DAYS: "${SESSION_DAYS:-14}"
     ports:
       - "3001:3001"
     depends_on:

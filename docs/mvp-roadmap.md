@@ -29,7 +29,7 @@ Deliverables:
 - Tailwind CSS base styling. Completed.
 - shadcn/ui base components. Pending.
 - Prisma with PostgreSQL schema and local compose configuration. Completed.
-- Auth and session layer. Pending.
+- Auth and session layer. Started with email/password and database sessions.
 - `user` and `admin` roles in schema. Completed.
 - Base layout for learner and admin routes in separate apps. Completed.
 - Local asset storage adapter. Pending.
@@ -38,10 +38,10 @@ Deliverables:
 
 Acceptance:
 
-- A user can register, sign in, and reach `/dashboard`. Pending auth.
-- An admin can reach the admin app root `/` on the admin service. Route shell completed; authorization pending.
+- A user can register, sign in, and reach `/dashboard`. Implemented at application level; database migration validation pending.
+- An admin can reach the admin app root `/` on the admin service. Implemented with seeded admin credentials; database migration validation pending.
 - PostgreSQL migrations run cleanly. Pending live database validation.
-- Private routes reject anonymous users. Pending auth.
+- Private routes reject anonymous users. Implemented at application level.
 
 ## 2. Exam Core
 

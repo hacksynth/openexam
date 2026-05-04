@@ -21,7 +21,7 @@ The first product version targets Simplified Chinese (`zh-CN`) UI copy by defaul
 - Next.js App Router and TypeScript.
 - Prisma with PostgreSQL.
 - Tailwind CSS and shadcn/ui.
-- Auth.js or an equivalent session system.
+- Email/password auth with database-backed sessions.
 - Vitest for unit/API tests.
 - Playwright for critical browser workflows.
 
@@ -52,6 +52,8 @@ npx prisma migrate dev
 ```
 
 Copy `.env.example` to `.env` and update `DATABASE_URL` before running migrations or seed data.
+
+Set `ADMIN_EMAIL` and `ADMIN_PASSWORD` before seeding if you want to bootstrap an admin login.
 
 For local PostgreSQL:
 

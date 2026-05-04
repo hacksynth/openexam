@@ -42,7 +42,8 @@ Current implementation status:
 
 - The repository now has separate runnable learner and admin foundation apps with documented route placeholders, health APIs, shared core helpers, and initial domain tests.
 - The app does not yet complete the MVP learning loop.
-- Authentication, real practice sessions, AI provider calls, material uploads, image generation, and admin CRUD remain future implementation work.
+- Email/password authentication and route protection are started.
+- Real practice sessions, AI provider calls, material uploads, image generation, and admin CRUD remain future implementation work.
 
 ## Exam Coverage
 

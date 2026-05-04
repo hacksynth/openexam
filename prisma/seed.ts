@@ -3,12 +3,16 @@ import {
   QuestionKind,
   ReviewStatus,
   SourceType,
+  UserRole,
   Visibility
 } from "@prisma/client";
+import { hashPassword } from "@openexam/core/password";
 
 const prisma = new PrismaClient();
 
 async function main() {
+  await seedAdminUser();
+
   const program = await prisma.examProgram.upsert({
     where: { slug: "ruankao" },
     update: {},
@@ -144,6 +148,39 @@ async function main() {
           score: 1
         }
       }
+    }
+  });
+}
+
+async function seedAdminUser() {
+  const email = process.env.ADMIN_EMAIL?.trim().toLowerCase();
+  const password = process.env.ADMIN_PASSWORD;
+  const name = process.env.ADMIN_NAME?.trim() || "管理员";
+
+  if (!email && !password) {
+    return;
+  }
+
+  if (!email || !password) {
+    throw new Error("ADMIN_EMAIL and ADMIN_PASSWORD must be provided together.");
+  }
+
+  if (password.length < 8) {
+    throw new Error("ADMIN_PASSWORD must be at least 8 characters.");
+  }
+
+  await prisma.user.upsert({
+    where: { email },
+    update: {
+      name,
+      role: UserRole.admin,
+      passwordHash: await hashPassword(password)
+    },
+    create: {
+      email,
+      name,
+      role: UserRole.admin,
+      passwordHash: await hashPassword(password)
     }
   });
 }
