@@ -1,0 +1,446 @@
+# OpenExam Architecture Decisions
+
+Last updated: 2026-05-05
+
+This document records confirmed architecture decisions for the OpenExam MVP.
+
+## Product Principle
+
+OpenExam is a new platform designed from first principles for multi-exam AI preparation.
+
+Confirmed approach:
+
+- Build a generalized multi-exam architecture from the start.
+- Keep learner, admin, question-bank, material, AI, and asset boundaries explicit.
+- Treat all imported content as source-governed data with independent rights metadata.
+- Keep implementation choices aligned with OpenExam's own product model instead of inheriting another application's assumptions.
+
+OpenExam code uses AGPL-3.0 unless this license decision is changed before release. Question data, uploaded materials, and user content keep separate licensing and visibility rules.
+
+## Technology Stack
+
+MVP stack:
+
+- Next.js App Router.
+- TypeScript.
+- Prisma.
+- PostgreSQL as the only officially supported production database.
+- Tailwind CSS.
+- shadcn/ui.
+- Auth.js or an equivalent session system.
+- Vitest for unit and API tests.
+- Playwright for critical browser workflow tests.
+
+Admin and learner UI live in the same Next.js application.
+
+## Deployment Shape
+
+The MVP targets self-hosted web deployment.
+
+Included:
+
+- Web application.
+- PostgreSQL.
+- Local file storage adapter.
+- Optional S3-compatible storage adapter.
+
+Not included as MVP targets:
+
+- Tauri desktop app.
+- Full offline PWA.
+- Mobile app.
+
+## Routing
+
+Learner routes:
+
+- `/dashboard`
+- `/goals`
+- `/practice`
+- `/papers`
+- `/attempts`
+- `/wrong-notes`
+- `/knowledge`
+- `/materials`
+- `/plan`
+- `/analysis`
+- `/ai/tasks`
+- `/profile`
+
+Admin routes:
+
+- `/admin`
+- `/admin/exams`
+- `/admin/knowledge`
+- `/admin/questions`
+- `/admin/papers`
+- `/admin/materials`
+- `/admin/ai`
+- `/admin/jobs`
+- `/admin/users`
+- `/admin/audit`
+
+Admin APIs use `/api/admin/...`.
+
+## Core Exam Model
+
+The core model is rooted in exam programs, not question banks.
+
+Canonical hierarchy:
+
+```text
+ExamProgram -> ExamTrack -> ExamCycle -> Subject
+             -> Syllabus -> KnowledgeNode
+             -> Question / Paper -> Attempt
+```
+
+Examples:
+
+- `Ruankao -> Intermediate -> Software Designer -> 2026 H1 -> Basic Knowledge`.
+- `Postgraduate Exam -> Computer Science -> 2026 -> English I`.
+- `Legal Qualification -> Objective Exam -> 2026 -> Civil Law`.
+
+## Question Model
+
+MVP question kinds:
+
+- `single_choice`
+- `multiple_choice`
+- `true_false`
+- `blank`
+- `short_answer`
+- `case_analysis`
+
+Questions are extensible with structured fields:
+
+- `kind`
+- `stem`
+- `payload`
+- `answerKey`
+- `rubric`
+- `assets`
+- `difficulty`
+- `source`
+- `visibility`
+- `reviewStatus`
+
+`payload`, `answerKey`, and `rubric` should use JSONB and schema validation.
+
+## Papers And Attempts
+
+Questions are independent reusable entities. Papers are ordered references to questions.
+
+Rules:
+
+- `Question` stores the reusable question content.
+- `Paper` stores real papers, mock papers, focused papers, and AI-generated paper sets.
+- `PaperQuestion` stores order, number, section, and score.
+- A question may appear in multiple papers.
+- `Attempt` records user work.
+- Attempt answers bind to the question version used at answer time.
+
+## Question Versioning
+
+Question versioning is lightweight.
+
+Rules:
+
+- `Question` stores the current version.
+- Meaning-changing edits create a `QuestionVersion` snapshot.
+- `AttemptAnswer` references `questionVersionId`.
+- Version snapshots include stem, payload, answer key, rubric, explanation, knowledge bindings, and source info.
+- Answer, stem, option, and rubric changes must create versions.
+- Minor metadata edits may avoid version bumps.
+- Deletion is soft deletion.
+
+## Knowledge Nodes
+
+Questions can bind to multiple knowledge nodes.
+
+Rules:
+
+- Use a many-to-many `QuestionKnowledgeNode` relation.
+- Each binding may include a `weight`.
+- Each practiceable question should have at least one main knowledge node.
+- Imported unknown questions may start in an uncategorized node.
+- Knowledge trees belong to syllabi and are isolated by syllabus.
+- AI may suggest classifications, but public-bank classification requires review.
+
+## Source, Review, And Visibility
+
+Question governance uses three axes.
+
+`visibility`:
+
+- `private`
+- `unlisted`
+- `public`
+
+`sourceType`:
+
+- `original`
+- `authorized`
+- `public_domain_or_open`
+- `user_uploaded`
+- `ai_generated`
+- `unknown`
+
+`reviewStatus`:
+
+- `draft`
+- `pending_review`
+- `approved`
+- `rejected`
+- `needs_changes`
+- `takedown`
+
+Constraints:
+
+- `public` requires `approved`.
+- `public` requires source type `original`, `authorized`, or `public_domain_or_open`.
+- `unknown` can never be public.
+- `ai_generated` is private by default and cannot become public without manual source clarification.
+- Public visibility changes write audit logs.
+- `takedown` immediately removes public availability.
+
+## User Content And Privacy
+
+Default privacy is conservative.
+
+Rules:
+
+- Uploaded materials, private questions, wrong notes, AI chats, plans, and AI outputs are private by default.
+- User content is not automatically converted to public question-bank content.
+- User content is not used for model training by default.
+- AI requests must clearly indicate that content is sent to the selected provider.
+- Users can delete API keys, uploaded materials, and AI history.
+- Logs must not contain full API keys or unnecessary sensitive content.
+- AI call records keep provider, model, task type, token estimate, usage metadata, and configurable content retention.
+
+## Authentication And Authorization
+
+The MVP supports:
+
+- Email/password registration and login.
+- Session-based authentication.
+- Roles: `user`, `admin`.
+
+No complex RBAC is included in the MVP.
+
+## AI Provider Architecture
+
+Text providers:
+
+- OpenAI.
+- Claude.
+- Gemini.
+
+Image providers:
+
+- OpenAI Images first.
+- Other OpenAI-compatible image endpoints later.
+
+Provider keys:
+
+- User BYOK is primary.
+- Platform keys are optional fallback or demo configuration.
+- All AI calls go through the backend.
+- User keys must be encrypted at rest and deletable.
+
+Each AI task records:
+
+- Provider.
+- Model.
+- Task type.
+- Prompt version.
+- Input context source.
+- Token estimate or image count.
+- Status and error summary.
+
+## AI Model Presets And Routing
+
+The system has admin-managed provider presets and user advanced overrides.
+
+Model capability tags:
+
+- `text`
+- `vision`
+- `long_context`
+- `json`
+- `reasoning`
+- `image_generation`
+
+Task types:
+
+- `explain_question`
+- `grade_subjective`
+- `generate_plan`
+- `extract_questions`
+- `diagnose_learning`
+- `generate_wrong_note_image_prompt`
+- `generate_image`
+- `chat_with_context`
+
+Routing rules:
+
+- Each task type has a default provider and model.
+- BYOK users can override within capability constraints.
+- Vision tasks require vision-capable models.
+- Image tasks require image providers.
+- No multi-model voting in the MVP.
+- No silent cross-provider fallback unless explicitly configured.
+
+## Prompt Management
+
+Core prompts are code-versioned, not freely editable from the admin UI.
+
+Rules:
+
+- Store prompt templates in code.
+- Assign each prompt a `promptVersion`.
+- Save `promptVersion` on AI call records.
+- Admins may configure models, temperature, token limits, task switches, limits, and bounded extra instructions.
+- Admin extra instructions require audit logs.
+
+## AI Output Validation
+
+Structured AI outputs must be schema-validated before they enter the database or affect user records.
+
+Schema validation is required for:
+
+- Question extraction.
+- Study-plan JSON.
+- Subjective grading.
+- Knowledge classification.
+- Diagnosis key metric references.
+- Image prompt metadata.
+
+Plain text is acceptable for:
+
+- Single-question explanation.
+- Chat replies.
+- Knowledge-point explanation.
+- Wrong-note cause explanation.
+
+Use Zod or an equivalent schema library. Failed parsing may retry once. Persistent failure becomes a failed job with an error summary.
+
+## Jobs And Async Work
+
+Short AI tasks may be synchronous.
+
+Synchronous examples:
+
+- Single-question explanation.
+- One chat reply.
+- Short knowledge explanation.
+
+Long tasks use a database-backed job queue in the MVP.
+
+Async examples:
+
+- Batch wrong-note explanations.
+- AI image generation.
+- Material OCR and question extraction.
+- Study-plan generation.
+- Bulk import.
+- AI knowledge classification.
+- Deep mock-exam diagnosis.
+
+The initial job table should support:
+
+- `type`
+- `status`
+- `priority`
+- `userId`
+- `payload`
+- `result`
+- `error`
+- `progress`
+- `runAt`
+- `startedAt`
+- `finishedAt`
+
+Redis or BullMQ can be added later.
+
+## Asset Storage
+
+All files use a unified asset model.
+
+Asset examples:
+
+- Uploaded materials.
+- Question images.
+- OCR intermediate outputs.
+- AI-generated review cards.
+- AI-generated diagrams.
+
+Asset fields include:
+
+- Owner.
+- Visibility.
+- MIME type.
+- Size.
+- SHA-256.
+- Storage key.
+- Source.
+- Created time.
+
+Default storage is local `storage/`. Production can configure S3-compatible storage.
+
+Private files are served through authenticated backend routes, not direct public URLs. AI-generated images are private assets by default.
+
+## Admin Surface
+
+MVP admin pages:
+
+- Overview.
+- Exam management.
+- Knowledge management.
+- Question management.
+- Paper management.
+- Material management.
+- AI settings.
+- Job queue.
+- User management.
+- Audit logs.
+
+The audit log may start as a simple append-only event table.
+
+## Usage Limits And Cost Protection
+
+The MVP does not include payment or subscriptions.
+
+Required controls:
+
+- AI call logs.
+- User daily/monthly call limits.
+- Image generation limits.
+- Upload size limits.
+- Admin usage view.
+- Platform-key budget protection.
+
+The learner UI shows usage and limits, not exact cost. BYOK users are told provider billing belongs to their provider account.
+
+## Locale
+
+The MVP is Simplified Chinese first.
+
+Rules:
+
+- UI language: `zh-CN`.
+- Prompt language: Chinese by default.
+- Data model may reserve `locale`.
+- Content can contain any language, but complete UI i18n is not part of the MVP.
+
+## License
+
+Code license:
+
+- AGPL-3.0.
+
+Separate content licensing:
+
+- Documentation may use CC BY or CC BY-SA.
+- Original sample questions need explicit open license metadata.
+- Authorized question banks follow their own license and visibility rules.
+- User-uploaded content remains user/private content unless explicitly changed.
