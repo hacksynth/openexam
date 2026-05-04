@@ -12,6 +12,14 @@ RUN --mount=type=cache,target=/root/.npm npm ci --prefer-offline --no-audit --fu
 FROM node:24-alpine AS builder
 
 WORKDIR /app
+ENV DATABASE_URL="postgresql://openexam:openexam@localhost:5432/openexam?schema=public"
+ENV NEXT_PUBLIC_WEB_URL="http://127.0.0.1:3000"
+ENV NEXT_PUBLIC_ADMIN_URL="http://127.0.0.1:3001"
+ENV STORAGE_DRIVER="local"
+ENV LOCAL_STORAGE_DIR="./storage"
+ENV SESSION_SECRET="openexam-local-session-secret"
+ENV SESSION_DAYS="14"
+ENV AI_KEY_ENCRYPTION_SECRET="openexam-local-ai-key-encryption-secret"
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npm run prisma:generate
@@ -22,6 +30,7 @@ FROM node:24-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3000
+ENV HOSTNAME="0.0.0.0"
 COPY --from=builder /app ./
 EXPOSE 3000
-CMD ["npm", "run", "start:web"]
+CMD ["sh", "-c", "if [ -f apps/web/.next/standalone/apps/web/server.js ]; then exec node apps/web/.next/standalone/apps/web/server.js; fi; exec node apps/web/.next/standalone/server.js"]

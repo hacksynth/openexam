@@ -1,9 +1,5 @@
-import { NextResponse } from "next/server";
+export const dynamic = "force-dynamic";
 
 export function GET() {
-  return NextResponse.json({
-    ok: true,
-    service: "openexam",
-    phase: "foundation"
-  });
+  return Response.json({ status: "ok", app: "web" });
 }
