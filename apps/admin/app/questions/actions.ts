@@ -5,6 +5,8 @@ import { redirect } from "next/navigation";
 import type { Route } from "next";
 import {
   createSingleChoiceQuestion,
+  setSingleChoiceQuestionArchived,
+  updateSingleChoiceQuestionReviewStatus,
   updateSingleChoiceQuestion,
   type SingleChoiceQuestionInput
 } from "@openexam/core/question-admin";
@@ -20,6 +22,21 @@ export async function createSingleChoiceQuestionAction(formData: FormData) {
 export async function updateSingleChoiceQuestionAction(formData: FormData) {
   await requireAdminSession();
   finish(await updateSingleChoiceQuestion(value(formData, "id"), readQuestion(formData)), "题目已更新。");
+}
+
+export async function updateSingleChoiceQuestionReviewStatusAction(formData: FormData) {
+  await requireAdminSession();
+  finish(await updateSingleChoiceQuestionReviewStatus(value(formData, "id"), value(formData, "reviewStatus")), "审核状态已更新。");
+}
+
+export async function archiveSingleChoiceQuestionAction(formData: FormData) {
+  await requireAdminSession();
+  finish(await setSingleChoiceQuestionArchived(value(formData, "id"), true), "题目已归档。");
+}
+
+export async function restoreSingleChoiceQuestionAction(formData: FormData) {
+  await requireAdminSession();
+  finish(await setSingleChoiceQuestionArchived(value(formData, "id"), false), "题目已恢复。");
 }
 
 function readQuestion(formData: FormData): SingleChoiceQuestionInput {

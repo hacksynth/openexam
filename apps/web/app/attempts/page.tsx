@@ -12,18 +12,23 @@ const statusLabels: Record<string, string> = {
   abandoned: "已放弃"
 };
 
-export default async function AttemptsPage() {
+type AttemptsPageProps = {
+  searchParams: Promise<{ notice?: string; error?: string }>;
+};
+
+export default async function AttemptsPage({ searchParams }: AttemptsPageProps) {
   const session = await requireWebSession();
-  const attempts = await listAttempts(session.user.id);
+  const [params, attempts] = await Promise.all([searchParams, listAttempts(session.user.id)]);
 
   return (
     <AppShell section="learner" eyebrow="练习闭环" title="作答记录">
       <section className="grid gap-5">
+        <Feedback error={params.error} notice={params.notice} />
         <section className="pixel-panel grid gap-4 p-5">
           <div>
             <p className="text-xs font-bold uppercase text-[var(--muted)]">Attempts</p>
             <h2 className="mt-2 text-2xl font-black">最近 {attempts.length} 次作答</h2>
-            <p className="mt-1 font-bold text-[var(--muted)]">这里记录练习提交、得分、答案、解析和关联知识点。</p>
+            <p className="mt-1 font-bold text-[var(--muted)]">这里记录练习和试卷提交、得分、答案、解析和关联知识点。</p>
           </div>
           <div className="flex flex-wrap gap-3">
             <Link href={"/practice" as Route} className="pixel-button px-4 py-2">
@@ -31,6 +36,9 @@ export default async function AttemptsPage() {
             </Link>
             <Link href={"/wrong-notes" as Route} className="pixel-button bg-white px-4 py-2">
               查看错题本
+            </Link>
+            <Link href={"/papers" as Route} className="pixel-button bg-white px-4 py-2">
+              查看试卷
             </Link>
           </div>
         </section>
@@ -53,13 +61,15 @@ export default async function AttemptsPage() {
                   <div className="min-w-0">
                     <div className="mb-3 flex flex-wrap gap-2">
                       <span className="status-chip px-2 py-1">{statusLabels[attempt.status] ?? attempt.status}</span>
+                      <span className="status-chip px-2 py-1">{attempt.kind === "paper" ? "试卷" : "练习"}</span>
                       <span className="status-chip px-2 py-1">得分 {attempt.totalScore} / {attempt.maxScore}</span>
                       <span className="status-chip px-2 py-1">{formatDateTime(attempt.submittedAt ?? attempt.startedAt)}</span>
                     </div>
-                    <h2 className="break-words text-xl font-black leading-8">{attempt.goalPath}</h2>
+                    <h2 className="break-words text-xl font-black leading-8">{attempt.paperTitle ?? attempt.goalPath}</h2>
+                    {attempt.paperTitle ? <p className="mt-1 break-words text-sm font-bold text-[var(--muted)]">{attempt.goalPath}</p> : null}
                   </div>
-                  <Link href={"/practice" as Route} className="pixel-button h-fit whitespace-nowrap px-4 py-2">
-                    继续练习
+                  <Link href={(attempt.kind === "paper" ? "/papers" : "/practice") as Route} className="pixel-button h-fit whitespace-nowrap px-4 py-2">
+                    {attempt.kind === "paper" ? "继续试卷" : "继续练习"}
                   </Link>
                 </div>
 
@@ -96,6 +106,18 @@ export default async function AttemptsPage() {
         )}
       </section>
     </AppShell>
+  );
+}
+
+function Feedback({ error, notice }: { error?: string; notice?: string }) {
+  if (!error && !notice) {
+    return null;
+  }
+
+  return (
+    <p className={`border-3 border-black p-3 text-sm font-bold ${error ? "bg-red-50 text-red-700" : "bg-[var(--primary)] text-black"}`}>
+      {error || notice}
+    </p>
   );
 }
 

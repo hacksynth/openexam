@@ -116,8 +116,10 @@ The foundation UI implements the first pass of the design direction in `apps/web
 - Light CRT scanline overlay.
 - Dense form layouts for admin CRUD and learner goal selection.
 - Goal-scoped practice cards with stable answer option rows and explicit result feedback.
-- Attempt history cards and wrong-note review cards with status chips, knowledge chips, retry actions, filters, and long-stem wrapping.
-- Admin single-choice editing forms with dense square inputs, select controls, and textarea rows for stems and explanations.
+- Paper list and full-paper answer forms with stable question blocks, score chips, radio rows, and explicit submit actions.
+- Attempt history cards and wrong-note review cards with status chips, paper/practice labels, knowledge chips, retry actions, filters, and long-stem wrapping.
+- Admin single-choice editing forms with dense square inputs, filter controls, review/archive action rows, select controls, and textarea rows for stems and explanations.
+- Admin paper forms with dense ordered question binding rows, square checkboxes, and compact score/order inputs.
 - Truncated account labels in sidebars so long names and emails do not cause horizontal overflow.
 
 Theme switching is not implemented yet. Current colors are CSS custom properties on `:root`; future theme presets should override those tokens without changing layout or density.

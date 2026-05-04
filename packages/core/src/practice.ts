@@ -313,7 +313,8 @@ export async function listAttempts(userId: string) {
           cycle: true,
           subject: true
         }
-      }
+      },
+      paper: true
     },
     take: 50
   });
@@ -325,6 +326,8 @@ export async function listAttempts(userId: string) {
     submittedAt: attempt.submittedAt,
     totalScore: attempt.totalScore ?? 0,
     maxScore: attempt.maxScore ?? 0,
+    kind: attempt.paperId ? "paper" : "practice",
+    paperTitle: attempt.paper?.title ?? null,
     goalPath: attempt.goal ? [attempt.goal.program.name, attempt.goal.track?.name, attempt.goal.cycle?.name, attempt.goal.subject?.name].filter(Boolean).join(" / ") : "未绑定目标",
     answers: attempt.answers.map((answer) => {
       const answerKey = answer.questionVersion?.answerKey ?? answer.question.answerKey;

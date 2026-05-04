@@ -42,8 +42,9 @@ Current implementation status:
 - `docker-compose.yml` defines separate `web`, `admin`, and `postgres` services.
 - Database-backed email/password auth and separate learner/admin session cookies are implemented.
 - The first Exam Core workflow is implemented with admin exam hierarchy and knowledge-tree management, learner primary goal selection, and a dashboard goal read path.
-- The first Practice Loop workflow is implemented for single-choice practice, graded attempts, attempt history, wrong-note auto-collection, filters, retry, mastery toggles, and dashboard weak-node summaries.
-- shadcn/ui installation, Playwright specs, and real storage adapters are still pending.
+- The first Practice Loop workflow is implemented for single-choice practice, paper attempts, graded attempts, attempt history, wrong-note auto-collection, filters, retry, mastery toggles, and dashboard weak-node summaries.
+- Playwright now covers the first critical browser workflow across admin content creation, learner paper submission, wrong-note retry, and role rejection.
+- shadcn/ui installation and real storage adapters are still pending.
 - Full i18n routing and locale negotiation are not implemented.
 
 ## Deployment Shape
@@ -98,8 +99,8 @@ Admin APIs live inside the admin app under `/api/...`. If a reverse proxy mounts
 
 Implementation note:
 
-- `apps/web` includes a route shell for every learner route above; `/goals`, `/dashboard`, `/practice`, `/attempts`, and `/wrong-notes` now use database-backed workflow data.
-- `apps/admin` includes a route shell for every admin route above; `/exams`, `/knowledge`, and `/questions` now contain the first minimal CRUD workflows.
+- `apps/web` includes a route shell for every learner route above; `/goals`, `/dashboard`, `/practice`, `/papers`, `/attempts`, and `/wrong-notes` now use database-backed workflow data.
+- `apps/admin` includes a route shell for every admin route above; `/exams`, `/knowledge`, `/questions`, and `/papers` now contain the first minimal CRUD workflows.
 - Both apps expose `/api/health` for foundation health checks.
 - Admin business APIs are not implemented yet.
 
@@ -121,7 +122,7 @@ Examples:
 - `Postgraduate Exam -> Computer Science -> 2026 -> English I`.
 - `Legal Qualification -> Objective Exam -> 2026 -> Civil Law`.
 
-The first Prisma schema implements this hierarchy with `ExamProgram`, `ExamTrack`, `ExamCycle`, `Subject`, `Syllabus`, `KnowledgeNode`, `Question`, `Paper`, and `Attempt` models. Migrations have been validated against local PostgreSQL. Minimal CRUD exists for the exam hierarchy, knowledge trees, and single-choice questions; paper CRUD is still future work.
+The first Prisma schema implements this hierarchy with `ExamProgram`, `ExamTrack`, `ExamCycle`, `Subject`, `Syllabus`, `KnowledgeNode`, `Question`, `Paper`, and `Attempt` models. Migrations have been validated against local PostgreSQL. Minimal CRUD exists for the exam hierarchy, knowledge trees, single-choice questions, and ordered papers.
 
 ## Question Model
 
@@ -153,7 +154,7 @@ Implementation note:
 
 - Prisma uses JSON columns for `payload`, `answerKey`, and `rubric`.
 - `packages/core/src/question-governance.ts` contains the first tested public-visibility rule helper.
-- `packages/core/src/question-admin.ts` contains the first admin single-choice input validation and persistence helper.
+- `packages/core/src/question-admin.ts` contains the first admin single-choice input validation, filtering, archive, review-status, and persistence helpers.
 - Additional Zod schemas are still needed before accepting imported or AI-generated question payloads.
 
 ## Papers And Attempts
@@ -169,7 +170,7 @@ Rules:
 - `Attempt` records user work.
 - Attempt answers bind to the question version used at answer time.
 
-Implementation note: the current practice workflow creates one graded `Attempt` per submitted single-choice question and stores the selected answer in `AttemptAnswer.userAnswer`.
+Implementation note: the current practice workflow creates one graded `Attempt` per submitted single-choice question. The current paper workflow creates one `Attempt` per submitted public paper with multiple `AttemptAnswer` rows. Both store selected answers in `AttemptAnswer.userAnswer` and incorrect objective answers enter `WrongNote`.
 
 ## Question Versioning
 

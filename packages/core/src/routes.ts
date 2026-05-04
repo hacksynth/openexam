@@ -38,9 +38,9 @@ export const learnerRoutes: RouteItem[] = [
     id: "papers",
     href: "/papers",
     label: "试卷",
-    description: "真题卷、模拟卷和专项练习卷。",
+    description: "当前目标下的公开试卷、整卷作答和提交记录。",
     section: "learner",
-    status: "planned"
+    status: "foundation"
   },
   {
     id: "attempts",
@@ -145,9 +145,9 @@ export const adminRoutes: RouteItem[] = [
     id: "admin-papers",
     href: "/papers",
     label: "试卷",
-    description: "试卷题序、分区、分值、真题卷和模拟卷。",
+    description: "试卷创建、题目绑定、题序、分区、分值和公开状态。",
     section: "admin",
-    status: "planned"
+    status: "foundation"
   },
   {
     id: "admin-materials",

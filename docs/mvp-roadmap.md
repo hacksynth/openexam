@@ -15,7 +15,8 @@ Current progress:
 - Email/password auth, database-backed sessions, route protection, live PostgreSQL migration validation, and Docker image builds are complete for the foundation slice.
 - Exam core schema exists in Prisma, and the first admin CRUD slice now manages exam hierarchy and knowledge trees.
 - Learners can save a primary exam goal and see that goal on the dashboard.
-- The first Practice Loop slice is implemented for goal-scoped single-choice practice, improved question rotation, objective grading, attempt history, wrong-note filters/retry, and dashboard weak-node summaries.
+- The first Practice Loop slice is implemented for goal-scoped single-choice practice, improved question rotation, objective grading, paper attempts, attempt history, wrong-note filters/retry, and dashboard weak-node summaries.
+- Admins can create and govern single-choice questions, filter and archive questions, and create ordered public/private papers.
 - The visible foundation UI uses Simplified Chinese (`zh-CN`) copy.
 
 ## 1. Foundation
@@ -36,7 +37,7 @@ Deliverables:
 - Base layout for learner and admin routes in separate apps. Completed.
 - Local asset storage adapter. Pending.
 - Basic environment configuration. Completed.
-- Test setup with Vitest. Completed.
+- Test setup with Vitest and Playwright. Completed for the current core and browser workflow slice.
 
 Acceptance:
 
@@ -67,7 +68,7 @@ Deliverables:
 - `PaperQuestion`. Schema completed.
 - Source, visibility, and review fields. Schema and rule helper started.
 - Minimal admin CRUD for exams and knowledge trees. Started.
-- Minimal admin CRUD for questions and papers. Started for single-choice questions; papers pending.
+- Minimal admin CRUD for questions and papers. Started for single-choice questions and ordered papers.
 - Original sample data for Ruankao Software Designer. Started with zh-CN seed data.
 - Learner primary exam goal selection. Started.
 
@@ -76,7 +77,7 @@ Acceptance:
 - Admin can create the Ruankao Software Designer hierarchy.
 - Admin can create syllabus and knowledge nodes.
 - Learner can save one primary exam goal and dashboard reads it.
-- Admin can create a paper with ordered questions.
+- Admin can create a paper with ordered questions. Started.
 - A question can bind to multiple weighted knowledge nodes.
 - Public question constraints prevent unknown-source public publishing.
 
@@ -92,8 +93,8 @@ Deliverables:
 - Current primary goal selection. Started.
 - Random practice. Started with goal-scoped public approved single-choice rotation that avoids immediate repeats.
 - Knowledge-node practice. Pending as a direct entry mode; current selector respects goal knowledge scope.
-- Paper practice.
-- Practice session records. Started with one-question graded attempts and a learner history page.
+- Paper practice. Started with public single-choice paper listing, full-paper submission, scoring, and wrong-note ingestion.
+- Practice session records. Started with one-question practice attempts, paper attempts, and a learner history page.
 - Objective answer grading. Started for single-choice questions.
 - Wrong-note auto-collection. Started for incorrect single-choice submissions.
 - Manual favorite/collection.
@@ -103,6 +104,7 @@ Deliverables:
 Acceptance:
 
 - A learner can choose a goal, start practice, answer questions, see grading, and review wrong notes.
+- A learner can open a public paper for the current goal, submit objective answers, and see the paper attempt in history.
 - Wrong answers are recorded with question version references.
 - Basic analysis shows weak knowledge nodes.
 
@@ -253,14 +255,19 @@ Minimum test coverage should include:
 - Material extraction confirmation gating.
 - Study-plan schema validation.
 - Admin import validation.
+- Admin question filters/archive/review actions.
+- Admin paper validation.
+- Browser workflow coverage for auth, goal selection, admin content creation, paper submission, wrong-note retry, and non-admin rejection.
 
-Current tests cover public question visibility constraints, admin single-choice validation, objective grading, single-choice practice helpers, wrong-note summarization, and study-plan schema validation. The remaining priorities are still required before MVP exit.
+Current tests cover public question visibility constraints, admin single-choice validation and filters, admin paper validation, objective grading, single-choice practice helpers, wrong-note summarization, study-plan schema validation, and the first Playwright browser workflow. The remaining priorities are still required before MVP exit.
 
 Browser workflow tests should cover:
 
-- Register/login.
-- Select goal.
-- Practice and wrong-note flow.
+- Register/login. Started.
+- Select goal. Started.
+- Practice and wrong-note flow. Started for paper wrong-note retry.
+- Admin question and paper creation. Started.
+- Non-admin admin access rejection. Started.
 - Configure BYOK and request AI explanation.
 - Upload material and confirm extracted question.
 - Generate plan.

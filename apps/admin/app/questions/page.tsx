@@ -1,7 +1,10 @@
+import Link from "next/link";
+import type { Route } from "next";
 import { AppShell } from "@/components/app-shell";
 import { requireAdminSession } from "@/lib/auth";
 import { listKnowledgeHierarchy } from "@openexam/core/exam-core";
 import {
+  adminQuestionArchiveFilters,
   listAdminQuestions,
   questionReviewStatusOptions,
   questionSourceTypeOptions,
@@ -9,12 +12,25 @@ import {
   singleChoiceAnswerKeys
 } from "@openexam/core/question-admin";
 import {
+  archiveSingleChoiceQuestionAction,
   createSingleChoiceQuestionAction,
+  restoreSingleChoiceQuestionAction,
+  updateSingleChoiceQuestionReviewStatusAction,
   updateSingleChoiceQuestionAction
 } from "./actions";
 
 type QuestionsPageProps = {
-  searchParams: Promise<{ error?: string; notice?: string }>;
+  searchParams: Promise<{
+    error?: string;
+    notice?: string;
+    q?: string;
+    knowledgeNodeId?: string;
+    visibility?: string;
+    sourceType?: string;
+    reviewStatus?: string;
+    difficulty?: string;
+    archived?: string;
+  }>;
 };
 
 const inputClass = "min-w-0 border-3 border-black bg-white px-3 py-2 text-sm font-bold";
@@ -44,10 +60,16 @@ const reviewStatusLabels: Record<string, string> = {
   takedown: "已下架"
 };
 
+const archivedLabels: Record<string, string> = {
+  active: "未归档",
+  archived: "已归档",
+  all: "全部"
+};
+
 export default async function AdminQuestionsPage({ searchParams }: QuestionsPageProps) {
   await requireAdminSession();
   const params = await searchParams;
-  const [subjects, questions] = await Promise.all([listKnowledgeHierarchy(), listAdminQuestions()]);
+  const [subjects, questions] = await Promise.all([listKnowledgeHierarchy(), listAdminQuestions(params)]);
   const knowledgeNodes = subjects.flatMap((subject) =>
     subject.syllabi.flatMap((syllabus) =>
       syllabus.knowledgeNodes.map((node) => ({
@@ -64,6 +86,62 @@ export default async function AdminQuestionsPage({ searchParams }: QuestionsPage
 
         <section className="pixel-panel grid gap-4 p-5">
           <div>
+            <p className="text-xs font-bold uppercase text-[var(--muted)]">Filters</p>
+            <h2 className="mt-1 text-xl font-black">题目筛选</h2>
+          </div>
+          <form className="grid gap-3 lg:grid-cols-[1.2fr_1.6fr_1fr_1fr_1fr_0.8fr_0.9fr_auto_auto]">
+            <TextField label="关键词" name="q" defaultValue={params.q ?? ""} placeholder="题干" />
+            <SelectField label="知识点" name="knowledgeNodeId" defaultValue={params.knowledgeNodeId ?? ""}>
+              <option value="">全部知识点</option>
+              {knowledgeNodes.map((node) => (
+                <option key={node.id} value={node.id}>
+                  {node.label}
+                </option>
+              ))}
+            </SelectField>
+            <SelectField label="可见性" name="visibility" defaultValue={params.visibility ?? ""}>
+              <option value="">全部</option>
+              {questionVisibilityOptions.map((visibility) => (
+                <option key={visibility} value={visibility}>
+                  {visibilityLabels[visibility]}
+                </option>
+              ))}
+            </SelectField>
+            <SelectField label="审核" name="reviewStatus" defaultValue={params.reviewStatus ?? ""}>
+              <option value="">全部</option>
+              {questionReviewStatusOptions.map((status) => (
+                <option key={status} value={status}>
+                  {reviewStatusLabels[status]}
+                </option>
+              ))}
+            </SelectField>
+            <SelectField label="来源" name="sourceType" defaultValue={params.sourceType ?? ""}>
+              <option value="">全部</option>
+              {questionSourceTypeOptions.map((sourceType) => (
+                <option key={sourceType} value={sourceType}>
+                  {sourceTypeLabels[sourceType]}
+                </option>
+              ))}
+            </SelectField>
+            <TextField label="难度" name="difficulty" defaultValue={params.difficulty ?? ""} placeholder="1-5" />
+            <SelectField label="归档" name="archived" defaultValue={params.archived ?? "active"}>
+              {adminQuestionArchiveFilters.map((archived) => (
+                <option key={archived} value={archived}>
+                  {archivedLabels[archived]}
+                </option>
+              ))}
+            </SelectField>
+            <button className="pixel-button self-end px-4 py-2" type="submit">
+              查询
+            </button>
+            <Link href={"/questions" as Route} className="pixel-button self-end bg-white px-4 py-2 text-center">
+              重置
+            </Link>
+          </form>
+        </section>
+
+        <section className="pixel-panel grid gap-4 p-5">
+          <div>
             <p className="text-xs font-bold uppercase text-[var(--muted)]">Single Choice</p>
             <h2 className="mt-1 text-xl font-black">新增单选题</h2>
           </div>
@@ -75,6 +153,10 @@ export default async function AdminQuestionsPage({ searchParams }: QuestionsPage
         </section>
 
         <section className="grid gap-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-2xl font-black">题目列表</h2>
+            <span className="status-chip px-2 py-1">当前 {questions.length} 题</span>
+          </div>
           {questions.length === 0 ? (
             <section className="pixel-panel p-5">
               <h2 className="text-2xl font-black">暂无题目</h2>
@@ -88,11 +170,13 @@ export default async function AdminQuestionsPage({ searchParams }: QuestionsPage
                     <span className="status-chip px-2 py-1">{visibilityLabels[question.visibility]}</span>
                     <span className="status-chip px-2 py-1">{sourceTypeLabels[question.sourceType]}</span>
                     <span className="status-chip px-2 py-1">{reviewStatusLabels[question.reviewStatus]}</span>
+                    {question.archived ? <span className="status-chip bg-[var(--danger)] px-2 py-1 text-white">已归档</span> : null}
                     <span className="status-chip px-2 py-1">V{question.currentVersion}</span>
                   </div>
                   <h2 className="break-words text-xl font-black leading-8">{question.stem}</h2>
                   <p className="mt-1 break-words text-sm font-bold text-[var(--muted)]">{question.knowledgePath}</p>
                 </div>
+                <QuestionActions questionId={question.id} archived={question.archived} />
                 <QuestionForm
                   action={updateSingleChoiceQuestionAction}
                   id={question.id}
@@ -184,6 +268,39 @@ function QuestionForm({
         {submitLabel}
       </button>
     </form>
+  );
+}
+
+function QuestionActions({ questionId, archived }: { questionId: string; archived: boolean }) {
+  return (
+    <div className="flex flex-wrap gap-2 border-2 border-black bg-[var(--surface-subtle)] p-3">
+      {archived ? (
+        <form action={restoreSingleChoiceQuestionAction}>
+          <input name="id" type="hidden" value={questionId} />
+          <button className="pixel-button bg-white px-3 py-2 text-sm" type="submit">
+            恢复题目
+          </button>
+        </form>
+      ) : (
+        <>
+          {questionReviewStatusOptions.map((status) => (
+            <form key={status} action={updateSingleChoiceQuestionReviewStatusAction}>
+              <input name="id" type="hidden" value={questionId} />
+              <input name="reviewStatus" type="hidden" value={status} />
+              <button className="pixel-button bg-white px-3 py-2 text-sm" type="submit">
+                设为{reviewStatusLabels[status]}
+              </button>
+            </form>
+          ))}
+          <form action={archiveSingleChoiceQuestionAction}>
+            <input name="id" type="hidden" value={questionId} />
+            <button className="pixel-button bg-white px-3 py-2 text-sm" type="submit">
+              归档题目
+            </button>
+          </form>
+        </>
+      )}
+    </div>
   );
 }
 

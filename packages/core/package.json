@@ -10,6 +10,8 @@
     "./exam-core": "./src/exam-core.ts",
     "./grading": "./src/grading.ts",
     "./password": "./src/password.ts",
+    "./paper-admin": "./src/paper-admin.ts",
+    "./papers": "./src/papers.ts",
     "./practice": "./src/practice.ts",
     "./prisma": "./src/prisma.ts",
     "./question-admin": "./src/question-admin.ts",

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { validateSingleChoiceQuestionInput } from "@openexam/core/question-admin";
+import { normalizeAdminQuestionFilters, validateSingleChoiceQuestionInput } from "@openexam/core/question-admin";
 
 const validInput = {
   stem: "以下哪项属于对称加密算法？",
@@ -59,6 +59,35 @@ describe("single-choice question admin validation", () => {
     expect(validateSingleChoiceQuestionInput({ ...validInput, difficulty: "8" })).toEqual({
       ok: false,
       error: "难度必须是 1 到 5 的整数，或留空。"
+    });
+  });
+});
+
+describe("admin question filters", () => {
+  it("normalizes supported filters and ignores invalid filter values", () => {
+    expect(
+      normalizeAdminQuestionFilters({
+        q: "  数据库  ",
+        visibility: "public",
+        sourceType: "original",
+        reviewStatus: "approved",
+        difficulty: "3",
+        archived: "all"
+      })
+    ).toEqual({
+      q: "数据库",
+      knowledgeNodeId: null,
+      visibility: "public",
+      sourceType: "original",
+      reviewStatus: "approved",
+      difficulty: 3,
+      archived: "all"
+    });
+
+    expect(normalizeAdminQuestionFilters({ visibility: "bad", difficulty: "9", archived: "bad" })).toMatchObject({
+      visibility: null,
+      difficulty: null,
+      archived: "active"
     });
   });
 });

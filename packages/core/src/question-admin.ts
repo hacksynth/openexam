@@ -21,8 +21,20 @@ export const singleChoiceAnswerKeys = ["A", "B", "C", "D"] as const;
 export const questionVisibilityOptions = ["private", "unlisted", "public"] as const;
 export const questionSourceTypeOptions = ["original", "authorized", "public_domain_or_open", "user_uploaded", "ai_generated", "unknown"] as const;
 export const questionReviewStatusOptions = ["draft", "pending_review", "approved", "rejected", "needs_changes", "takedown"] as const;
+export const adminQuestionArchiveFilters = ["active", "archived", "all"] as const;
 
 export type SingleChoiceAnswerKey = (typeof singleChoiceAnswerKeys)[number];
+export type AdminQuestionArchiveFilter = (typeof adminQuestionArchiveFilters)[number];
+
+export type AdminQuestionFilters = {
+  q?: string | null;
+  knowledgeNodeId?: string | null;
+  visibility?: string | null;
+  sourceType?: string | null;
+  reviewStatus?: string | null;
+  difficulty?: string | number | null;
+  archived?: string | null;
+};
 
 export type SingleChoiceQuestionInput = {
   stem: string;
@@ -91,12 +103,51 @@ const adminQuestionInclude = {
 
 type AdminQuestionRecord = Prisma.QuestionGetPayload<{ include: typeof adminQuestionInclude }>;
 
-export async function listAdminQuestions() {
+export function normalizeAdminQuestionFilters(filters: AdminQuestionFilters = {}) {
+  const difficulty = parseFilterDifficulty(filters.difficulty);
+
+  return {
+    q: optionalText(filters.q),
+    knowledgeNodeId: optionalText(filters.knowledgeNodeId),
+    visibility: parseFilterEnum(filters.visibility, questionVisibilityOptions),
+    sourceType: parseFilterEnum(filters.sourceType, questionSourceTypeOptions),
+    reviewStatus: parseFilterEnum(filters.reviewStatus, questionReviewStatusOptions),
+    difficulty,
+    archived: parseFilterEnum(filters.archived, adminQuestionArchiveFilters) ?? "active"
+  };
+}
+
+export async function listAdminQuestions(filters: AdminQuestionFilters = {}) {
+  const normalized = normalizeAdminQuestionFilters(filters);
+  const where: Prisma.QuestionWhereInput = {
+    kind: QuestionKind.single_choice,
+    ...(normalized.archived === "active" ? { deletedAt: null } : {}),
+    ...(normalized.archived === "archived" ? { deletedAt: { not: null } } : {}),
+    ...(normalized.q
+      ? {
+          stem: {
+            contains: normalized.q,
+            mode: "insensitive"
+          }
+        }
+      : {}),
+    ...(normalized.knowledgeNodeId
+      ? {
+          knowledgeBindings: {
+            some: {
+              knowledgeNodeId: normalized.knowledgeNodeId
+            }
+          }
+        }
+      : {}),
+    ...(normalized.visibility ? { visibility: normalized.visibility as Visibility } : {}),
+    ...(normalized.sourceType ? { sourceType: normalized.sourceType as SourceType } : {}),
+    ...(normalized.reviewStatus ? { reviewStatus: normalized.reviewStatus as ReviewStatus } : {}),
+    ...(typeof normalized.difficulty === "number" ? { difficulty: normalized.difficulty } : {})
+  };
+
   const questions = await prisma.question.findMany({
-    where: {
-      kind: QuestionKind.single_choice,
-      deletedAt: null
-    },
+    where,
     include: adminQuestionInclude,
     orderBy: [{ updatedAt: "desc" }],
     take: 100
@@ -231,6 +282,97 @@ export async function updateSingleChoiceQuestion(id: string, input: SingleChoice
     }
 
     return databaseError(error, "题目更新失败。");
+  }
+}
+
+export async function updateSingleChoiceQuestionReviewStatus(id: string, reviewStatus: string): Promise<ActionResult> {
+  const parsedReviewStatus = parseEnum(reviewStatus, questionReviewStatusOptions, "draft");
+
+  if (!parsedReviewStatus.ok) {
+    return parsedReviewStatus;
+  }
+
+  if (!id.trim()) {
+    return { ok: false, error: "题目不存在。" };
+  }
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      const question = await tx.question.findFirst({
+        where: {
+          id,
+          kind: QuestionKind.single_choice,
+          deletedAt: null
+        },
+        select: {
+          id: true,
+          currentVersion: true,
+          visibility: true,
+          sourceType: true
+        }
+      });
+
+      if (!question) {
+        throw new QuestionAdminError("题目不存在。");
+      }
+
+      const publication = evaluateQuestionPublication({
+        visibility: question.visibility,
+        sourceType: question.sourceType,
+        reviewStatus: parsedReviewStatus.value
+      });
+
+      if (!publication.allowed) {
+        throw new QuestionAdminError(publicationError(publication.reasons));
+      }
+
+      await tx.question.update({
+        where: { id: question.id },
+        data: {
+          reviewStatus: parsedReviewStatus.value as ReviewStatus
+        }
+      });
+
+      await tx.questionVersion.updateMany({
+        where: {
+          questionId: question.id,
+          version: question.currentVersion
+        },
+        data: {
+          reviewStatus: parsedReviewStatus.value as ReviewStatus
+        }
+      });
+    });
+
+    return { ok: true };
+  } catch (error) {
+    if (error instanceof QuestionAdminError) {
+      return { ok: false, error: error.message };
+    }
+
+    return databaseError(error, "题目审核状态更新失败。");
+  }
+}
+
+export async function setSingleChoiceQuestionArchived(id: string, archived: boolean): Promise<ActionResult> {
+  if (!id.trim()) {
+    return { ok: false, error: "题目不存在。" };
+  }
+
+  try {
+    const result = await prisma.question.updateMany({
+      where: {
+        id,
+        kind: QuestionKind.single_choice
+      },
+      data: {
+        deletedAt: archived ? new Date() : null
+      }
+    });
+
+    return result.count > 0 ? { ok: true } : { ok: false, error: "题目不存在。" };
+  } catch (error) {
+    return databaseError(error, archived ? "题目归档失败。" : "题目恢复失败。");
   }
 }
 
@@ -375,6 +517,8 @@ function toAdminQuestion(question: AdminQuestionRecord) {
     reviewStatus: question.reviewStatus,
     currentVersion: question.currentVersion,
     updatedAt: question.updatedAt,
+    archived: Boolean(question.deletedAt),
+    deletedAt: question.deletedAt,
     knowledgeNodeId: primaryBinding?.knowledgeNodeId ?? "",
     knowledgePath: primaryBinding ? formatKnowledgePath(primaryBinding.knowledgeNode) : "未绑定知识点"
   };
@@ -438,6 +582,26 @@ function parseEnum<const T extends readonly string[]>(value: string | null | und
   }
 
   return { ok: true, value: normalized as T[number] } as const;
+}
+
+function parseFilterEnum<const T extends readonly string[]>(value: string | null | undefined, options: T) {
+  const normalized = value?.trim();
+
+  if (!normalized || !options.includes(normalized as T[number])) {
+    return null;
+  }
+
+  return normalized as T[number];
+}
+
+function parseFilterDifficulty(value: string | number | null | undefined) {
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
+
+  const difficulty = typeof value === "number" ? value : Number(value);
+
+  return Number.isInteger(difficulty) && difficulty >= 1 && difficulty <= 5 ? difficulty : null;
 }
 
 function publicationError(reasons: string[]) {
