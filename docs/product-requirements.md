@@ -211,7 +211,7 @@ Supported providers:
 - Claude.
 - Gemini.
 
-The MVP uses bring-your-own-key as the primary model. Platform keys are optional for demos, trials, or administrator-managed usage. All provider calls go through the backend. The current implementation supports OpenAI BYOK first, with `OPENAI_API_KEY` as fallback.
+The MVP uses bring-your-own-key as the primary model. Platform keys are optional for demos, trials, or administrator-managed usage. All provider calls go through the backend. The current implementation supports OpenAI BYOK first, with `OPENAI_API_KEY` as fallback and `OPENAI_BASE_URL` for OpenAI-compatible gateways.
 
 AI features:
 

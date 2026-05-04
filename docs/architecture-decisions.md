@@ -296,7 +296,7 @@ Provider keys:
 Implementation note:
 
 - `/profile` lets learners save/delete an OpenAI BYOK key. Keys are encrypted with AES-256-GCM using `AI_KEY_ENCRYPTION_SECRET`; only a short key hint is displayed.
-- If a learner has no BYOK key, `OPENAI_API_KEY` may be used as a platform fallback.
+- If a learner has no BYOK key, `OPENAI_API_KEY` may be used as a platform fallback. `OPENAI_BASE_URL` can point OpenAI calls at an OpenAI-compatible gateway.
 - `/wrong-notes` can synchronously generate a plain-text AI analysis for one wrong note and stores it in `WrongNote.aiAnalysis`.
 - `/ai/tasks` lists the user's recent `AiCall` records.
 

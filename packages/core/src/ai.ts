@@ -12,6 +12,7 @@ type AiDatabase = typeof prisma;
 
 export type AiTextRequest = {
   apiKey: string;
+  baseURL?: string | null;
   model: string;
   instructions: string;
   input: string;
@@ -30,6 +31,7 @@ export type OpenAiCredentialResult =
       ok: true;
       data: {
         apiKey: string;
+        baseURL: string | null;
         source: "byok" | "platform";
       };
     }
@@ -229,6 +231,7 @@ export async function resolveOpenAiCredential(userId: string, db: AiDatabase = p
       ok: true,
       data: {
         apiKey: decrypted.data.plaintext,
+        baseURL: normalizeOpenAiBaseUrl(env.OPENAI_BASE_URL),
         source: "byok" as const
       }
     };
@@ -241,6 +244,7 @@ export async function resolveOpenAiCredential(userId: string, db: AiDatabase = p
       ok: true,
       data: {
         apiKey: platformKey,
+        baseURL: normalizeOpenAiBaseUrl(env.OPENAI_BASE_URL),
         source: "platform" as const
       }
     };
@@ -321,6 +325,7 @@ export async function generateWrongNoteAiAnalysis(
 
       result = await (options.generateText ?? generateOpenAiText)({
         apiKey: credential?.ok ? credential.data.apiKey : "test-key",
+        baseURL: credential?.ok ? credential.data.baseURL : normalizeOpenAiBaseUrl(env.OPENAI_BASE_URL),
         model: preset.model,
         instructions: prompt.instructions,
         input: prompt.input,
@@ -388,7 +393,8 @@ export function buildWrongNotePrompt(context: WrongNoteAiContext) {
 
 export async function generateOpenAiText(request: AiTextRequest): Promise<AiTextResponse> {
   const client = new OpenAI({
-    apiKey: request.apiKey
+    apiKey: request.apiKey,
+    baseURL: request.baseURL || undefined
   });
   const response = await client.responses.create({
     model: request.model,
@@ -496,6 +502,12 @@ function readFakeAiResponse(env: NodeJS.ProcessEnv) {
   }
 
   return env.OPENEXAM_FAKE_AI_RESPONSE?.trim() || null;
+}
+
+function normalizeOpenAiBaseUrl(value: string | null | undefined) {
+  const normalized = value?.trim();
+
+  return normalized || null;
 }
 
 function formatAiError(error: unknown) {

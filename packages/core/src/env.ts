@@ -6,6 +6,7 @@ const envSchema = z.object({
   AUTH_URL: z.string().url().optional(),
   AI_KEY_ENCRYPTION_SECRET: z.string().min(1).optional(),
   OPENAI_API_KEY: z.string().optional(),
+  OPENAI_BASE_URL: z.string().url().optional(),
   STORAGE_DRIVER: z.enum(["local", "s3"]).default("local"),
   LOCAL_STORAGE_DIR: z.string().default("./storage"),
   NEXT_PUBLIC_APP_NAME: z.string().default("OpenExam")

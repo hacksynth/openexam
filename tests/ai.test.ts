@@ -60,6 +60,7 @@ describe("OpenAI credential resolution", () => {
       ok: true,
       data: {
         apiKey: "sk-user-key",
+        baseURL: null,
         source: "byok"
       }
     });
@@ -76,12 +77,35 @@ describe("OpenAI credential resolution", () => {
       ok: true,
       data: {
         apiKey: "sk-platform-key",
+        baseURL: null,
         source: "platform"
       }
     });
     await expect(resolveOpenAiCredential("user_1", db as never, {})).resolves.toEqual({
       ok: false,
       error: "请先在个人设置中配置 OpenAI API Key。"
+    });
+  });
+
+  it("passes configured OpenAI-compatible base URLs with credentials", async () => {
+    const db = {
+      userProviderKey: {
+        findUnique: async () => null
+      }
+    };
+
+    await expect(
+      resolveOpenAiCredential("user_1", db as never, {
+        OPENAI_API_KEY: "sk-platform-key",
+        OPENAI_BASE_URL: "http://127.0.0.1:8317/v1"
+      })
+    ).resolves.toEqual({
+      ok: true,
+      data: {
+        apiKey: "sk-platform-key",
+        baseURL: "http://127.0.0.1:8317/v1",
+        source: "platform"
+      }
     });
   });
 });
