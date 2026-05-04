@@ -51,6 +51,10 @@ export type SingleChoiceQuestionInput = {
   reviewStatus?: string | null;
 };
 
+export type SingleChoiceQuestionImportInput = {
+  jsonPayload: string;
+};
+
 type ParsedSingleChoiceQuestion = {
   stem: string;
   payload: {
@@ -194,6 +198,69 @@ export async function createSingleChoiceQuestion(input: SingleChoiceQuestionInpu
     return { ok: true };
   } catch (error) {
     return databaseError(error, "题目创建失败。");
+  }
+}
+
+export async function importSingleChoiceQuestions(input: SingleChoiceQuestionImportInput): Promise<ActionResult<{ count: number }>> {
+  const parsed = validateSingleChoiceQuestionImportPayload(input);
+
+  if (!parsed.ok) {
+    return parsed;
+  }
+
+  const knowledgeNodeIds = [...new Set(parsed.data.questions.map((question) => question.knowledgeNodeId))];
+  const knowledgeNodes = await prisma.knowledgeNode.findMany({
+    where: {
+      id: {
+        in: knowledgeNodeIds
+      }
+    },
+    select: {
+      id: true
+    }
+  });
+  const existingKnowledgeNodeIds = new Set(knowledgeNodes.map((node) => node.id));
+  const invalidKnowledgeIndex = parsed.data.questions.findIndex((question) => !existingKnowledgeNodeIds.has(question.knowledgeNodeId));
+
+  if (invalidKnowledgeIndex >= 0) {
+    return { ok: false, error: `第 ${invalidKnowledgeIndex + 1} 题：请选择有效的知识点。` };
+  }
+
+  try {
+    await prisma.$transaction(
+      parsed.data.questions.map((question) =>
+        prisma.question.create({
+          data: {
+            kind: QuestionKind.single_choice,
+            currentVersion: 1,
+            ...questionData(question),
+            knowledgeBindings: {
+              create: {
+                knowledgeNodeId: question.knowledgeNodeId,
+                weight: 1,
+                isPrimary: true
+              }
+            },
+            versions: {
+              create: {
+                version: 1,
+                stem: question.stem,
+                payload: question.payload,
+                answerKey: question.answerKey,
+                explanation: question.explanation,
+                sourceType: question.sourceType,
+                visibility: question.visibility,
+                reviewStatus: question.reviewStatus
+              }
+            }
+          }
+        })
+      )
+    );
+
+    return { ok: true, data: { count: parsed.data.questions.length } };
+  } catch (error) {
+    return databaseError(error, "题目导入失败。");
   }
 }
 
@@ -380,6 +447,62 @@ export function validateSingleChoiceQuestionInput(input: SingleChoiceQuestionInp
   return parseSingleChoiceQuestionInputSync(input);
 }
 
+export function validateSingleChoiceQuestionImportPayload(input: SingleChoiceQuestionImportInput) {
+  const jsonPayload = input.jsonPayload.trim();
+
+  if (!jsonPayload) {
+    return { ok: false, error: "请填写题目 JSON。" } as const;
+  }
+
+  let parsedJson: unknown;
+
+  try {
+    parsedJson = JSON.parse(jsonPayload);
+  } catch {
+    return { ok: false, error: "JSON 格式无效。" } as const;
+  }
+
+  const items = Array.isArray(parsedJson) ? parsedJson : isPlainObject(parsedJson) && Array.isArray(parsedJson.questions) ? parsedJson.questions : null;
+
+  if (!items || items.length === 0) {
+    return { ok: false, error: "导入内容必须是非空题目数组。" } as const;
+  }
+
+  if (items.length > 100) {
+    return { ok: false, error: "单次最多导入 100 道题。" } as const;
+  }
+
+  const questions: ParsedSingleChoiceQuestion[] = [];
+  const errors: string[] = [];
+
+  items.forEach((item, index) => {
+    if (!isPlainObject(item)) {
+      errors.push(`第 ${index + 1} 题：导入项必须是对象。`);
+      return;
+    }
+
+    const result = parseSingleChoiceQuestionInputSync(toImportQuestionInput(item));
+
+    if (!result.ok) {
+      errors.push(`第 ${index + 1} 题：${result.error}`);
+      return;
+    }
+
+    questions.push(result.data);
+  });
+
+  if (errors.length > 0) {
+    return { ok: false, error: errors.slice(0, 5).join("；") } as const;
+  }
+
+  return {
+    ok: true,
+    data: {
+      questions
+    }
+  } as const;
+}
+
 async function parseSingleChoiceQuestionInput(input: SingleChoiceQuestionInput) {
   const parsed = parseSingleChoiceQuestionInputSync(input);
 
@@ -479,6 +602,25 @@ function parseSingleChoiceQuestionInputSync(input: SingleChoiceQuestionInput) {
       reviewStatus: reviewStatus.value
     }
   } as const;
+}
+
+function toImportQuestionInput(item: Record<string, unknown>): SingleChoiceQuestionInput {
+  const options = isPlainObject(item.options) ? item.options : {};
+
+  return {
+    stem: textValue(item.stem),
+    optionA: textValue(item.optionA ?? options.A ?? options.a),
+    optionB: textValue(item.optionB ?? options.B ?? options.b),
+    optionC: textValue(item.optionC ?? options.C ?? options.c),
+    optionD: textValue(item.optionD ?? options.D ?? options.d),
+    answer: textValue(item.answer),
+    explanation: textValue(item.explanation),
+    difficulty: typeof item.difficulty === "number" ? item.difficulty : textValue(item.difficulty),
+    knowledgeNodeId: textValue(item.knowledgeNodeId),
+    visibility: textValue(item.visibility),
+    sourceType: textValue(item.sourceType),
+    reviewStatus: textValue(item.reviewStatus)
+  };
 }
 
 function questionData(data: ParsedSingleChoiceQuestion) {
@@ -622,7 +764,11 @@ function optionalText(value: string | null | undefined) {
   return text ? text : null;
 }
 
-function databaseError(error: unknown, fallback: string): ActionResult {
+function textValue(value: unknown) {
+  return typeof value === "string" || typeof value === "number" || typeof value === "boolean" ? String(value) : "";
+}
+
+function databaseError(error: unknown, fallback: string): { ok: false; error: string } {
   if (error instanceof Prisma.PrismaClientKnownRequestError) {
     return { ok: false, error: `${fallback} (${error.code})` };
   }
@@ -631,6 +777,10 @@ function databaseError(error: unknown, fallback: string): ActionResult {
 }
 
 function isJsonObject(value: Prisma.JsonValue | null | undefined): value is Prisma.JsonObject {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
 

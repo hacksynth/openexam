@@ -54,7 +54,7 @@ export const learnerRoutes: RouteItem[] = [
     id: "wrong-notes",
     href: "/wrong-notes",
     label: "错题本",
-    description: "自动收集错误答案，查看解析并维护掌握状态。",
+    description: "自动收集错误答案，按知识点筛选，查看解析并维护掌握状态。",
     section: "learner",
     status: "foundation"
   },
@@ -137,7 +137,7 @@ export const adminRoutes: RouteItem[] = [
     id: "admin-questions",
     href: "/questions",
     label: "题目",
-    description: "单选题创建、编辑、知识点绑定、来源、可见性和审核状态。",
+    description: "单选题创建、JSON 导入、编辑、知识点绑定、来源、可见性和审核状态。",
     section: "admin",
     status: "foundation"
   },
@@ -145,7 +145,7 @@ export const adminRoutes: RouteItem[] = [
     id: "admin-papers",
     href: "/papers",
     label: "试卷",
-    description: "试卷创建、筛选、隐藏恢复、题目绑定、题序、分区、分值和公开状态。",
+    description: "试卷创建、筛选、归档隐藏、题目绑定、题序、分区、分值和公开状态。",
     section: "admin",
     status: "foundation"
   },

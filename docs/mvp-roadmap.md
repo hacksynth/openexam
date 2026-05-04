@@ -45,7 +45,7 @@ Acceptance:
 - An admin can reach the admin app root `/` on the admin service. Completed with seeded admin credentials.
 - PostgreSQL migrations run cleanly. Completed against local Docker PostgreSQL.
 - Private routes reject anonymous users. Completed for learner and admin routes.
-- Docker images for `web` and `admin` build successfully. Completed.
+- Docker images for `web` and `admin` build successfully. Completed with app health checks in Compose.
 
 ## 2. Exam Core
 
@@ -64,11 +64,11 @@ Deliverables:
 - `Question`. Schema completed.
 - `QuestionVersion`. Schema completed.
 - `QuestionKnowledgeNode`. Schema completed.
-- `Paper`. Schema completed.
+- `Paper`. Schema completed with explicit `archivedAt` archive metadata.
 - `PaperQuestion`. Schema completed.
 - Source, visibility, and review fields. Schema and rule helper started.
 - Minimal admin CRUD for exams and knowledge trees. Started.
-- Minimal admin CRUD for questions and papers. Started for single-choice questions and ordered papers.
+- Minimal admin CRUD for questions and papers. Started for single-choice questions, JSON single-choice imports, and ordered papers.
 - Original sample data for Ruankao Software Designer. Started with zh-CN seed data.
 - Learner primary exam goal selection. Started.
 
@@ -96,9 +96,9 @@ Deliverables:
 - Paper practice. Started with public single-choice paper listing, answer card, elapsed-time display, unanswered confirmation, full-paper submission, scoring, reports, and wrong-note ingestion.
 - Practice session records. Started with one-question practice attempts, paper attempts, a learner history page, and per-attempt reports.
 - Objective answer grading. Started for single-choice questions.
-- Wrong-note auto-collection. Started for incorrect single-choice submissions.
+- Wrong-note auto-collection. Started for incorrect single-choice submissions, with correct retry marking notes as mastered.
 - Manual favorite/collection.
-- Wrong-note filters and mastery state. Started with all/unmastered/mastered filters and retry entry.
+- Wrong-note filters and mastery state. Started with all/unmastered/mastered filters, knowledge-node filters, weak-node summaries, and retry entry.
 - Basic statistics by goal, subject, question type, difficulty, and knowledge node. Started with pending wrong-note count and weak knowledge-node ranking.
 
 Acceptance:
@@ -226,8 +226,8 @@ Goal: make self-hosted operation governable.
 Deliverables:
 
 - Admin overview metrics.
-- Generic JSON/CSV question import adapter.
-- Import validation for administrator-provided question data.
+- Generic JSON/CSV question import adapter. Started with JSON single-choice import.
+- Import validation for administrator-provided question data. Started with all-or-nothing JSON validation.
 - Source and license management.
 - Review and visibility enforcement.
 - AI presets and task settings.
@@ -257,16 +257,16 @@ Minimum test coverage should include:
 - Admin import validation.
 - Admin question filters/archive/review actions.
 - Admin paper validation, filters, and hide/restore behavior.
-- Browser workflow coverage for auth, goal selection, admin content creation, paper submission/report, unanswered confirmation, paper hide/restore, wrong-note retry, and non-admin rejection.
+- Browser workflow coverage for auth, goal selection, admin content creation/import, paper submission/report, unanswered confirmation, paper hide/restore, wrong-note retry, and non-admin rejection.
 
-Current tests cover public question visibility constraints, admin single-choice validation and filters, admin paper validation and filters, paper submission scoring, report statistics, objective grading, single-choice practice helpers, wrong-note summarization, study-plan schema validation, and the first Playwright browser workflow. The remaining priorities are still required before MVP exit.
+Current tests cover public question visibility constraints, admin single-choice validation, JSON import validation and filters, admin paper validation and archivedAt filters, paper submission scoring, report statistics, objective grading, single-choice practice helpers, wrong-note summarization, study-plan schema validation, and the first Playwright browser workflow. The remaining priorities are still required before MVP exit.
 
 Browser workflow tests should cover:
 
 - Register/login. Started.
 - Select goal. Started.
-- Practice and wrong-note flow. Started for paper wrong-note retry.
-- Admin question and paper creation. Started.
+- Practice and wrong-note flow. Started for paper wrong-note retry and mastered-state update after correct retry.
+- Admin question and paper creation. Started, including JSON question import.
 - Paper report and unanswered confirmation. Started.
 - Paper hide/restore. Started.
 - Non-admin admin access rejection. Started.

@@ -14,6 +14,7 @@ import {
 import {
   archiveSingleChoiceQuestionAction,
   createSingleChoiceQuestionAction,
+  importSingleChoiceQuestionsAction,
   restoreSingleChoiceQuestionAction,
   updateSingleChoiceQuestionReviewStatusAction,
   updateSingleChoiceQuestionAction
@@ -152,6 +153,18 @@ export default async function AdminQuestionsPage({ searchParams }: QuestionsPage
           )}
         </section>
 
+        <section className="pixel-panel grid gap-4 p-5">
+          <div>
+            <p className="text-xs font-bold uppercase text-[var(--muted)]">Import</p>
+            <h2 className="mt-1 text-xl font-black">JSON 批量导入</h2>
+          </div>
+          {knowledgeNodes.length === 0 ? (
+            <p className="border-2 border-black bg-[var(--surface-subtle)] p-3 text-sm font-bold text-[var(--muted)]">请先在知识页创建大纲和知识点。</p>
+          ) : (
+            <ImportForm />
+          )}
+        </section>
+
         <section className="grid gap-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-2xl font-black">题目列表</h2>
@@ -190,6 +203,26 @@ export default async function AdminQuestionsPage({ searchParams }: QuestionsPage
         </section>
       </section>
     </AppShell>
+  );
+}
+
+function ImportForm() {
+  return (
+    <form action={importSingleChoiceQuestionsAction} className="grid gap-3">
+      <label className={labelClass}>
+        JSON 内容
+        <textarea
+          className={`${inputClass} font-mono`}
+          name="jsonPayload"
+          placeholder='[{"stem":"题干","optionA":"A","optionB":"B","optionC":"C","optionD":"D","answer":"A","knowledgeNodeId":"...","visibility":"private","sourceType":"original","reviewStatus":"draft"}]'
+          required
+          rows={7}
+        />
+      </label>
+      <button className="pixel-button w-fit px-4 py-2" type="submit">
+        导入题目
+      </button>
+    </form>
   );
 }
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeAdminQuestionFilters, validateSingleChoiceQuestionInput } from "@openexam/core/question-admin";
+import { normalizeAdminQuestionFilters, validateSingleChoiceQuestionImportPayload, validateSingleChoiceQuestionInput } from "@openexam/core/question-admin";
 
 const validInput = {
   stem: "以下哪项属于对称加密算法？",
@@ -59,6 +59,66 @@ describe("single-choice question admin validation", () => {
     expect(validateSingleChoiceQuestionInput({ ...validInput, difficulty: "8" })).toEqual({
       ok: false,
       error: "难度必须是 1 到 5 的整数，或留空。"
+    });
+  });
+});
+
+describe("single-choice question JSON import validation", () => {
+  it("accepts an array of valid import items", () => {
+    const result = validateSingleChoiceQuestionImportPayload({
+      jsonPayload: JSON.stringify([
+        {
+          stem: validInput.stem,
+          options: {
+            A: validInput.optionA,
+            B: validInput.optionB,
+            C: validInput.optionC,
+            D: validInput.optionD
+          },
+          answer: "A",
+          explanation: validInput.explanation,
+          difficulty: 2,
+          knowledgeNodeId: "node-1",
+          visibility: "public",
+          sourceType: "original",
+          reviewStatus: "approved"
+        }
+      ])
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      data: {
+        questions: [
+          {
+            stem: validInput.stem,
+            answerKey: { value: "A" },
+            knowledgeNodeId: "node-1"
+          }
+        ]
+      }
+    });
+  });
+
+  it("rejects invalid JSON and empty arrays", () => {
+    expect(validateSingleChoiceQuestionImportPayload({ jsonPayload: "{" })).toEqual({
+      ok: false,
+      error: "JSON 格式无效。"
+    });
+    expect(validateSingleChoiceQuestionImportPayload({ jsonPayload: "[]" })).toEqual({
+      ok: false,
+      error: "导入内容必须是非空题目数组。"
+    });
+  });
+
+  it("returns row-numbered validation errors", () => {
+    expect(
+      validateSingleChoiceQuestionImportPayload({
+        jsonPayload: JSON.stringify([{ ...validInput, answer: "E" }])
+      })
+    ).toEqual({
+      ok: false,
+      error: "第 1 题：正确答案只能是 A、B、C 或 D。"
     });
   });
 });

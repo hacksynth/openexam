@@ -287,12 +287,14 @@ model Paper {
   slug        String
   paperType   String          @default("practice")
   visibility  Visibility      @default(private)
+  archivedAt  DateTime?
   questions   PaperQuestion[]
   attempts    Attempt[]
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
 
   @@unique([slug])
+  @@index([archivedAt])
 }
 
 model PaperQuestion {

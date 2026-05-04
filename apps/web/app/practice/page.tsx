@@ -70,6 +70,7 @@ export default async function PracticePage({ searchParams }: PracticePageProps) 
             </div>
             <form action={submitSingleChoiceAnswerAction} className="grid gap-4">
               <input name="questionId" type="hidden" value={state.question.id} />
+              <input name="retry" type="hidden" value={params.retry ? "true" : "false"} />
               <fieldset className="grid gap-3">
                 <legend className="sr-only">选择答案</legend>
                 {state.question.options.map((option) => (

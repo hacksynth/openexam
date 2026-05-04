@@ -266,7 +266,7 @@ function PaperActions({ paperId, archived }: { paperId: string; archived: boolea
         <form action={restorePaperAction}>
           <input name="id" type="hidden" value={paperId} />
           <button className="pixel-button bg-white px-3 py-2 text-sm" type="submit">
-            恢复公开
+            恢复试卷
           </button>
         </form>
       ) : (

@@ -10,7 +10,8 @@ export async function submitSingleChoiceAnswerAction(formData: FormData) {
   const session = await requireWebSession();
   const result = await submitSingleChoiceAnswer(session.user.id, {
     questionId: String(formData.get("questionId") ?? ""),
-    answer: String(formData.get("answer") ?? "")
+    answer: String(formData.get("answer") ?? ""),
+    retry: String(formData.get("retry") ?? "") === "true"
   });
 
   revalidatePath("/practice" as Route);

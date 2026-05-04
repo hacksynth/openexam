@@ -12,6 +12,7 @@ const adminPassword = "admin1234";
 const learnerEmail = "e2e.learner@openexam.local";
 const learnerPassword = "learner1234";
 const questionStem = "E2E 单选题：事务原子性最准确的含义是什么？";
+const importedQuestionStem = "E2E 单选题：隔离性用于解决什么问题？";
 const paperTitle = "E2E 基础知识样例卷";
 const paperSlug = "e2e-paper-basic-sample";
 
@@ -52,6 +53,12 @@ test.describe.serial("OpenExam auth, question, paper, and wrong-note flows", () 
     const adminPage = await newPage(browser);
     await loginAdmin(adminPage);
     await createQuestion(adminPage);
+  });
+
+  test("admin imports single-choice questions from JSON", async ({ browser }) => {
+    const adminPage = await newPage(browser);
+    await loginAdmin(adminPage);
+    await importQuestion(adminPage);
   });
 
   test("admin creates a public paper", async ({ browser }) => {
@@ -127,6 +134,32 @@ async function createQuestion(page: Page) {
   await expect(page.locator("body")).toContainText(questionStem);
 }
 
+async function importQuestion(page: Page) {
+  await page.goto(`${adminUrl}/questions`);
+  const form = page.locator('form:has(button:has-text("导入题目"))').first();
+  const payload = [
+    {
+      stem: importedQuestionStem,
+      optionA: "隔离性用于控制并发事务之间的相互影响。",
+      optionB: "隔离性用于保证断电后数据不丢失。",
+      optionC: "隔离性用于保证事务全部成功或全部失败。",
+      optionD: "隔离性用于压缩数据库日志。",
+      answer: "A",
+      explanation: "隔离性关注并发事务之间的可见性和干扰控制。",
+      difficulty: 3,
+      knowledgeNodeId: fixtureIds.knowledgeNodeId,
+      visibility: "public",
+      sourceType: "original",
+      reviewStatus: "approved"
+    }
+  ];
+
+  await form.locator('textarea[name="jsonPayload"]').fill(JSON.stringify(payload));
+  await form.getByRole("button", { name: "导入题目" }).click();
+  await expect(page.getByText("已导入 1 道题。")).toBeVisible();
+  await expect(page.locator("body")).toContainText(importedQuestionStem);
+}
+
 async function createPaper(page: Page) {
   await page.goto(`${adminUrl}/papers`);
   const form = page.locator('form:has(button:has-text("新增试卷"))').first();
@@ -200,13 +233,16 @@ async function completePaperWithWrongAnswer(page: Page) {
 }
 
 async function retryWrongNoteCorrectly(page: Page) {
-  await page.goto(`${webUrl}/wrong-notes`);
+  await page.goto(`${webUrl}/wrong-notes?knowledgeNodeId=${fixtureIds.knowledgeNodeId}`);
   await expect(page.locator("body")).toContainText(questionStem);
   await page.locator("section").filter({ hasText: questionStem }).first().getByRole("link", { name: "重练此题" }).click();
   await expect(page.locator("body")).toContainText(questionStem);
   await page.locator('input[name="answer"][value="A"]').check();
   await page.getByRole("button", { name: "提交答案" }).click();
   await expect(page.getByText("回答正确")).toBeVisible();
+  await page.goto(`${webUrl}/wrong-notes?filter=mastered&knowledgeNodeId=${fixtureIds.knowledgeNodeId}`);
+  await expect(page.locator("body")).toContainText(questionStem);
+  await expect(page.locator("section").filter({ hasText: questionStem }).first()).toContainText("已掌握");
 }
 
 async function rejectLearnerFromAdmin(browser: Browser) {
@@ -228,8 +264,8 @@ async function hideAndRestorePaper(adminPage: Page, webPage: Page) {
   await expect(webPage.locator("body")).not.toContainText(paperTitle);
 
   await adminPage.goto(`${adminUrl}/papers?archived=archived`);
-  await paperAdminCard(adminPage).getByRole("button", { name: "恢复公开" }).first().click();
-  await expect(adminPage.getByText("试卷已恢复公开。")).toBeVisible();
+  await paperAdminCard(adminPage).getByRole("button", { name: "恢复试卷" }).first().click();
+  await expect(adminPage.getByText("试卷已恢复。")).toBeVisible();
 
   await webPage.goto(`${webUrl}/papers`);
   await expect(webPage.locator("body")).toContainText(paperTitle);

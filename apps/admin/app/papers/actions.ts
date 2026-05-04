@@ -25,7 +25,7 @@ export async function archivePaperAction(formData: FormData) {
 
 export async function restorePaperAction(formData: FormData) {
   await requireAdminSession();
-  finish(await setPaperArchived(value(formData, "id"), false), "试卷已恢复公开。");
+  finish(await setPaperArchived(value(formData, "id"), false), "试卷已恢复。");
 }
 
 function readPaper(formData: FormData): PaperInput {

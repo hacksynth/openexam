@@ -143,7 +143,7 @@ export async function getPracticeQuestion(userId: string, options: PracticeQuest
   return { status: "ready", goal, question: normalized };
 }
 
-export async function submitSingleChoiceAnswer(userId: string, input: { questionId: string; answer: string }): Promise<PracticeSubmitResult> {
+export async function submitSingleChoiceAnswer(userId: string, input: { questionId: string; answer: string; retry?: boolean }): Promise<PracticeSubmitResult> {
   const answer = input.answer.trim();
 
   if (!answer) {
@@ -210,27 +210,14 @@ export async function submitSingleChoiceAnswer(userId: string, input: { question
       }
     });
 
-    if (!grading.result.isCorrect) {
-      await tx.wrongNote.upsert({
-        where: {
-          userId_questionId: {
-            userId,
-            questionId: question.id
-          }
-        },
-        update: {
-          attemptAnswerId: attemptAnswer.id,
-          errorCount: { increment: 1 },
-          mastered: false,
-          lastReviewedAt: null
-        },
-        create: {
-          userId,
-          questionId: question.id,
-          attemptAnswerId: attemptAnswer.id
-        }
-      });
-    }
+    await syncWrongNoteForObjectiveAnswer(tx, {
+      userId,
+      questionId: question.id,
+      attemptAnswerId: attemptAnswer.id,
+      isCorrect: grading.result.isCorrect,
+      masteredOnCorrect: input.retry === true,
+      reviewedAt: now
+    });
 
     return {
       attemptId: attempt.id,
@@ -384,8 +371,60 @@ export async function listWrongNotes(userId: string, options: { mastered?: boole
     stem: note.question.versions[0]?.stem ?? note.question.stem,
     explanation: note.question.versions[0]?.explanation ?? note.question.explanation,
     correctAnswer: readSingleChoiceAnswerKey(note.question.versions[0]?.answerKey ?? note.question.answerKey),
-    knowledgeNodes: note.question.knowledgeBindings.map((binding) => binding.knowledgeNode.title)
+    knowledgeNodes: note.question.knowledgeBindings.map((binding) => ({
+      id: binding.knowledgeNodeId,
+      title: binding.knowledgeNode.title
+    }))
   }));
+}
+
+export async function syncWrongNoteForObjectiveAnswer(
+  tx: Prisma.TransactionClient,
+  input: {
+    userId: string;
+    questionId: string;
+    attemptAnswerId: string;
+    isCorrect: boolean;
+    masteredOnCorrect?: boolean;
+    reviewedAt: Date;
+  }
+) {
+  if (!input.isCorrect) {
+    await tx.wrongNote.upsert({
+      where: {
+        userId_questionId: {
+          userId: input.userId,
+          questionId: input.questionId
+        }
+      },
+      update: {
+        attemptAnswerId: input.attemptAnswerId,
+        errorCount: { increment: 1 },
+        mastered: false,
+        lastReviewedAt: null
+      },
+      create: {
+        userId: input.userId,
+        questionId: input.questionId,
+        attemptAnswerId: input.attemptAnswerId
+      }
+    });
+
+    return;
+  }
+
+  if (input.masteredOnCorrect) {
+    await tx.wrongNote.updateMany({
+      where: {
+        userId: input.userId,
+        questionId: input.questionId
+      },
+      data: {
+        mastered: true,
+        lastReviewedAt: input.reviewedAt
+      }
+    });
+  }
 }
 
 export async function setWrongNoteMastered(userId: string, wrongNoteId: string, mastered: boolean) {

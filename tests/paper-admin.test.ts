@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeAdminPaperFilters, validatePaperInput } from "@openexam/core/paper-admin";
+import { buildAdminPaperWhere, normalizeAdminPaperFilters, validatePaperInput } from "@openexam/core/paper-admin";
 
 const validPaper = {
   title: "软考软件设计师基础知识样例卷",
@@ -129,5 +129,15 @@ describe("admin paper filters", () => {
       visibility: null,
       archived: "active"
     });
+  });
+
+  it("builds archivedAt-based archive filters", () => {
+    expect(buildAdminPaperWhere({ archived: "active" })).toEqual({
+      archivedAt: null
+    });
+    expect(buildAdminPaperWhere({ archived: "archived" })).toEqual({
+      archivedAt: { not: null }
+    });
+    expect(buildAdminPaperWhere({ archived: "all" })).toEqual({});
   });
 });

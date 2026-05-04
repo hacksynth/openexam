@@ -102,8 +102,23 @@ export function normalizeAdminPaperFilters(filters: AdminPaperFilters = {}) {
 }
 
 export async function listAdminPapers(filters: AdminPaperFilters = {}) {
+  const where = buildAdminPaperWhere(filters);
+  const papers = await prisma.paper.findMany({
+    where,
+    include: adminPaperInclude,
+    orderBy: [{ updatedAt: "desc" }],
+    take: 100
+  });
+
+  return papers.map(toAdminPaper);
+}
+
+export function buildAdminPaperWhere(filters: AdminPaperFilters = {}) {
   const normalized = normalizeAdminPaperFilters(filters);
-  const where: Prisma.PaperWhereInput = {
+
+  return {
+    ...(normalized.archived === "active" ? { archivedAt: null } : {}),
+    ...(normalized.archived === "archived" ? { archivedAt: { not: null } } : {}),
     ...(normalized.q
       ? {
           title: {
@@ -114,18 +129,8 @@ export async function listAdminPapers(filters: AdminPaperFilters = {}) {
       : {}),
     ...(normalized.subjectId ? { subjectId: normalized.subjectId } : {}),
     ...(normalized.paperType ? { paperType: normalized.paperType } : {}),
-    ...(normalized.visibility ? { visibility: normalized.visibility as Visibility } : {}),
-    ...(normalized.archived === "active" && !normalized.visibility ? { visibility: { not: "private" } } : {}),
-    ...(normalized.archived === "archived" && !normalized.visibility ? { visibility: "private" } : {})
-  };
-  const papers = await prisma.paper.findMany({
-    where,
-    include: adminPaperInclude,
-    orderBy: [{ updatedAt: "desc" }],
-    take: 100
-  });
-
-  return papers.map(toAdminPaper);
+    ...(normalized.visibility ? { visibility: normalized.visibility as Visibility } : {})
+  } satisfies Prisma.PaperWhereInput;
 }
 
 export async function listAdminPaperQuestionOptions() {
@@ -263,7 +268,10 @@ export async function setPaperArchived(id: string, archived: boolean): Promise<A
         return { ok: false, error: "试卷不存在。" };
       }
 
-      const privateQuestion = paper.questions.find((paperQuestion) => paperQuestion.question.visibility !== "public" || paperQuestion.question.reviewStatus !== "approved" || paperQuestion.question.deletedAt);
+      const privateQuestion =
+        paper.visibility === "public"
+          ? paper.questions.find((paperQuestion) => paperQuestion.question.visibility !== "public" || paperQuestion.question.reviewStatus !== "approved" || paperQuestion.question.deletedAt)
+          : null;
 
       if (privateQuestion) {
         return { ok: false, error: "恢复公开前，请先确保所有绑定题目公开且审核通过。" };
@@ -273,7 +281,7 @@ export async function setPaperArchived(id: string, archived: boolean): Promise<A
     const result = await prisma.paper.updateMany({
       where: { id },
       data: {
-        visibility: archived ? "private" : "public"
+        archivedAt: archived ? new Date() : null
       }
     });
 
@@ -448,7 +456,7 @@ function toAdminPaper(paper: AdminPaperRecord) {
     slug: paper.slug,
     paperType: paper.paperType,
     visibility: paper.visibility,
-    archived: paper.visibility === "private",
+    archived: Boolean(paper.archivedAt),
     hasPublicRisk: paper.visibility === "public" && paper.questions.some((paperQuestion) => paperQuestion.question.visibility !== "public" || paperQuestion.question.reviewStatus !== "approved"),
     subjectId: paper.subjectId ?? "",
     cycleId: paper.cycleId ?? "",

@@ -2,11 +2,11 @@ import Link from "next/link";
 import type { Route } from "next";
 import { AppShell } from "@/components/app-shell";
 import { requireWebSession } from "@/lib/auth";
-import { listWrongNotes } from "@openexam/core/practice";
+import { listWrongNotes, summarizeWrongNotes } from "@openexam/core/practice";
 import { setWrongNoteMasteredAction } from "./actions";
 
 type WrongNotesPageProps = {
-  searchParams: Promise<{ error?: string; notice?: string; filter?: string }>;
+  searchParams: Promise<{ error?: string; notice?: string; filter?: string; knowledgeNodeId?: string }>;
 };
 
 const filterOptions = [
@@ -19,8 +19,13 @@ export default async function WrongNotesPage({ searchParams }: WrongNotesPagePro
   const session = await requireWebSession();
   const params = await searchParams;
   const filter = normalizeFilter(params.filter);
+  const knowledgeNodeId = params.knowledgeNodeId?.trim() || "";
   const allNotes = await listWrongNotes(session.user.id);
   const notes = allNotes.filter((note) => {
+    if (knowledgeNodeId && !note.knowledgeNodes.some((node) => node.id === knowledgeNodeId)) {
+      return false;
+    }
+
     if (filter === "pending") {
       return !note.mastered;
     }
@@ -32,6 +37,13 @@ export default async function WrongNotesPage({ searchParams }: WrongNotesPagePro
     return true;
   });
   const pendingCount = allNotes.filter((note) => !note.mastered).length;
+  const summary = summarizeWrongNotes(
+    allNotes.map((note) => ({
+      mastered: note.mastered,
+      knowledgeNodes: note.knowledgeNodes.map((node) => node.title)
+    }))
+  );
+  const knowledgeOptions = listKnowledgeOptions(allNotes);
 
   return (
     <AppShell section="learner" eyebrow="练习闭环" title="错题本">
@@ -57,11 +69,46 @@ export default async function WrongNotesPage({ searchParams }: WrongNotesPagePro
           </div>
           <div className="flex flex-wrap gap-2">
             {filterOptions.map((option) => (
-              <Link key={option.value} href={`/wrong-notes?filter=${option.value}` as Route} className={`status-chip px-3 py-2 ${filter === option.value ? "bg-[var(--primary)]" : ""}`}>
+              <Link
+                key={option.value}
+                href={wrongNoteHref(option.value, knowledgeNodeId) as Route}
+                className={`status-chip px-3 py-2 ${filter === option.value ? "bg-[var(--primary)]" : ""}`}
+              >
                 {option.label}
               </Link>
             ))}
           </div>
+          {summary.weakKnowledgeNodes.length > 0 ? (
+            <div className="grid gap-3 border-2 border-black bg-white p-3">
+              <p className="text-sm font-bold text-[var(--muted)]">薄弱知识点</p>
+              <div className="flex flex-wrap gap-2">
+                {summary.weakKnowledgeNodes.map((node) => (
+                  <span key={node.title} className="status-chip px-2 py-1">
+                    {node.title} · {node.count}
+                  </span>
+                ))}
+              </div>
+            </div>
+          ) : null}
+          {knowledgeOptions.length > 0 ? (
+            <div className="grid gap-3">
+              <p className="text-sm font-bold text-[var(--muted)]">按知识点筛选</p>
+              <div className="flex flex-wrap gap-2">
+                <Link href={wrongNoteHref(filter, "") as Route} className={`status-chip px-3 py-2 ${knowledgeNodeId ? "" : "bg-[var(--primary)]"}`}>
+                  全部知识点
+                </Link>
+                {knowledgeOptions.map((node) => (
+                  <Link
+                    key={node.id}
+                    href={wrongNoteHref(filter, node.id) as Route}
+                    className={`status-chip px-3 py-2 ${knowledgeNodeId === node.id ? "bg-[var(--primary)]" : ""}`}
+                  >
+                    {node.title} · {node.count}
+                  </Link>
+                ))}
+              </div>
+            </div>
+          ) : null}
         </section>
 
         {notes.length === 0 ? (
@@ -105,8 +152,8 @@ export default async function WrongNotesPage({ searchParams }: WrongNotesPagePro
 
                 <div className="flex flex-wrap gap-2">
                   {note.knowledgeNodes.map((node) => (
-                    <span key={node} className="status-chip px-2 py-1">
-                      {node}
+                    <span key={node.id} className="status-chip px-2 py-1">
+                      {node.title}
                     </span>
                   ))}
                 </div>
@@ -134,6 +181,33 @@ export default async function WrongNotesPage({ searchParams }: WrongNotesPagePro
 
 function normalizeFilter(value: string | undefined): (typeof filterOptions)[number]["value"] {
   return filterOptions.some((option) => option.value === value) ? (value as (typeof filterOptions)[number]["value"]) : "all";
+}
+
+function wrongNoteHref(filter: string, knowledgeNodeId: string) {
+  const params = new URLSearchParams();
+
+  params.set("filter", filter);
+
+  if (knowledgeNodeId) {
+    params.set("knowledgeNodeId", knowledgeNodeId);
+  }
+
+  return `/wrong-notes?${params.toString()}`;
+}
+
+function listKnowledgeOptions(notes: Awaited<ReturnType<typeof listWrongNotes>>) {
+  const counts = new Map<string, { id: string; title: string; count: number }>();
+
+  for (const note of notes) {
+    for (const node of note.knowledgeNodes) {
+      const current = counts.get(node.id) ?? { id: node.id, title: node.title, count: 0 };
+
+      current.count += 1;
+      counts.set(node.id, current);
+    }
+  }
+
+  return [...counts.values()].sort((left, right) => right.count - left.count || left.title.localeCompare(right.title, "zh-CN"));
 }
 
 function Feedback({ error, notice }: { error?: string; notice?: string }) {

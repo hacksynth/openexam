@@ -51,7 +51,7 @@ npm run prisma:generate
 npx prisma migrate dev
 ```
 
-Copy `.env.example` to `.env` and update `DATABASE_URL` before running migrations or seed data.
+Copy `.env.example` to `.env` and update `DATABASE_URL`, `SESSION_SECRET`, `NEXT_PUBLIC_WEB_URL`, and `NEXT_PUBLIC_ADMIN_URL` before running migrations or seed data.
 
 Set `ADMIN_EMAIL` and `ADMIN_PASSWORD` before seeding if you want to bootstrap an admin login.
 
@@ -68,6 +68,10 @@ For split-container deployment:
 ```sh
 docker compose up --build web admin postgres
 ```
+
+The learner and admin apps are separate containers. Compose health checks call `/api/health` on ports `3000` and `3001`.
+
+GitHub Actions runs `prisma:validate`, `prisma:generate`, `lint`, `test`, and `build` on pushes to `main` and pull requests.
 
 ## Project Layout
 

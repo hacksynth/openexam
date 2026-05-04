@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import type { Route } from "next";
 import {
   createSingleChoiceQuestion,
+  importSingleChoiceQuestions,
   setSingleChoiceQuestionArchived,
   updateSingleChoiceQuestionReviewStatus,
   updateSingleChoiceQuestion,
@@ -12,7 +13,7 @@ import {
 } from "@openexam/core/question-admin";
 import { requireAdminSession } from "@/lib/auth";
 
-type Result = Awaited<ReturnType<typeof createSingleChoiceQuestion>>;
+type Result = Awaited<ReturnType<typeof createSingleChoiceQuestion>> | Awaited<ReturnType<typeof importSingleChoiceQuestions>>;
 
 export async function createSingleChoiceQuestionAction(formData: FormData) {
   await requireAdminSession();
@@ -22,6 +23,15 @@ export async function createSingleChoiceQuestionAction(formData: FormData) {
 export async function updateSingleChoiceQuestionAction(formData: FormData) {
   await requireAdminSession();
   finish(await updateSingleChoiceQuestion(value(formData, "id"), readQuestion(formData)), "题目已更新。");
+}
+
+export async function importSingleChoiceQuestionsAction(formData: FormData) {
+  await requireAdminSession();
+  const result = await importSingleChoiceQuestions({
+    jsonPayload: value(formData, "jsonPayload")
+  });
+
+  finish(result, result.ok ? `已导入 ${result.data.count} 道题。` : "题目导入失败。");
 }
 
 export async function updateSingleChoiceQuestionReviewStatusAction(formData: FormData) {

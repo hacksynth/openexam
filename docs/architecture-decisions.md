@@ -39,11 +39,11 @@ Current implementation status:
 
 - The foundation web and admin apps are scaffolded with Next.js App Router, TypeScript strict mode, Tailwind CSS, Prisma, PostgreSQL configuration, and Vitest.
 - `package.json` exposes stable scripts for development, build, TypeScript checks, tests, Prisma validation/generation, migrations, and seeding.
-- `docker-compose.yml` defines separate `web`, `admin`, and `postgres` services.
+- `docker-compose.yml` defines separate `web`, `admin`, and `postgres` services with health checks.
 - Database-backed email/password auth and separate learner/admin session cookies are implemented.
 - The first Exam Core workflow is implemented with admin exam hierarchy and knowledge-tree management, learner primary goal selection, and a dashboard goal read path.
 - The first Practice Loop workflow is implemented for single-choice practice, paper attempts, graded attempts, attempt reports, answer-card submission, wrong-note auto-collection, filters, retry, mastery toggles, and dashboard weak-node summaries.
-- Playwright now covers the first critical browser workflow across admin content creation, learner paper submission/reporting, unanswered confirmation, paper hide/restore, wrong-note retry, and role rejection.
+- Playwright now covers the first critical browser workflow across admin content creation/import, learner paper submission/reporting, unanswered confirmation, paper hide/restore, wrong-note retry, and role rejection.
 - shadcn/ui installation and real storage adapters are still pending.
 - Full i18n routing and locale negotiation are not implemented.
 
@@ -154,8 +154,8 @@ Implementation note:
 
 - Prisma uses JSON columns for `payload`, `answerKey`, and `rubric`.
 - `packages/core/src/question-governance.ts` contains the first tested public-visibility rule helper.
-- `packages/core/src/question-admin.ts` contains the first admin single-choice input validation, filtering, archive, review-status, and persistence helpers.
-- Additional Zod schemas are still needed before accepting imported or AI-generated question payloads.
+- `packages/core/src/question-admin.ts` contains the first admin single-choice input validation, JSON import validation, filtering, archive, review-status, and persistence helpers.
+- Additional Zod schemas are still needed before accepting AI-generated question payloads.
 
 ## Papers And Attempts
 
@@ -170,9 +170,9 @@ Rules:
 - `Attempt` records user work.
 - Attempt answers bind to the question version used at answer time.
 
-Implementation note: the current practice workflow creates one graded `Attempt` per submitted single-choice question. The current paper workflow creates one `Attempt` per submitted public paper with multiple `AttemptAnswer` rows. Both store selected answers in `AttemptAnswer.userAnswer` and incorrect objective answers enter `WrongNote`. The report helper reads only the current user's attempts and aggregates score, accuracy, unanswered count, and knowledge-node statistics.
+Implementation note: the current practice workflow creates one graded `Attempt` per submitted single-choice question. The current paper workflow creates one `Attempt` per submitted public paper with multiple `AttemptAnswer` rows. Both store selected answers in `AttemptAnswer.userAnswer` and incorrect objective answers enter `WrongNote`. Correct retry from a wrong note marks it mastered. The report helper reads only the current user's attempts and aggregates score, accuracy, unanswered count, and knowledge-node statistics.
 
-Paper hiding is a temporary v1 admin behavior: because the current schema has no `archivedAt` on `Paper`, hiding a paper sets `visibility=private`, and restoring sets it back to `public` after checking bound questions are public and approved. A future migration should add explicit paper archive metadata if private draft papers and archived papers need to be distinguished.
+Paper hiding uses `Paper.archivedAt`. Visibility remains the publication state (`private`, `unlisted`, or `public`), while archived papers are excluded from learner paper lists and attempts. Restoring a public paper still checks that all bound questions are public, approved, and not deleted.
 
 ## Question Versioning
 

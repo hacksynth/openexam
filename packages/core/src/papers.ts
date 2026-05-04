@@ -4,6 +4,7 @@ import {
   gradeSingleChoiceQuestion,
   readSingleChoiceAnswerKey,
   readSingleChoiceOptions,
+  syncWrongNoteForObjectiveAnswer,
   type SingleChoiceOption
 } from "./practice";
 import { prisma } from "./prisma";
@@ -243,27 +244,13 @@ export async function submitPaperAttempt(
         }
       });
 
-      if (!answer.isCorrect) {
-        await tx.wrongNote.upsert({
-          where: {
-            userId_questionId: {
-              userId,
-              questionId: answer.questionId
-            }
-          },
-          update: {
-            attemptAnswerId: attemptAnswer.id,
-            errorCount: { increment: 1 },
-            mastered: false,
-            lastReviewedAt: null
-          },
-          create: {
-            userId,
-            questionId: answer.questionId,
-            attemptAnswerId: attemptAnswer.id
-          }
-        });
-      }
+      await syncWrongNoteForObjectiveAnswer(tx, {
+        userId,
+        questionId: answer.questionId,
+        attemptAnswerId: attemptAnswer.id,
+        isCorrect: answer.isCorrect,
+        reviewedAt: now
+      });
     }
 
     return attempt.id;
@@ -491,6 +478,7 @@ function toPaperQuestionForAttempt(paperQuestion: PaperQuestionRecord): PaperQue
 function buildPublicPaperWhere(goal: NonNullable<PrimaryGoal>): Prisma.PaperWhereInput {
   return {
     visibility: "public",
+    archivedAt: null,
     questions: {
       some: {
         question: {

@@ -45,9 +45,9 @@ Current implementation status:
 - Email/password authentication, database-backed sessions, and route protection are implemented for the learner and admin apps.
 - Admin exam hierarchy and knowledge-tree management are started as a minimal CRUD workflow.
 - Learners can save a primary exam goal and see it on the dashboard.
-- The first single-choice practice workflow is implemented with goal-scoped question retrieval, repeat avoidance, graded attempts, paper attempts, attempt reports, wrong-note auto-collection, wrong-note filters/retry, mastery toggles, and weak-point dashboard summaries.
-- Admin single-choice question CRUD is implemented for question creation, editing, filtering, review-status changes, archive/restore, knowledge binding, source, visibility, and review status.
-- Admin paper CRUD is implemented for ordered single-choice papers with subject binding, visibility, type, question order, section, number, score, filters, and hide/restore controls. AI provider calls, material uploads, image generation, advanced practice modes, and admin hardening remain future implementation work.
+- The first single-choice practice workflow is implemented with goal-scoped question retrieval, repeat avoidance, graded attempts, paper attempts, attempt reports, wrong-note auto-collection, wrong-note knowledge filters/retry, mastery toggles, and weak-point dashboard summaries.
+- Admin single-choice question CRUD is implemented for question creation, JSON import, editing, filtering, review-status changes, archive/restore, knowledge binding, source, visibility, and review status.
+- Admin paper CRUD is implemented for ordered single-choice papers with subject binding, visibility, type, question order, section, number, score, archivedAt-based filters, and hide/restore controls. AI provider calls, material uploads, image generation, advanced practice modes, and deeper admin hardening remain future implementation work.
 
 ## Exam Coverage
 
@@ -156,7 +156,7 @@ Required behavior:
 - Filter by exam goal, subject, knowledge node, question type, error count, and recency.
 - Feed status into diagnosis and study plans.
 
-Implementation note: `/wrong-notes` lists auto-collected wrong notes, shows correct answer and explanation, supports all/unmastered/mastered filters, lets the learner toggle mastered/not mastered, and links directly to retry. Mistake reason tags, user notes, AI analysis, and review-card generation remain pending.
+Implementation note: `/wrong-notes` lists auto-collected wrong notes, shows correct answer and explanation, supports all/unmastered/mastered and knowledge-node filters, lets the learner toggle mastered/not mastered, links directly to retry, and marks a note mastered after a correct retry. Mistake reason tags, user notes, AI analysis, and review-card generation remain pending.
 
 ### Knowledge Points
 
@@ -278,7 +278,7 @@ OpenExam does not ship third-party question banks unless their rights and redist
 The MVP ships:
 
 - Small original sample questions for demos.
-- Generic importers for administrator-provided JSON/CSV question data.
+- Generic importers for administrator-provided JSON/CSV question data. JSON single-choice import is implemented first.
 - Material upload and AI-assisted extraction for user-private content.
 
 Public question-bank content must be one of:
