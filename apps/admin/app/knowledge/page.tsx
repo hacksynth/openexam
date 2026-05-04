@@ -1,4 +1,5 @@
 import { AppShell } from "@/components/app-shell";
+import { PixelSelect } from "@openexam/core/pixel-select";
 import { requireAdminSession } from "@/lib/auth";
 import { listKnowledgeHierarchy } from "@openexam/core/exam-core";
 import {
@@ -211,9 +212,9 @@ function SelectField({
   return (
     <label className={labelClass}>
       {label}
-      <select className={inputClass} defaultValue={defaultValue} name={name} required={required}>
+      <PixelSelect className={inputClass} defaultValue={defaultValue} name={name} required={required}>
         {children}
-      </select>
+      </PixelSelect>
     </label>
   );
 }

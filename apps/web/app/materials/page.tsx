@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { PixelSelect } from "@openexam/core/pixel-select";
 import type { Route } from "next";
 import { AppShell } from "@/components/app-shell";
 import { requireWebSession } from "@/lib/auth";
@@ -113,9 +114,9 @@ function SelectField({ label, name, children }: { label: string; name: string; c
   return (
     <label className={labelClass}>
       {label}
-      <select className={inputClass} name={name}>
+      <PixelSelect className={inputClass} name={name}>
         {children}
-      </select>
+      </PixelSelect>
     </label>
   );
 }

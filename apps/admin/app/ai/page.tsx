@@ -1,4 +1,5 @@
 import { AiProvider, AiTaskType } from "@prisma/client";
+import { PixelSelect } from "@openexam/core/pixel-select";
 import { AppShell } from "@/components/app-shell";
 import { requireAdminSession } from "@/lib/auth";
 import { getAiUsageOverview, listAdminAiProviderPresets } from "@openexam/core/ai";
@@ -220,9 +221,9 @@ function SelectField({
   return (
     <label className={labelClass}>
       {label}
-      <select className={inputClass} defaultValue={defaultValue} name={name}>
+      <PixelSelect className={inputClass} defaultValue={defaultValue} name={name}>
         {children}
-      </select>
+      </PixelSelect>
     </label>
   );
 }

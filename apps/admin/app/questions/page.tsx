@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { PixelSelect } from "@openexam/core/pixel-select";
 import type { Route } from "next";
 import { AppShell } from "@/components/app-shell";
 import { requireAdminSession } from "@/lib/auth";
@@ -386,9 +387,9 @@ function SelectField({
   return (
     <label className={labelClass}>
       {label}
-      <select className={inputClass} defaultValue={defaultValue} name={name} required={required}>
+      <PixelSelect className={inputClass} defaultValue={defaultValue} name={name} required={required}>
         {children}
-      </select>
+      </PixelSelect>
     </label>
   );
 }
