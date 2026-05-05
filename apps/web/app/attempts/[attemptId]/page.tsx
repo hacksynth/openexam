@@ -86,7 +86,7 @@ export default async function AttemptReportPage({ params, searchParams }: Attemp
               {report.answers.map((answer) => (
                 <article key={answer.id} className="pixel-panel grid gap-4 p-5">
                   <div className="flex flex-wrap gap-2">
-                    <span className={`status-chip px-2 py-1 ${answer.isCorrect ? "bg-[var(--teal)]" : "bg-[var(--danger)] text-white"}`}>
+                    <span className={`status-chip px-2 py-1 ${answer.isCorrect === true ? "bg-[var(--teal)]" : answer.isCorrect === false ? "bg-[var(--danger)] text-white" : ""}`}>
                       {answer.isCorrect === null ? "待确认" : answer.isCorrect ? "正确" : "错误"}
                     </span>
                     <span className="status-chip px-2 py-1">

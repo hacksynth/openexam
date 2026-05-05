@@ -9,10 +9,12 @@ import { autosavePaperAttemptAction, pausePaperAttemptAction, resumePaperAttempt
 type ReadyState = Extract<PaperAttemptSessionState, { status: "ready" }>;
 type ReadyPaper = ReadyState["paper"];
 type ReadyAttempt = ReadyState["attempt"];
+type SaveStatus = "idle" | "saving" | "saved" | "failed";
 
 export function PaperAttemptForm({ paper, attempt }: { paper: ReadyPaper; attempt: ReadyAttempt }) {
   const [answers, setAnswers] = useState<Record<string, string>>(attempt.answers);
-  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [elapsedSeconds, setElapsedSeconds] = useState(attempt.elapsedSeconds);
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const paused = attempt.status === "paused";
   const answeredCount = Object.values(answers).filter(Boolean).length;
   const unansweredCount = paper.questions.length - answeredCount;
@@ -43,17 +45,34 @@ export function PaperAttemptForm({ paper, attempt }: { paper: ReadyPaper; attemp
       return;
     }
 
-    const timers = Object.entries(answers).map(([questionId, answer]) =>
-      window.setTimeout(() => {
-        void autosavePaperAttemptAction({
+    const entries = Object.entries(answers);
+
+    if (entries.length === 0) {
+      return;
+    }
+
+    let canceled = false;
+    setSaveStatus("saving");
+    const timer = window.setTimeout(() => {
+      void Promise.all(
+        entries.map(([questionId, answer]) =>
+          autosavePaperAttemptAction({
           attemptId: attempt.id,
           questionId,
           answer
-        });
-      }, 500)
-    );
+          })
+        )
+      ).then((results) => {
+        if (!canceled) {
+          setSaveStatus(results.every((result) => result.ok) ? "saved" : "failed");
+        }
+      });
+    }, 500);
 
-    return () => timers.forEach((timer) => window.clearTimeout(timer));
+    return () => {
+      canceled = true;
+      window.clearTimeout(timer);
+    };
   }, [answers, attempt.id, paused]);
 
   return (
@@ -76,6 +95,9 @@ export function PaperAttemptForm({ paper, attempt }: { paper: ReadyPaper; attemp
             <span className="status-chip px-2 py-1">已答 {answeredCount} / {paper.questions.length}</span>
             <span className="status-chip px-2 py-1">未答 {unansweredCount}</span>
             <span className="status-chip px-2 py-1">{paused ? "已暂停" : `用时 ${formatDuration(elapsedSeconds)}`}</span>
+            <span className={`status-chip px-2 py-1 ${saveStatus === "failed" ? "bg-[var(--danger)] text-white" : saveStatus === "saved" ? "bg-[var(--teal)]" : ""}`}>
+              {paused ? "暂停中" : saveStatusLabel(saveStatus)}
+            </span>
           </div>
           <div className="flex flex-wrap gap-2">
             {paused ? (
@@ -258,6 +280,15 @@ function QuestionAnswerInput({
       ))}
     </div>
   );
+}
+
+function saveStatusLabel(status: SaveStatus) {
+  return {
+    idle: "待保存",
+    saving: "保存中",
+    saved: "已保存",
+    failed: "保存失败"
+  }[status];
 }
 
 function formatDuration(totalSeconds: number) {

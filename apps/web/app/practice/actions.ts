@@ -3,15 +3,20 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { Route } from "next";
-import { collectQuestionForReview, submitSingleChoiceAnswer } from "@openexam/core/practice";
+import { collectQuestionForReview, submitPracticeAnswer } from "@openexam/core/practice";
 import { requireWebSession } from "@/lib/auth";
 
-export async function submitSingleChoiceAnswerAction(formData: FormData) {
+export async function submitPracticeAnswerAction(formData: FormData) {
   const session = await requireWebSession();
   const materialId = optionalText(String(formData.get("materialId") ?? ""));
-  const result = await submitSingleChoiceAnswer(session.user.id, {
+  const answer = formData
+    .getAll("answer")
+    .map((item) => String(item).trim())
+    .filter(Boolean)
+    .join(",");
+  const result = await submitPracticeAnswer(session.user.id, {
     questionId: String(formData.get("questionId") ?? ""),
-    answer: String(formData.get("answer") ?? ""),
+    answer,
     materialId,
     retry: String(formData.get("retry") ?? "") === "true"
   });
@@ -25,6 +30,10 @@ export async function submitSingleChoiceAnswerAction(formData: FormData) {
   }
 
   redirect(practiceRedirect({ attemptId: result.attemptId, materialId }));
+}
+
+export async function submitSingleChoiceAnswerAction(formData: FormData) {
+  return submitPracticeAnswerAction(formData);
 }
 
 export async function collectPracticeQuestionAction(formData: FormData) {

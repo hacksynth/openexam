@@ -82,8 +82,8 @@ export default async function AttemptsPage({ searchParams }: AttemptsPageProps) 
                   {attempt.answers.map((answer) => (
                     <section key={answer.id} className="grid gap-3 border-2 border-black bg-[var(--surface-subtle)] p-3">
                       <div className="flex flex-wrap gap-2">
-                        <span className={`status-chip px-2 py-1 ${answer.isCorrect ? "bg-[var(--teal)]" : "bg-[var(--danger)] text-white"}`}>
-                          {answer.isCorrect ? "正确" : "错误"}
+                        <span className={`status-chip px-2 py-1 ${answer.isCorrect === true ? "bg-[var(--teal)]" : answer.isCorrect === false ? "bg-[var(--danger)] text-white" : ""}`}>
+                          {answer.isCorrect === null ? "待确认" : answer.isCorrect ? "正确" : "错误"}
                         </span>
                         <span className="status-chip px-2 py-1">
                           {answer.score} / {answer.maxScore}

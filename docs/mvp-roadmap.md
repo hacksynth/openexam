@@ -15,7 +15,7 @@ Current progress:
 - Email/password auth, database-backed sessions, route protection, live PostgreSQL migration validation, and Docker image builds are complete for the foundation slice.
 - Exam core schema exists in Prisma, and the first admin CRUD slice now manages exam hierarchy and knowledge trees.
 - Learners can save a primary exam goal and see that goal on the dashboard.
-- The first Practice Loop slice is implemented for goal-scoped single-choice practice, improved question rotation, objective grading, paper attempts, attempt reports, answer-card submission, wrong-note filters/retry, and dashboard weak-node summaries.
+- The first Practice Loop slice is implemented for goal-scoped multi-kind objective practice, subjective answer capture, improved question rotation, paper attempts, attempt reports, answer-card submission, wrong-note filters/retry, and database-backed dashboard summaries.
 - Admins can create and govern single-choice questions, filter and archive questions, and create/filter/hide ordered public papers.
 - Learning analysis, structured 14-day plans, worker-backed jobs, private generated assets, and wrong-note review-card images are started.
 - The visible foundation UI uses Simplified Chinese (`zh-CN`) copy.
@@ -86,18 +86,18 @@ Acceptance:
 
 Goal: make the core learner loop useful before adding advanced AI.
 
-Status: first single-choice workflow implemented and expanded.
+Status: first multi-kind workflow implemented and expanded.
 
 Deliverables:
 
 - User exam goals. Started with primary goal selection.
 - Current primary goal selection. Started.
-- Random practice. Started with goal-scoped public approved single-choice rotation that avoids immediate repeats.
+- Random practice. Started with goal-scoped public approved question rotation that avoids immediate repeats.
 - Knowledge-node practice. Pending as a direct entry mode; current selector respects goal knowledge scope.
-- Paper practice. Started with public single-choice paper listing, answer card, elapsed-time display, unanswered confirmation, full-paper submission, scoring, reports, and wrong-note ingestion.
+- Paper practice. Started with public paper listing, answer card, persistent elapsed-time display, autosave, pause/resume, unanswered confirmation, full-paper submission, scoring, reports, and wrong-note ingestion.
 - Practice session records. Started with one-question practice attempts, paper attempts, a learner history page, and per-attempt reports.
-- Objective answer grading. Started for single-choice questions.
-- Wrong-note auto-collection. Started for incorrect single-choice submissions, with correct retry marking notes as mastered.
+- Objective answer grading. Started for single-choice, multiple-choice, true-false, and blank questions.
+- Wrong-note auto-collection. Started for incorrect objective submissions, with correct retry marking notes as mastered.
 - Manual favorite/collection.
 - Wrong-note filters and mastery state. Started with all/unmastered/mastered filters, knowledge-node filters, weak-node summaries, and retry entry.
 - Basic statistics by goal, subject, question type, difficulty, and knowledge node. Started with pending wrong-note count and weak knowledge-node ranking.
@@ -115,9 +115,9 @@ Goal: add safe provider integration and the first high-value AI actions.
 
 Deliverables:
 
-- User BYOK settings for OpenAI, Claude, and Gemini. Started with OpenAI BYOK.
-- Optional platform provider settings. Started with `OPENAI_API_KEY` fallback.
-- Encrypted API key storage. Started for OpenAI keys with AES-256-GCM.
+- User BYOK settings for OpenAI, Claude, and Gemini. Started.
+- Optional platform provider settings. Started with provider-specific platform fallbacks.
+- Encrypted API key storage. Started for provider keys with AES-256-GCM.
 - Text provider adapters. Started with OpenAI Responses API.
 - Model presets and task routing. Started with seeded and admin-managed OpenAI `explain_question` presets.
 - AI call logs. Started with learner-visible recent call history, duration/usage display, error summaries, and failed wrong-note retry.
@@ -184,15 +184,15 @@ Goal: support quasi-formal mock exams and reports.
 Deliverables:
 
 - Attempt creation from paper. Started.
-- Timer. Started as non-persistent elapsed-time display.
+- Timer. Started as server-derived elapsed-time display.
 - Answer sheet. Started as an answer card with answered/unanswered state.
-- Autosave.
-- Pause/resume records.
+- Autosave. Started.
+- Pause/resume records. Started.
 - Submission and scoring.
 - Subjective answer capture.
 - AI-assisted subjective grading.
 - User confirmation or manual score adjustment.
-- Exam score report. Started for objective single-choice papers.
+- Exam score report. Started for objective and subjective-answer papers.
 - Automatic wrong-note ingestion.
 
 Acceptance:
@@ -265,7 +265,7 @@ Minimum test coverage should include:
 - Admin paper validation, filters, and hide/restore behavior.
 - Browser workflow coverage for auth, goal selection, admin content creation/import, paper submission/report, unanswered confirmation, paper hide/restore, wrong-note retry, and non-admin rejection.
 
-Current tests cover public question visibility constraints, admin single-choice validation, JSON import validation and filters, admin paper validation and archivedAt filters, paper submission scoring, report statistics, objective grading, single-choice practice helpers, wrong-note summarization, study-plan schema validation, wrong-note review-card prompt/job/asset behavior, and the first Playwright browser workflow. The remaining priorities are still required before MVP exit.
+Current tests cover public question visibility constraints, admin single-choice validation, JSON import validation and filters, admin paper validation and archivedAt filters, paper submission scoring, report statistics, objective grading, multi-kind practice helpers, dashboard aggregation, AI output schemas, wrong-note summarization, study-plan schema validation, wrong-note review-card prompt/job/asset behavior, and the first Playwright browser workflow. The remaining priorities are still required before MVP exit.
 
 Browser workflow tests should cover:
 

@@ -4,7 +4,7 @@ import { AppShell } from "@/components/app-shell";
 import { requireWebSession } from "@/lib/auth";
 import { formatGoalPath } from "@openexam/core/exam-core";
 import { getAttemptResult, getPracticeQuestion } from "@openexam/core/practice";
-import { collectPracticeQuestionAction, submitSingleChoiceAnswerAction } from "./actions";
+import { collectPracticeQuestionAction, submitPracticeAnswerAction } from "./actions";
 
 type PracticePageProps = {
   searchParams: Promise<{ attempt?: string; error?: string; material?: string; retry?: string; skip?: string; knowledgeNodeId?: string }>;
@@ -17,6 +17,15 @@ const sourceTypeLabels: Record<string, string> = {
   user_uploaded: "用户上传",
   ai_generated: "AI 生成",
   unknown: "未知来源"
+};
+
+const questionKindLabels: Record<string, string> = {
+  single_choice: "单选",
+  multiple_choice: "多选",
+  true_false: "判断",
+  blank: "填空",
+  short_answer: "简答",
+  case_analysis: "案例"
 };
 
 export default async function PracticePage({ searchParams }: PracticePageProps) {
@@ -53,8 +62,8 @@ export default async function PracticePage({ searchParams }: PracticePageProps) 
               title="资料练习暂无题目"
               description={
                 state.material
-                  ? `${state.material.title} 还没有已确认入库的单选题。`
-                  : "该资料不存在、不可访问，或还没有已确认入库的单选题。"
+                  ? `${state.material.title} 还没有已确认入库的题目。`
+                  : "该资料不存在、不可访问，或还没有已确认入库的题目。"
               }
               actionHref="/materials"
               actionLabel="返回资料"
@@ -70,8 +79,8 @@ export default async function PracticePage({ searchParams }: PracticePageProps) 
             />
           ) : (
             <EmptyState
-              title="当前目标暂无可练习单选题"
-              description={`${formatGoalPath(state.goal)} 还没有公开且审核通过的单选题。`}
+              title="当前目标暂无可练习题"
+              description={`${formatGoalPath(state.goal)} 还没有公开且审核通过的题目。`}
               actionHref="/goals"
               actionLabel="调整目标"
             />
@@ -92,24 +101,14 @@ export default async function PracticePage({ searchParams }: PracticePageProps) 
                 </span>
               ))}
               {state.question.difficulty ? <span className="status-chip px-2 py-1">难度 {state.question.difficulty}</span> : null}
+              <span className="status-chip px-2 py-1">{questionKindLabels[state.question.kind] ?? state.question.kind}</span>
               <span className="status-chip px-2 py-1">{sourceTypeLabels[state.question.sourceType] ?? state.question.sourceType}</span>
             </div>
-            <form action={submitSingleChoiceAnswerAction} className="grid gap-4">
+            <form action={submitPracticeAnswerAction} className="grid gap-4">
               <input name="questionId" type="hidden" value={state.question.id} />
               <input name="materialId" type="hidden" value={state.material?.id ?? ""} />
               <input name="retry" type="hidden" value={params.retry ? "true" : "false"} />
-              <fieldset className="grid gap-3">
-                <legend className="sr-only">选择答案</legend>
-                {state.question.options.map((option) => (
-                  <label key={option.key} className="flex min-w-0 items-start gap-3 border-3 border-black bg-[var(--surface-subtle)] p-3 font-bold">
-                    <input className="mt-1 h-4 w-4 shrink-0 accent-[var(--primary)]" name="answer" required type="radio" value={option.key} />
-                    <span className="min-w-0">
-                      <span className="mr-2 font-black">{option.key}.</span>
-                      {option.text}
-                    </span>
-                  </label>
-                ))}
-              </fieldset>
+              <PracticeAnswerFields question={state.question} />
               <div className="flex flex-wrap gap-3">
                 <button className="pixel-button px-4 py-2" type="submit">
                   提交答案
@@ -141,8 +140,8 @@ function AttemptResultCard({
     <section className="pixel-panel grid gap-4 p-5">
       <div>
         <p className="text-xs font-bold uppercase text-[var(--muted)]">本次结果</p>
-        <h2 className={`mt-2 text-2xl font-black ${result.isCorrect ? "text-[var(--teal)]" : "text-[var(--danger)]"}`}>
-          {result.isCorrect ? "回答正确" : "回答错误"}
+        <h2 className={`mt-2 text-2xl font-black ${result.isCorrect === true ? "text-[var(--teal)]" : result.isCorrect === false ? "text-[var(--danger)]" : ""}`}>
+          {result.isCorrect === null ? "已提交，等待评分" : result.isCorrect ? "回答正确" : "回答错误"}
         </h2>
         <p className="mt-1 font-bold text-[var(--muted)]">
           得分 {result.score} / {result.maxScore}，你的答案 {result.userAnswer || "未记录"}，正确答案 {result.correctAnswer ?? "未配置"}
@@ -180,6 +179,79 @@ function AttemptResultCard({
         ) : null}
       </div>
     </section>
+  );
+}
+
+function PracticeAnswerFields({
+  question
+}: {
+  question: Extract<Awaited<ReturnType<typeof getPracticeQuestion>>, { status: "ready" }>["question"];
+}) {
+  if (question.kind === "short_answer" || question.kind === "case_analysis") {
+    return (
+      <label className="grid gap-2 text-sm font-bold">
+        作答内容
+        <textarea className="min-h-36 border-3 border-black bg-white p-3 text-base font-bold leading-7" name="answer" placeholder="输入作答内容" required />
+      </label>
+    );
+  }
+
+  if (question.kind === "blank") {
+    return (
+      <label className="grid gap-2 text-sm font-bold">
+        填空答案
+        <input className="border-3 border-black bg-white p-3 text-base font-bold" name="answer" placeholder="输入填空答案" required />
+      </label>
+    );
+  }
+
+  if (question.kind === "true_false") {
+    return (
+      <fieldset className="grid gap-3">
+        <legend className="sr-only">选择判断答案</legend>
+        {[
+          { key: "true", text: "正确" },
+          { key: "false", text: "错误" }
+        ].map((option) => (
+          <label key={option.key} className="flex min-w-0 items-start gap-3 border-3 border-black bg-[var(--surface-subtle)] p-3 font-bold">
+            <input className="mt-1 h-4 w-4 shrink-0 accent-[var(--primary)]" name="answer" required type="radio" value={option.key} />
+            <span>{option.text}</span>
+          </label>
+        ))}
+      </fieldset>
+    );
+  }
+
+  if (question.kind === "multiple_choice") {
+    return (
+      <fieldset className="grid gap-3">
+        <legend className="sr-only">选择多个答案</legend>
+        {question.options.map((option) => (
+          <label key={option.key} className="flex min-w-0 items-start gap-3 border-3 border-black bg-[var(--surface-subtle)] p-3 font-bold">
+            <input className="mt-1 h-4 w-4 shrink-0 accent-[var(--primary)]" name="answer" type="checkbox" value={option.key} />
+            <span className="min-w-0 break-words">
+              <span className="mr-2 font-black">{option.key}.</span>
+              {option.text}
+            </span>
+          </label>
+        ))}
+      </fieldset>
+    );
+  }
+
+  return (
+    <fieldset className="grid gap-3">
+      <legend className="sr-only">选择答案</legend>
+      {question.options.map((option) => (
+        <label key={option.key} className="flex min-w-0 items-start gap-3 border-3 border-black bg-[var(--surface-subtle)] p-3 font-bold">
+          <input className="mt-1 h-4 w-4 shrink-0 accent-[var(--primary)]" name="answer" required type="radio" value={option.key} />
+          <span className="min-w-0 break-words">
+            <span className="mr-2 font-black">{option.key}.</span>
+            {option.text}
+          </span>
+        </label>
+      ))}
+    </fieldset>
   );
 }
 

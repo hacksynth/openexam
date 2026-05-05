@@ -4,6 +4,7 @@ import {
   buildMaterialPracticeQuestionWhere,
   buildPracticeQuestionWhere,
   getMaterialPracticeScope,
+  gradePracticeObjectiveQuestion,
   gradeSingleChoiceQuestion,
   questionBelongsToMaterialPracticeScope,
   readSingleChoiceAnswerKey,
@@ -51,6 +52,30 @@ describe("single-choice practice helpers", () => {
       }
     });
   });
+
+  it("grades multi-kind objective practice submissions", () => {
+    expect(gradePracticeObjectiveQuestion({ kind: "multiple_choice", answerKey: { values: ["A", "D"] }, response: "D,A", maxScore: 3 })).toMatchObject({
+      ok: true,
+      correctAnswer: "A, D",
+      result: {
+        isCorrect: true,
+        score: 3
+      }
+    });
+    expect(gradePracticeObjectiveQuestion({ kind: "true_false", answerKey: { value: false }, response: "错误" })).toMatchObject({
+      ok: true,
+      correctAnswer: "错误",
+      result: {
+        isCorrect: true
+      }
+    });
+    expect(gradePracticeObjectiveQuestion({ kind: "blank", answerKey: { value: "事务" }, response: " 事务 " })).toMatchObject({
+      ok: true,
+      result: {
+        isCorrect: true
+      }
+    });
+  });
 });
 
 describe("summarizeWrongNotes", () => {
@@ -74,7 +99,6 @@ describe("summarizeWrongNotes", () => {
 describe("practice question access", () => {
   it("allows public questions and only the current user's private questions within the goal scope", () => {
     expect(buildPracticeQuestionWhere("user_1", goal({ subjectId: "subject_1" }))).toMatchObject({
-      kind: "single_choice",
       reviewStatus: "approved",
       deletedAt: null,
       AND: [
@@ -112,13 +136,13 @@ describe("practice question access", () => {
     });
 
     expect(JSON.stringify(buildPracticeQuestionWhere("user_1", goal()))).not.toContain("user_2");
+    expect(buildPracticeQuestionWhere("user_1", goal({ subjectId: "subject_1" }))).not.toHaveProperty("kind");
   });
 
   it("adds a confirmed material question id filter on top of the normal practice scope", () => {
     expect(buildMaterialPracticeQuestionWhere("user_1", goal({ subjectId: "subject_1" }), ["q_1", "q_2", "q_1"])).toMatchObject({
       AND: [
         {
-          kind: "single_choice",
           reviewStatus: "approved",
           deletedAt: null,
           AND: [

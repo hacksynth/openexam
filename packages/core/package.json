@@ -22,6 +22,7 @@
     "./analysis": "./src/analysis.ts",
     "./audit": "./src/audit.ts",
     "./ai": "./src/ai.ts",
+    "./ai-output-schemas": "./src/ai-output-schemas.ts",
     "./pixel-select": "./src/pixel-select.tsx",
     "./question-admin": "./src/question-admin.ts",
     "./question-governance": "./src/question-governance.ts",

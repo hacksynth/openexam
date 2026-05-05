@@ -1,9 +1,10 @@
 import { AiProvider, AiTaskType, Prisma, QuestionKind } from "@prisma/client";
+import { parseSubjectiveGradingOutput } from "./ai-output-schemas";
 import { assertAiUsageAllowed, generateAiText, resolveAiCredential, type AiTextGenerator } from "./ai";
 import { getPrimaryExamGoal, type PrimaryGoal } from "./exam-core";
 import { gradeObjectiveAnswer, type ObjectiveQuestionKind } from "./grading";
 import {
-  readSingleChoiceAnswerKey,
+  formatAnswerValue,
   readSingleChoiceOptions,
   syncWrongNoteForObjectiveAnswer,
   type SingleChoiceOption
@@ -102,6 +103,7 @@ export type PaperAttemptSessionState =
         status: string;
         startedAt: Date;
         pausedAt: Date | null;
+        elapsedSeconds: number;
         answers: Record<string, string>;
       };
       paper: Extract<PaperAttemptState, { status: "ready" }>["paper"];
@@ -205,7 +207,8 @@ export async function getPaperAttemptSession(userId: string, paperId: string): P
         }
       },
       include: {
-        answers: true
+        answers: true,
+        pauses: true
       },
       orderBy: [{ updatedAt: "desc" }]
     });
@@ -223,7 +226,8 @@ export async function getPaperAttemptSession(userId: string, paperId: string): P
         maxScore: state.paper.totalScore
       },
       include: {
-        answers: true
+        answers: true,
+        pauses: true
       }
     });
   });
@@ -237,9 +241,31 @@ export async function getPaperAttemptSession(userId: string, paperId: string): P
       status: attempt.status,
       startedAt: attempt.startedAt,
       pausedAt: attempt.pausedAt,
+      elapsedSeconds: calculateAttemptElapsedSeconds({
+        startedAt: attempt.startedAt,
+        pauses: attempt.pauses,
+        now: new Date()
+      }),
       answers: Object.fromEntries(attempt.answers.map((answer) => [answer.questionId, readSubmittedAnswer(answer.userAnswer)]))
     }
   };
+}
+
+export function calculateAttemptElapsedSeconds(input: {
+  startedAt: Date;
+  submittedAt?: Date | null;
+  pauses: { pausedAt: Date; resumedAt: Date | null }[];
+  now?: Date;
+}) {
+  const end = input.submittedAt ?? input.now ?? new Date();
+  const elapsedMs = end.getTime() - input.startedAt.getTime();
+  const pausedMs = input.pauses.reduce((sum, pause) => {
+    const pauseEnd = pause.resumedAt ?? end;
+
+    return sum + Math.max(0, pauseEnd.getTime() - pause.pausedAt.getTime());
+  }, 0);
+
+  return Math.max(0, Math.floor((elapsedMs - pausedMs) / 1000));
 }
 
 export async function submitPaperAttempt(
@@ -784,7 +810,7 @@ export async function getAttemptReport(userId: string, attemptId: string) {
       aiSuggestedScore: answer.aiSuggestedScore,
       userConfirmed: answer.userConfirmed,
       userAnswer: readSubmittedAnswer(answer.userAnswer),
-      correctAnswer: readSingleChoiceAnswerKey(answerKey),
+      correctAnswer: formatAnswerValue(readObjectiveAnswerKey(answerKey)),
       explanation: answer.questionVersion?.explanation ?? answer.question.explanation,
       question: {
         id: answer.questionId,
@@ -919,7 +945,13 @@ async function generateSubjectiveScoreSuggestion(
       maxOutputTokens: preset.maxOutputTokens,
       temperature: preset.temperature
     });
-    const score = parseSuggestedScore(result.text, input.maxScore);
+    const parsedScore = parseSubjectiveGradingOutput(result.text, input.maxScore);
+
+    if (!parsedScore.ok) {
+      throw new Error(parsedScore.error);
+    }
+
+    const score = parsedScore.data.score;
 
     await options.db.aiCall.update({
       where: { id: aiCall.id },
@@ -968,25 +1000,6 @@ function buildSubjectiveGradingPrompt(input: { stem: string; answer: string; max
       '只输出 {"score":数字,"reason":"一句话理由"}，score 必须在 0 到满分之间。'
     ].join("\n")
   };
-}
-
-function parseSuggestedScore(value: string, maxScore: number) {
-  const jsonMatch = value.match(/\{[\s\S]*\}/);
-  const parsed = jsonMatch ? safeJson(jsonMatch[0]) : safeJson(value);
-  const rawScore = parsed && typeof parsed === "object" && "score" in parsed ? Number(parsed.score) : Number(value.match(/-?\d+(?:\.\d+)?/)?.[0]);
-  const score = Number.isFinite(rawScore) ? rawScore : 0;
-
-  return Math.min(maxScore, Math.max(0, score));
-}
-
-function safeJson(value: string): Record<string, unknown> | null {
-  try {
-    const parsed = JSON.parse(value);
-
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : null;
-  } catch {
-    return null;
-  }
 }
 
 async function markAiCallFailed(aiCallId: string, errorSummary: string, db: typeof prisma) {

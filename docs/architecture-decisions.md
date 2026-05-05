@@ -42,7 +42,7 @@ Current implementation status:
 - `docker-compose.yml` defines separate `web`, `admin`, and `postgres` services with health checks.
 - Database-backed email/password auth and separate learner/admin session cookies are implemented.
 - The first Exam Core workflow is implemented with admin exam hierarchy and knowledge-tree management, learner primary goal selection, and a dashboard goal read path.
-- The first Practice Loop workflow is implemented for single-choice practice, paper attempts, graded attempts, attempt reports, answer-card submission, wrong-note auto-collection, filters, retry, mastery toggles, and dashboard weak-node summaries.
+- The first Practice Loop workflow is implemented for multi-kind objective practice, subjective answer capture, paper attempts, graded attempts, attempt reports, answer-card submission, wrong-note auto-collection, filters, retry, mastery toggles, and database-backed dashboard summaries.
 - Playwright now covers the first critical browser workflow across admin content creation/import, learner paper submission/reporting, unanswered confirmation, paper hide/restore, wrong-note retry, and role rejection.
 - shadcn/ui installation and S3 storage adapters are still pending.
 - Full i18n routing and locale negotiation are not implemented.
@@ -170,7 +170,7 @@ Rules:
 - `Attempt` records user work.
 - Attempt answers bind to the question version used at answer time.
 
-Implementation note: the current practice workflow creates one graded `Attempt` per submitted single-choice question. The current paper workflow creates one `Attempt` per submitted public paper with multiple `AttemptAnswer` rows. Both store selected answers in `AttemptAnswer.userAnswer` and incorrect objective answers enter `WrongNote`. Correct retry from a wrong note marks it mastered. The report helper reads only the current user's attempts and aggregates score, accuracy, unanswered count, and knowledge-node statistics.
+Implementation note: the current practice workflow creates one `Attempt` per submitted question, grades objective question kinds, and captures subjective answers for later confirmation. The current paper workflow creates or resumes one `Attempt` per public paper with multiple `AttemptAnswer` rows, autosave, pause records, and server-derived elapsed time. Both store selected answers in `AttemptAnswer.userAnswer` and incorrect objective answers enter `WrongNote`. Correct retry from a wrong note marks it mastered. The report helper reads only the current user's attempts and aggregates score, accuracy, unanswered count, and knowledge-node statistics.
 
 Paper hiding uses `Paper.archivedAt`. Visibility remains the publication state (`private`, `unlisted`, or `public`), while archived papers are excluded from learner paper lists and attempts. Restoring a public paper still checks that all bound questions are public, approved, and not deleted.
 
@@ -295,12 +295,12 @@ Provider keys:
 
 Implementation note:
 
-- `/profile` lets learners save/delete an OpenAI BYOK key. Keys are encrypted with AES-256-GCM using `AI_KEY_ENCRYPTION_SECRET`; only a short key hint is displayed.
-- If a learner has no BYOK key, `OPENAI_API_KEY` may be used as a platform fallback. `OPENAI_BASE_URL` can point OpenAI calls at an OpenAI-compatible gateway.
+- `/profile` lets learners save/delete OpenAI, Claude, and Gemini BYOK keys. Keys are encrypted with AES-256-GCM using `AI_KEY_ENCRYPTION_SECRET`; only a short key hint is displayed.
+- If a learner has no BYOK key, provider-specific platform keys may be used as fallbacks. Provider base URL env vars can point calls at compatible gateways.
 - `/wrong-notes` can synchronously generate or regenerate a plain-text AI analysis for one wrong note and stores it in `WrongNote.aiAnalysis`.
 - `/ai/tasks` lists the user's recent `AiCall` records with model, status, prompt version, duration, token usage, error summary, and retry for failed wrong-note explanations.
-- Admin `/ai` manages OpenAI model presets, default task routing, temperature, max tokens, and enabled state.
-- Material extraction jobs use the same OpenAI-compatible text adapter and write pending `MaterialQuestionCandidate` records before admin confirmation creates private questions.
+- Admin `/ai` manages provider model presets, default task routing, temperature, max tokens, and enabled state.
+- Material extraction jobs use the text provider adapter and write Zod-validated pending `MaterialQuestionCandidate` records before admin confirmation creates private questions.
 
 Each AI task records:
 
@@ -381,10 +381,10 @@ Use Zod or an equivalent schema library. Failed parsing may retry once. Persiste
 
 Implementation note:
 
-- `packages/core/src/study-plan-schema.ts` defines and tests the first structured 14-day plan schema.
+- `packages/core/src/study-plan-schema.ts` defines and tests the structured 14-day plan schema.
+- `packages/core/src/ai-output-schemas.ts` defines and tests structured schemas for material question extraction, subjective grading, learning diagnosis, and review-card image prompts.
 - `packages/core/src/ai.ts` defines the first plain-text wrong-note prompt version, `wrong-note-explain-v1`.
 - Playwright uses an OpenAI-compatible mock `/v1/responses` server so browser tests exercise the HTTP adapter without calling a live model.
-- Other AI output schemas remain pending.
 
 ## Jobs And Async Work
 

@@ -1,25 +1,19 @@
 import Link from "next/link";
+import type { Route } from "next";
 import { AppShell } from "@/components/app-shell";
 import { requireWebSession } from "@/lib/auth";
-import { recentJobs, todayTasks } from "@openexam/core/dashboard-data";
+import { getLearnerDashboard } from "@openexam/core/dashboard-data";
 import { formatDateInput, formatGoalPath, getPrimaryExamGoal } from "@openexam/core/exam-core";
-import { getDashboardPracticeSummary } from "@openexam/core/practice";
 
 export default async function DashboardPage() {
   const session = await requireWebSession();
-  const [currentGoal, practiceSummary] = await Promise.all([getPrimaryExamGoal(session.user.id), getDashboardPracticeSummary(session.user.id)]);
-  const dashboardMetrics = [
-    { label: "今日任务", value: String(todayTasks.length) },
-    { label: "待复习错题", value: String(practiceSummary.pendingWrongNotes) },
-    { label: "薄弱知识点", value: String(practiceSummary.weakKnowledgeNodes.length) },
-    { label: "AI 任务", value: String(recentJobs.length) }
-  ];
+  const [currentGoal, dashboard] = await Promise.all([getPrimaryExamGoal(session.user.id), getLearnerDashboard(session.user.id)]);
 
   return (
     <AppShell section="learner" eyebrow="学习端基础版" title="仪表盘">
       <section className="grid gap-5">
         <div className="grid gap-4 md:grid-cols-4">
-          {dashboardMetrics.map((metric) => (
+          {dashboard.metrics.map((metric) => (
             <article key={metric.label} className="pixel-panel p-4">
               <p className="text-xs font-bold uppercase text-[var(--muted)]">{metric.label}</p>
               <p className="mt-2 text-4xl font-black">{metric.value}</p>
@@ -57,24 +51,28 @@ export default async function DashboardPage() {
 
           <section className="pixel-panel p-5">
             <h2 className="mb-4 text-xl font-black">今日安排</h2>
-            <ol className="grid gap-3">
-              {todayTasks.map((task) => (
-                <li key={task} className="border-2 border-black bg-[var(--surface-subtle)] p-3 font-bold">
-                  {task}
-                </li>
-              ))}
-            </ol>
+            {dashboard.todayTasks.length === 0 ? (
+              <p className="border-2 border-black bg-[var(--surface-subtle)] p-3 font-bold text-[var(--muted)]">暂无今日任务。生成学习计划或完成更多练习后，这里会显示真实安排。</p>
+            ) : (
+              <ol className="grid gap-3">
+                {dashboard.todayTasks.map((task) => (
+                  <li key={task.id} className="border-2 border-black bg-[var(--surface-subtle)] p-3 font-bold">
+                    <Link href={task.href as Route}>{task.label}</Link>
+                  </li>
+                ))}
+              </ol>
+            )}
           </section>
         </div>
 
         <div className="grid gap-5 lg:grid-cols-2">
           <section className="pixel-panel p-5">
             <h2 className="mb-4 text-xl font-black">薄弱知识点</h2>
-            {practiceSummary.weakKnowledgeNodes.length === 0 ? (
+            {dashboard.weakKnowledgeNodes.length === 0 ? (
               <p className="border-2 border-black bg-[var(--surface-subtle)] p-3 font-bold text-[var(--muted)]">暂无未掌握错题，继续练习后会按知识点汇总。</p>
             ) : (
               <div className="flex flex-wrap gap-2">
-                {practiceSummary.weakKnowledgeNodes.map((node) => (
+                {dashboard.weakKnowledgeNodes.map((node) => (
                   <span key={node.title} className="status-chip px-2 py-1">
                     {node.title} / {node.count} 题
                   </span>
@@ -85,14 +83,18 @@ export default async function DashboardPage() {
 
           <section className="pixel-panel p-5">
             <h2 className="mb-4 text-xl font-black">AI 与导入任务</h2>
-            <div className="grid gap-3">
-              {recentJobs.map((job) => (
-                <div key={job.label} className="flex items-center justify-between border-2 border-black bg-white p-3">
-                  <span className="font-bold">{job.label}</span>
-                  <span className="status-chip px-2 py-1">{job.status}</span>
-                </div>
-              ))}
-            </div>
+            {dashboard.recentJobs.length === 0 ? (
+              <p className="border-2 border-black bg-[var(--surface-subtle)] p-3 font-bold text-[var(--muted)]">暂无 AI 或导入任务。</p>
+            ) : (
+              <div className="grid gap-3">
+                {dashboard.recentJobs.map((job) => (
+                  <div key={job.id} className="flex items-center justify-between border-2 border-black bg-white p-3">
+                    <span className="font-bold">{job.label}</span>
+                    <span className="status-chip px-2 py-1">{job.statusLabel}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </section>
         </div>
       </section>

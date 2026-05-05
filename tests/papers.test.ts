@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { gradePaperSubmission, summarizeAttemptReportAnswers } from "@openexam/core/papers";
+import { calculateAttemptElapsedSeconds, gradePaperSubmission, summarizeAttemptReportAnswers } from "@openexam/core/papers";
 
 describe("gradePaperSubmission", () => {
   const questions = [
@@ -50,6 +50,27 @@ describe("gradePaperSubmission", () => {
       ok: false,
       error: "试卷包含答案配置不完整的题目。"
     });
+  });
+});
+
+describe("calculateAttemptElapsedSeconds", () => {
+  it("subtracts completed and open pause ranges from elapsed time", () => {
+    expect(
+      calculateAttemptElapsedSeconds({
+        startedAt: new Date("2026-05-05T00:00:00.000Z"),
+        now: new Date("2026-05-05T00:20:00.000Z"),
+        pauses: [
+          {
+            pausedAt: new Date("2026-05-05T00:05:00.000Z"),
+            resumedAt: new Date("2026-05-05T00:10:00.000Z")
+          },
+          {
+            pausedAt: new Date("2026-05-05T00:15:00.000Z"),
+            resumedAt: null
+          }
+        ]
+      })
+    ).toBe(600);
   });
 });
 

@@ -46,6 +46,12 @@ export async function autosavePaperAttemptAction(input: { attemptId: string; que
 export async function pausePaperAttemptAction(formData: FormData) {
   const session = await requireWebSession();
   const paperId = String(formData.get("paperId") ?? "");
+  const saved = await savePaperAnswersFromForm(session.user.id, formData);
+
+  if (!saved.ok) {
+    redirect(`/papers/${paperId}?error=${encodeURIComponent(saved.error)}` as Route);
+  }
+
   const result = await pausePaperAttempt(session.user.id, String(formData.get("attemptId") ?? ""));
 
   revalidatePath(`/papers/${paperId}` as Route);
@@ -55,6 +61,25 @@ export async function pausePaperAttemptAction(formData: FormData) {
   }
 
   redirect(`/papers/${paperId}?notice=${encodeURIComponent("试卷已暂停。")}` as Route);
+}
+
+async function savePaperAnswersFromForm(userId: string, formData: FormData) {
+  const attemptId = String(formData.get("attemptId") ?? "");
+  const questionIds = formData.getAll("questionId").map((item) => String(item));
+
+  for (const questionId of questionIds) {
+    const result = await savePaperAttemptAnswer(userId, {
+      attemptId,
+      questionId,
+      answer: String(formData.get(`answer_${questionId}`) ?? "")
+    });
+
+    if (!result.ok) {
+      return result;
+    }
+  }
+
+  return { ok: true } as const;
 }
 
 export async function resumePaperAttemptAction(formData: FormData) {

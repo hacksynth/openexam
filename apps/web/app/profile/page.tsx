@@ -1,7 +1,7 @@
 import { AppShell } from "@/components/app-shell";
 import { requireWebSession } from "@/lib/auth";
 import { getUserAiSettings } from "@openexam/core/ai";
-import { deleteProviderKeyAction, saveOpenAiKeyAction } from "./actions";
+import { deleteProviderKeyAction, saveProviderKeyAction } from "./actions";
 
 type ProfilePageProps = {
   searchParams: Promise<{ error?: string; notice?: string }>;
@@ -31,7 +31,7 @@ export default async function ProfilePage({ searchParams }: ProfilePageProps) {
               {provider.updatedAt ? <span className="status-chip px-2 py-1">更新 {formatDate(provider.updatedAt)}</span> : null}
             </div>
 
-            <form action={saveOpenAiKeyAction} className="grid gap-3">
+            <form action={saveProviderKeyAction} className="grid gap-3">
               <input name="provider" type="hidden" value={provider.provider} />
               <label className="grid gap-2 text-sm font-bold">
                 {provider.provider === "openai" ? "API Key" : `${provider.label} Key`}

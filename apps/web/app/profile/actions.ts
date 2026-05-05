@@ -6,7 +6,7 @@ import type { Route } from "next";
 import { deleteUserProviderKey, saveUserProviderKey } from "@openexam/core/ai";
 import { requireWebSession } from "@/lib/auth";
 
-export async function saveOpenAiKeyAction(formData: FormData) {
+export async function saveProviderKeyAction(formData: FormData) {
   const session = await requireWebSession();
   const provider = value(formData, "provider") || "openai";
   const result = await saveUserProviderKey(session.user.id, {
@@ -15,6 +15,10 @@ export async function saveOpenAiKeyAction(formData: FormData) {
   });
 
   finish(result, `${providerLabel(provider)} API Key 已保存。`);
+}
+
+export async function saveOpenAiKeyAction(formData: FormData) {
+  return saveProviderKeyAction(formData);
 }
 
 export async function deleteOpenAiKeyAction(formData?: FormData) {

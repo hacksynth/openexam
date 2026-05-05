@@ -30,7 +30,7 @@ export const learnerRoutes: RouteItem[] = [
     id: "practice",
     href: "/practice",
     label: "练习",
-    description: "当前目标下的单选练习、自动判题、结果反馈和错题入口。",
+    description: "当前目标下的多题型练习、自动判题、结果反馈和错题入口。",
     section: "learner",
     status: "foundation"
   },

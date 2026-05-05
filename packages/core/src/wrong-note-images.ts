@@ -3,6 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { AiProvider, AiTaskType, Prisma, Visibility } from "@prisma/client";
 import OpenAI from "openai";
+import { validateReviewCardImagePrompt } from "./ai-output-schemas";
 import { assertAiUsageAllowed, resolveOpenAiCredential } from "./ai";
 import { readSingleChoiceAnswerKey, readSingleChoiceOptions, type SingleChoiceOption } from "./practice";
 import { prisma } from "./prisma";
@@ -194,6 +195,12 @@ export async function processWrongNoteReviewCardJob(
 
   const context = toWrongNoteReviewCardContext(wrongNote);
   const prompt = buildWrongNoteReviewCardPrompt(context);
+  const validatedPrompt = validateReviewCardImagePrompt(prompt);
+
+  if (!validatedPrompt.ok) {
+    throw new Error(validatedPrompt.error);
+  }
+
   const preset = await resolveImagePreset(db);
   const aiCall = await db.aiCall.create({
     data: {
@@ -237,7 +244,7 @@ export async function processWrongNoteReviewCardJob(
       apiKey: credential?.ok ? credential.data.apiKey : "test-key",
       baseURL: credential?.ok ? credential.data.baseURL : normalizeOpenAiBaseUrl(env.OPENAI_BASE_URL),
       model: preset.model,
-      prompt,
+      prompt: validatedPrompt.data.prompt,
       userId
     });
     const stored = await storeReviewCardImage(userId, image.bytes, image.mimeType, env);

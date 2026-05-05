@@ -5,6 +5,7 @@ import {
   encryptAiSecret,
   assertAiUsageAllowed,
   generateWrongNoteAiAnalysis,
+  getUserAiSettings,
   retryFailedAiCall,
   upsertAiProviderPreset,
   providerKeyHint,
@@ -109,6 +110,35 @@ describe("OpenAI credential resolution", () => {
         baseURL: "http://127.0.0.1:8317/v1",
         source: "platform"
       }
+    });
+  });
+});
+
+describe("AI provider settings", () => {
+  it("returns OpenAI, Claude, and Gemini BYOK settings for the profile page", async () => {
+    const db = {
+      userProviderKey: {
+        findMany: async () => [
+          {
+            provider: "anthropic",
+            keyHint: "sk-...ude",
+            updatedAt: new Date("2026-05-05T00:00:00.000Z")
+          }
+        ]
+      }
+    };
+
+    await expect(
+      getUserAiSettings("user_1", db as never, {
+        OPENAI_API_KEY: "sk-platform",
+        GEMINI_API_KEY: "gemini-platform"
+      })
+    ).resolves.toMatchObject({
+      providers: [
+        { provider: "openai", label: "OpenAI", configured: false, platformAvailable: true },
+        { provider: "anthropic", label: "Claude", configured: true, keyHint: "sk-...ude", platformAvailable: false },
+        { provider: "gemini", label: "Gemini", configured: false, platformAvailable: true }
+      ]
     });
   });
 });

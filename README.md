@@ -4,9 +4,9 @@ OpenExam is a self-hostable AI exam preparation platform for individual learners
 
 ## Status
 
-This repository has a runnable foundation plus early MVP learning-loop slices. The learner and admin apps, shared core package, Prisma/PostgreSQL schema, auth/session layer, exam hierarchy management, single-choice practice, paper attempts, wrong notes, learning analysis, structured 14-day study plans, OpenAI BYOK explanations, AI call logs, material uploads, AI-assisted material question extraction, a persistent worker, and wrong-note review-card image generation are in place.
+This repository has a runnable foundation plus early MVP learning-loop slices. The learner and admin apps, shared core package, Prisma/PostgreSQL schema, auth/session layer, exam hierarchy management, multi-kind objective practice, paper attempts with autosave/pause/resume, wrong notes, learning analysis, structured 14-day study plans, OpenAI/Claude/Gemini BYOK settings, AI call logs, material uploads, AI-assisted material question extraction, a persistent worker, and wrong-note review-card image generation are in place.
 
-The app does not yet complete the full MVP loop. OCR and richer file extraction, Claude/Gemini support, subjective grading, problem-solving diagrams, audit hardening, and advanced practice modes remain future work. The product and architecture source of truth remains in `docs/`.
+The app does not yet complete the full MVP loop. OCR and richer file extraction, deeper subjective grading workflows, problem-solving diagrams, audit hardening, and advanced practice modes remain future work. The product and architecture source of truth remains in `docs/`.
 
 The first product version targets Simplified Chinese (`zh-CN`) UI copy by default.
 
@@ -58,7 +58,7 @@ Copy `.env.example` to `.env` and update `DATABASE_URL`, `SESSION_SECRET`, `NEXT
 
 Set `ADMIN_EMAIL` and `ADMIN_PASSWORD` before seeding if you want to bootstrap an admin login.
 
-Set `AI_KEY_ENCRYPTION_SECRET` before saving BYOK provider keys. `OPENAI_API_KEY` is optional and acts as the platform fallback when a learner has not saved a personal key. Set `OPENAI_BASE_URL` when using an OpenAI-compatible gateway.
+Set `AI_KEY_ENCRYPTION_SECRET` before saving BYOK provider keys. `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, and `GEMINI_API_KEY` are optional platform fallbacks when a learner has not saved a personal key. Set provider base URL env vars when using compatible gateways.
 
 Set `OPENEXAM_DAILY_AI_CALL_LIMIT`, `OPENEXAM_DAILY_PLATFORM_TOKEN_LIMIT`, `OPENEXAM_UPLOAD_MAX_BYTES`, `OPENEXAM_WORKER_POLL_MS`, and `OPENEXAM_JOB_STALE_MS` to control AI usage, upload size, worker polling, and stale running-job recovery. Material uploads and generated review-card images use local storage at `LOCAL_STORAGE_DIR`; `npm run worker` processes queued extraction and image jobs, while admin `/jobs` still provides manual processing, retry, recovery, and job-detail controls.
 

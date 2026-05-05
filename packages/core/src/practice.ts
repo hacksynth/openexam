@@ -1,6 +1,6 @@
-import { Prisma } from "@prisma/client";
+import { Prisma, QuestionKind } from "@prisma/client";
 import { getPrimaryExamGoal, type PrimaryGoal } from "./exam-core";
-import { gradeObjectiveAnswer } from "./grading";
+import { gradeObjectiveAnswer, type ObjectiveQuestionKind } from "./grading";
 import { prisma } from "./prisma";
 
 const practiceQuestionInclude = {
@@ -33,6 +33,7 @@ export type SingleChoiceOption = {
 
 export type PracticeQuestion = {
   id: string;
+  kind: QuestionKind;
   stem: string;
   options: SingleChoiceOption[];
   difficulty: number | null;
@@ -54,7 +55,7 @@ export type PracticeQuestionState =
   | { status: "ready"; goal: NonNullable<PrimaryGoal>; question: PracticeQuestion; material?: PracticeMaterialContext };
 
 export type PracticeSubmitResult =
-  | { ok: true; attemptId: string; isCorrect: boolean }
+  | { ok: true; attemptId: string; isCorrect: boolean | null }
   | { ok: false; error: string };
 
 export type PracticeQuestionOptions = {
@@ -106,18 +107,94 @@ export function readSingleChoiceAnswerKey(answerKey: Prisma.JsonValue | null | u
   return null;
 }
 
-export function gradeSingleChoiceQuestion(input: { answerKey: Prisma.JsonValue | null | undefined; response: string; maxScore?: number }) {
-  const answerKey = readSingleChoiceAnswerKey(input.answerKey);
+export function readObjectiveAnswerKey(answerKey: Prisma.JsonValue | null | undefined): string | boolean | Array<string | boolean> | null {
+  if (typeof answerKey === "string" || typeof answerKey === "number" || typeof answerKey === "boolean") {
+    return typeof answerKey === "number" ? String(answerKey).trim() : answerKey;
+  }
 
-  if (!answerKey) {
+  if (!isJsonObject(answerKey)) {
+    return null;
+  }
+
+  if (Array.isArray(answerKey.values)) {
+    return answerKey.values
+      .map((item) => {
+        if (typeof item === "boolean") {
+          return item;
+        }
+
+        if (typeof item === "string" || typeof item === "number") {
+          return String(item).trim();
+        }
+
+        return null;
+      })
+      .filter((item): item is string | boolean => item !== null && item !== "");
+  }
+
+  if (typeof answerKey.value === "string" || typeof answerKey.value === "number" || typeof answerKey.value === "boolean") {
+    return typeof answerKey.value === "number" ? String(answerKey.value).trim() : answerKey.value;
+  }
+
+  return null;
+}
+
+export function formatAnswerValue(value: string | boolean | Array<string | boolean> | null): string | null {
+  if (value === null) {
+    return null;
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((item) => formatAnswerValue(item)).filter(Boolean).join(", ");
+  }
+
+  if (typeof value === "boolean") {
+    return value ? "正确" : "错误";
+  }
+
+  return value;
+}
+
+export function readSubmittedAnswer(value: unknown) {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    const record = value as Record<string, unknown>;
+
+    if (typeof record.value === "string") {
+      return record.value;
+    }
+  }
+
+  return "";
+}
+
+export function gradePracticeObjectiveQuestion(input: {
+  kind: ObjectiveQuestionKind;
+  answerKey: Prisma.JsonValue | null | undefined;
+  response: string;
+  maxScore?: number;
+}) {
+  const answerKey = readObjectiveAnswerKey(input.answerKey);
+
+  if (answerKey === null || (Array.isArray(answerKey) && answerKey.length === 0)) {
     return { ok: false, error: "题目答案配置不完整。" } as const;
   }
 
+  const normalizedResponse = normalizeObjectiveResponse(input.kind, input.response);
+
   return {
     ok: true,
-    result: gradeObjectiveAnswer("single_choice", answerKey, input.response, input.maxScore ?? 1),
-    correctAnswer: answerKey
+    result: gradeObjectiveAnswer(input.kind, answerKey, normalizedResponse, input.maxScore ?? 1),
+    correctAnswer: formatAnswerValue(answerKey) ?? ""
   } as const;
+}
+
+export function gradeSingleChoiceQuestion(input: { answerKey: Prisma.JsonValue | null | undefined; response: string; maxScore?: number }) {
+  return gradePracticeObjectiveQuestion({
+    kind: "single_choice",
+    answerKey: input.answerKey,
+    response: input.response,
+    maxScore: input.maxScore
+  });
 }
 
 export async function getPracticeQuestion(userId: string, options: PracticeQuestionOptions = {}): Promise<PracticeQuestionState> {
@@ -137,7 +214,7 @@ export async function getPracticeQuestion(userId: string, options: PracticeQuest
     const normalizedRetry = toPracticeQuestion(retryQuestion);
 
     if (!normalizedRetry) {
-      return { status: "error", goal, error: "题目选项配置不完整。" };
+      return { status: "error", goal, error: "题目配置不完整。" };
     }
 
     return { status: "ready", goal, question: normalizedRetry };
@@ -179,7 +256,7 @@ export async function getPracticeQuestion(userId: string, options: PracticeQuest
   return { status: "ready", goal, question: normalized, material: materialScope?.material };
 }
 
-export async function submitSingleChoiceAnswer(
+export async function submitPracticeAnswer(
   userId: string,
   input: { questionId: string; answer: string; retry?: boolean; materialId?: string | null }
 ): Promise<PracticeSubmitResult> {
@@ -187,7 +264,7 @@ export async function submitSingleChoiceAnswer(
   const questionId = input.questionId.trim();
 
   if (!answer) {
-    return { ok: false, error: "请选择一个答案。" };
+    return { ok: false, error: "请填写或选择答案。" };
   }
 
   const goal = await getPrimaryExamGoal(userId);
@@ -215,15 +292,28 @@ export async function submitSingleChoiceAnswer(
   const normalized = toPracticeQuestion(question);
 
   if (!normalized) {
-    return { ok: false, error: "题目选项配置不完整。" };
+    return { ok: false, error: "题目配置不完整。" };
   }
 
   const currentVersion = question.versions.find((version) => version.version === question.currentVersion) ?? question.versions[0] ?? null;
-  const grading = gradeSingleChoiceQuestion({
-    answerKey: currentVersion?.answerKey ?? question.answerKey,
-    response: answer,
-    maxScore: question.paperLinks[0]?.score ?? 1
-  });
+  const maxScore = question.paperLinks[0]?.score ?? 1;
+  const objectiveKind = toObjectiveQuestionKind(question.kind);
+  const grading = objectiveKind
+    ? gradePracticeObjectiveQuestion({
+        kind: objectiveKind,
+        answerKey: currentVersion?.answerKey ?? question.answerKey,
+        response: answer,
+        maxScore
+      })
+    : {
+        ok: true,
+        result: {
+          isCorrect: null,
+          score: null,
+          maxScore
+        },
+        correctAnswer: null
+      } as const;
 
   if (!grading.ok) {
     return grading;
@@ -235,7 +325,7 @@ export async function submitSingleChoiceAnswer(
       data: {
         userId,
         goalId: goal.id,
-        status: "graded",
+        status: objectiveKind ? "graded" : "submitted",
         submittedAt: now,
         totalScore: grading.result.score,
         maxScore: grading.result.maxScore
@@ -254,14 +344,16 @@ export async function submitSingleChoiceAnswer(
       }
     });
 
-    await syncWrongNoteForObjectiveAnswer(tx, {
-      userId,
-      questionId: question.id,
-      attemptAnswerId: attemptAnswer.id,
-      isCorrect: grading.result.isCorrect,
-      masteredOnCorrect: input.retry === true,
-      reviewedAt: now
-    });
+    if (grading.result.isCorrect !== null) {
+      await syncWrongNoteForObjectiveAnswer(tx, {
+        userId,
+        questionId: question.id,
+        attemptAnswerId: attemptAnswer.id,
+        isCorrect: grading.result.isCorrect,
+        masteredOnCorrect: input.retry === true,
+        reviewedAt: now
+      });
+    }
 
     return {
       attemptId: attempt.id,
@@ -270,6 +362,13 @@ export async function submitSingleChoiceAnswer(
   });
 
   return { ok: true, ...result };
+}
+
+export async function submitSingleChoiceAnswer(
+  userId: string,
+  input: { questionId: string; answer: string; retry?: boolean; materialId?: string | null }
+): Promise<PracticeSubmitResult> {
+  return submitPracticeAnswer(userId, input);
 }
 
 export async function getAttemptResult(userId: string, attemptId: string) {
@@ -298,18 +397,19 @@ export async function getAttemptResult(userId: string, attemptId: string) {
   }
 
   const answer = attempt.answers[0];
-  const answerKey = answer.questionVersion?.answerKey ?? answer.question.answerKey;
+  const answerKey = readObjectiveAnswerKey(answer.questionVersion?.answerKey ?? answer.question.answerKey);
 
   return {
     id: attempt.id,
-    isCorrect: Boolean(answer.isCorrect),
+    isCorrect: answer.isCorrect,
     score: answer.score ?? 0,
     maxScore: answer.maxScore ?? 1,
     userAnswer: readSubmittedAnswer(answer.userAnswer),
-    correctAnswer: readSingleChoiceAnswerKey(answerKey),
+    correctAnswer: formatAnswerValue(answerKey),
     explanation: answer.questionVersion?.explanation ?? answer.question.explanation,
     question: {
       id: answer.question.id,
+      kind: answer.question.kind,
       stem: answer.questionVersion?.stem ?? answer.question.stem,
       options: readSingleChoiceOptions(answer.questionVersion?.payload ?? answer.question.payload) ?? [],
       knowledgeNodes: answer.question.knowledgeBindings.map((binding) => binding.knowledgeNode.title)
@@ -361,19 +461,20 @@ export async function listAttempts(userId: string) {
     paperTitle: attempt.paper?.title ?? null,
     goalPath: attempt.goal ? [attempt.goal.program.name, attempt.goal.track?.name, attempt.goal.cycle?.name, attempt.goal.subject?.name].filter(Boolean).join(" / ") : "未绑定目标",
     answers: attempt.answers.map((answer) => {
-      const answerKey = answer.questionVersion?.answerKey ?? answer.question.answerKey;
+      const answerKey = readObjectiveAnswerKey(answer.questionVersion?.answerKey ?? answer.question.answerKey);
 
       return {
         id: answer.id,
         questionId: answer.question.id,
-        isCorrect: Boolean(answer.isCorrect),
+        isCorrect: answer.isCorrect,
         score: answer.score ?? 0,
         maxScore: answer.maxScore ?? 0,
         userAnswer: readSubmittedAnswer(answer.userAnswer),
-        correctAnswer: readSingleChoiceAnswerKey(answerKey),
+        correctAnswer: formatAnswerValue(answerKey),
         explanation: answer.questionVersion?.explanation ?? answer.question.explanation,
         question: {
           id: answer.question.id,
+          kind: answer.question.kind,
           stem: answer.questionVersion?.stem ?? answer.question.stem,
           knowledgeNodes: answer.question.knowledgeBindings.map((binding) => binding.knowledgeNode.title)
         }
@@ -441,7 +542,7 @@ export async function listWrongNotes(userId: string, options: WrongNoteFilters =
     aiAnalysis: note.aiAnalysis,
     stem: note.question.versions[0]?.stem ?? note.question.stem,
     explanation: note.question.versions[0]?.explanation ?? note.question.explanation,
-    correctAnswer: readSingleChoiceAnswerKey(note.question.versions[0]?.answerKey ?? note.question.answerKey),
+    correctAnswer: formatAnswerValue(readObjectiveAnswerKey(note.question.versions[0]?.answerKey ?? note.question.answerKey)),
     knowledgeNodes: note.question.knowledgeBindings.map((binding) => ({
       id: binding.knowledgeNodeId,
       title: binding.knowledgeNode.title
@@ -850,14 +951,15 @@ function toPracticeQuestion(question: PracticeQuestionRecord): PracticeQuestion 
   const version = question.versions.find((item) => item.version === question.currentVersion) ?? question.versions[0] ?? null;
   const options = readSingleChoiceOptions(version?.payload ?? question.payload);
 
-  if (!options) {
+  if (isChoiceKind(question.kind) && !options) {
     return null;
   }
 
   return {
     id: question.id,
+    kind: question.kind,
     stem: version?.stem ?? question.stem,
-    options,
+    options: options ?? [],
     difficulty: question.difficulty,
     knowledgeNodes: question.knowledgeBindings.map((binding) => binding.knowledgeNode.title),
     sourceType: question.sourceType
@@ -866,7 +968,6 @@ function toPracticeQuestion(question: PracticeQuestionRecord): PracticeQuestion 
 
 export function buildPracticeQuestionWhere(userId: string, goal: NonNullable<PrimaryGoal>): Prisma.QuestionWhereInput {
   return {
-    kind: "single_choice",
     reviewStatus: "approved",
     deletedAt: null,
     AND: [
@@ -1040,12 +1141,39 @@ function buildGoalScopeWhere(goal: NonNullable<PrimaryGoal>): Prisma.QuestionWhe
   ];
 }
 
-function readSubmittedAnswer(value: Prisma.JsonValue | null | undefined) {
-  if (isJsonObject(value) && typeof value.value === "string") {
-    return value.value;
+function isChoiceKind(kind: QuestionKind) {
+  return kind === QuestionKind.single_choice || kind === QuestionKind.multiple_choice;
+}
+
+function toObjectiveQuestionKind(kind: QuestionKind): ObjectiveQuestionKind | null {
+  if (kind === QuestionKind.single_choice || kind === QuestionKind.multiple_choice || kind === QuestionKind.true_false || kind === QuestionKind.blank) {
+    return kind;
   }
 
-  return "";
+  return null;
+}
+
+function normalizeObjectiveResponse(kind: ObjectiveQuestionKind, answer: string) {
+  if (kind === "multiple_choice") {
+    return answer
+      .split(/[,\s]+/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+
+  if (kind === "true_false") {
+    const normalized = answer.trim().toLowerCase();
+
+    if (["true", "t", "yes", "y", "1", "对", "正确"].includes(normalized)) {
+      return true;
+    }
+
+    if (["false", "f", "no", "n", "0", "错", "错误"].includes(normalized)) {
+      return false;
+    }
+  }
+
+  return answer;
 }
 
 function isJsonObject(value: Prisma.JsonValue | null | undefined): value is Prisma.JsonObject {

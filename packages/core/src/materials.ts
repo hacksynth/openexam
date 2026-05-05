@@ -4,7 +4,7 @@ import path from "node:path";
 import { Prisma, QuestionKind, ReviewStatus, SourceType, Visibility } from "@prisma/client";
 import mammoth from "mammoth";
 import { PDFParse } from "pdf-parse";
-import { z } from "zod";
+import { materialQuestionExtractionSchema } from "./ai-output-schemas";
 import type { AiTextInputPart } from "./ai";
 import { readEnv } from "./env";
 import { prisma } from "./prisma";
@@ -59,10 +59,6 @@ export const supportedMaterialMimeTypes = [
   "image/webp"
 ] as const;
 export const materialQuestionKinds = ["single_choice", "multiple_choice", "true_false", "blank", "short_answer", "case_analysis"] as const;
-
-const extractedQuestionEnvelopeSchema = z.object({
-  questions: z.array(z.unknown()).min(1).max(20)
-});
 
 export type ExtractedMaterialQuestion = {
   kind?: string | null;
@@ -457,7 +453,7 @@ export async function createMaterialQuestionCandidates(materialId: string, jobId
 
 export function validateExtractedQuestionsJson(value: string): ActionResult<{ questions: ExtractedMaterialQuestion[] }> {
   try {
-    const parsed = extractedQuestionEnvelopeSchema.safeParse(JSON.parse(value));
+    const parsed = materialQuestionExtractionSchema.safeParse(JSON.parse(value));
 
     if (!parsed.success) {
       return { ok: false, error: "AI 抽题结果格式无效。" };

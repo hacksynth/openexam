@@ -45,9 +45,9 @@ Current implementation status:
 - Email/password authentication, database-backed sessions, and route protection are implemented for the learner and admin apps.
 - Admin exam hierarchy and knowledge-tree management are started as a minimal CRUD workflow.
 - Learners can save a primary exam goal and see it on the dashboard.
-- The first single-choice practice workflow is implemented with goal-scoped question retrieval, repeat avoidance, graded attempts, paper attempts, attempt reports, wrong-note auto-collection, wrong-note knowledge filters/retry, mastery toggles, and weak-point dashboard summaries.
+- The practice workflow is implemented with goal-scoped question retrieval, repeat avoidance, single-choice/multiple-choice/true-false/blank objective grading, subjective answer capture, paper attempts, attempt reports, wrong-note auto-collection, wrong-note knowledge filters/retry, mastery toggles, and database-backed dashboard summaries.
 - Admin single-choice question CRUD is implemented for question creation, JSON import, editing, filtering, review-status changes, archive/restore, knowledge binding, source, visibility, and review status.
-- Admin paper CRUD is implemented for ordered single-choice papers with subject binding, visibility, type, question order, section, number, score, archivedAt-based filters, and hide/restore controls. OpenAI BYOK, wrong-note AI analysis, AI call logs, failed-call retry, admin model presets, learning analysis, structured 14-day plans, material uploads, worker-backed extraction jobs, wrong-note review-card image jobs, AI candidate questions, private asset serving, and basic usage protection are started; advanced practice modes and deeper admin hardening remain future implementation work.
+- Admin paper CRUD is implemented for ordered multi-kind papers with subject binding, visibility, type, question order, section, number, score, archivedAt-based filters, and hide/restore controls. OpenAI/Claude/Gemini BYOK settings, wrong-note AI analysis, AI call logs, failed-call retry, admin model presets, learning analysis, structured 14-day plans, material uploads, worker-backed extraction jobs, wrong-note review-card image jobs, AI candidate questions, private asset serving, and basic usage protection are started; advanced practice modes and deeper admin hardening remain future implementation work.
 
 ## Exam Coverage
 
@@ -107,7 +107,7 @@ The MVP supports these practice modes:
 
 The MVP does not include leaderboards, social check-ins, class assignments, community question lists, or complex adaptive testing.
 
-Implementation note: `/practice` now supports a first goal-scoped single-choice flow. `packages/core/src/practice.ts` retrieves public approved questions for the current goal, avoids immediate repeats, supports wrong-note retry, persists one-question graded attempts, references the answered question version, and writes wrong notes for incorrect answers.
+Implementation note: `/practice` supports a goal-scoped multi-kind flow. `packages/core/src/practice.ts` retrieves public approved questions for the current goal, avoids immediate repeats, supports wrong-note retry, persists one-question attempts, references the answered question version, grades single-choice/multiple-choice/true-false/blank objective answers, captures subjective answers, and writes wrong notes for incorrect objective answers.
 
 ### Attempt History
 
@@ -137,7 +137,7 @@ Not included:
 - Institution-level exam release.
 - Multi-user same-session exams.
 
-Implementation note: `/papers` now lists public papers for the learner's current goal, and `/papers/[paperId]` supports first-version full-paper single-choice submission with an answer card, elapsed-time display, and unanswered confirmation. Submission redirects to an objective report. The current implementation intentionally omits persistent timer state, autosave, pause/resume, and subjective grading.
+Implementation note: `/papers` now lists public papers for the learner's current goal, and `/papers/[paperId]` supports first-version full-paper submission with an answer card, server-derived elapsed time, autosave status, pause/resume, unanswered confirmation, objective grading, and subjective score suggestions. Submission redirects to an attempt report.
 
 ### Wrong Notes
 
@@ -213,7 +213,7 @@ Supported providers:
 - Claude.
 - Gemini.
 
-The MVP uses bring-your-own-key as the primary model. Platform keys are optional for demos, trials, or administrator-managed usage. All provider calls go through the backend. The current implementation supports OpenAI BYOK first, with `OPENAI_API_KEY` as fallback, `OPENAI_BASE_URL` for OpenAI-compatible gateways, learner-visible AI call logs, admin-managed OpenAI model presets, daily call limits, platform token budget protection, and OpenAI Images for wrong-note review cards.
+The MVP uses bring-your-own-key as the primary model. Platform keys are optional for demos, trials, or administrator-managed usage. All provider calls go through the backend. The current implementation supports learner BYOK settings for OpenAI, Claude, and Gemini, platform fallback keys, provider base URL overrides, learner-visible AI call logs, admin-managed model presets, daily call limits, platform token budget protection, and OpenAI Images for wrong-note review cards.
 
 AI features:
 
