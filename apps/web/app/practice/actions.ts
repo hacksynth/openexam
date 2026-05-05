@@ -39,7 +39,8 @@ export async function submitSingleChoiceAnswerAction(formData: FormData) {
 export async function collectPracticeQuestionAction(formData: FormData) {
   const session = await requireWebSession();
   const result = await collectQuestionForReview(session.user.id, {
-    questionId: value(formData, "questionId")
+    questionId: value(formData, "questionId"),
+    attemptAnswerId: optionalText(value(formData, "attemptAnswerId")) || undefined
   });
 
   revalidatePath("/wrong-notes" as Route);

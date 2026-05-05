@@ -146,6 +146,11 @@ function AttemptResultCard({
         <p className="mt-1 font-bold text-[var(--muted)]">
           得分 {result.score} / {result.maxScore}，你的答案 {result.userAnswer || "未记录"}，正确答案 {result.correctAnswer ?? "未配置"}
         </p>
+        {result.aiSuggestedScore !== null ? (
+          <p className="mt-2 font-bold text-[var(--muted)]">
+            AI 建议分 {result.aiSuggestedScore} / {result.maxScore}，评分状态 {result.userConfirmed ? "已确认" : "待确认"}
+          </p>
+        ) : null}
       </div>
       <div className="border-2 border-black bg-[var(--surface-subtle)] p-3">
         <p className="text-sm font-bold text-[var(--muted)]">题目</p>
@@ -167,10 +172,11 @@ function AttemptResultCard({
         <Link href={"/wrong-notes" as Route} className="pixel-button bg-white px-4 py-2">
           查看错题本
         </Link>
-        {result.isCorrect ? (
+        {result.isCorrect !== false && result.userAnswer ? (
           <form action={collectPracticeQuestionAction}>
             <input name="questionId" type="hidden" value={result.question.id} />
             <input name="attemptId" type="hidden" value={result.id} />
+            <input name="attemptAnswerId" type="hidden" value={result.attemptAnswerId} />
             <input name="materialId" type="hidden" value={materialId ?? ""} />
             <button className="pixel-button bg-white px-4 py-2" type="submit">
               收藏复习

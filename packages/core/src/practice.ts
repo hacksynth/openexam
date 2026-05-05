@@ -1,6 +1,7 @@
 import { Prisma, QuestionKind } from "@prisma/client";
 import { getPrimaryExamGoal, type PrimaryGoal } from "./exam-core";
 import { gradeObjectiveAnswer, type ObjectiveQuestionKind } from "./grading";
+import { generateSubjectiveScoreSuggestion } from "./subjective-scoring";
 import { prisma } from "./prisma";
 
 const practiceQuestionInclude = {
@@ -319,6 +320,20 @@ export async function submitPracticeAnswer(
     return grading;
   }
 
+  const aiSuggestedScore = objectiveKind
+    ? null
+    : await generateSubjectiveScoreSuggestion(
+        userId,
+        {
+          questionId: question.id,
+          stem: currentVersion?.stem ?? question.stem,
+          answer,
+          maxScore: grading.result.maxScore ?? 1,
+          rubric: currentVersion?.rubric ?? question.rubric
+        },
+        { db: prisma }
+      );
+
   const now = new Date();
   const result = await prisma.$transaction(async (tx) => {
     const attempt = await tx.attempt.create({
@@ -340,7 +355,8 @@ export async function submitPracticeAnswer(
         userAnswer: { value: answer },
         isCorrect: grading.result.isCorrect,
         score: grading.result.score,
-        maxScore: grading.result.maxScore
+        maxScore: grading.result.maxScore,
+        aiSuggestedScore
       }
     });
 
@@ -404,6 +420,9 @@ export async function getAttemptResult(userId: string, attemptId: string) {
     isCorrect: answer.isCorrect,
     score: answer.score ?? 0,
     maxScore: answer.maxScore ?? 1,
+    attemptAnswerId: answer.id,
+    aiSuggestedScore: answer.aiSuggestedScore,
+    userConfirmed: answer.userConfirmed,
     userAnswer: readSubmittedAnswer(answer.userAnswer),
     correctAnswer: formatAnswerValue(answerKey),
     explanation: answer.questionVersion?.explanation ?? answer.question.explanation,

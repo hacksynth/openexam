@@ -1,14 +1,14 @@
-import { AiProvider, AiTaskType, Prisma, QuestionKind } from "@prisma/client";
-import { parseSubjectiveGradingOutput } from "./ai-output-schemas";
-import { assertAiUsageAllowed, generateAiText, resolveAiCredential, type AiTextGenerator } from "./ai";
+import { Prisma, QuestionKind } from "@prisma/client";
 import { getPrimaryExamGoal, type PrimaryGoal } from "./exam-core";
 import { gradeObjectiveAnswer, type ObjectiveQuestionKind } from "./grading";
+import { type AiTextGenerator } from "./ai";
 import {
   formatAnswerValue,
   readSingleChoiceOptions,
   syncWrongNoteForObjectiveAnswer,
   type SingleChoiceOption
 } from "./practice";
+import { generateSubjectiveScoreSuggestion } from "./subjective-scoring";
 import { prisma } from "./prisma";
 
 type ActionResult<T = undefined> = T extends undefined
@@ -878,138 +878,6 @@ export function summarizeAttemptReportAnswers(answers: AttemptReportAnswerSummar
     scoreRate: maxScore > 0 ? Math.round((totalScore / maxScore) * 100) : 0,
     knowledgeStats: [...knowledge.values()].sort((left, right) => right.wrong - left.wrong || left.title.localeCompare(right.title, "zh-CN"))
   };
-}
-
-async function generateSubjectiveScoreSuggestion(
-  userId: string,
-  input: {
-    questionId: string;
-    stem: string;
-    answer: string;
-    maxScore: number;
-    rubric: Prisma.JsonValue | null | undefined;
-  },
-  options: {
-    db: typeof prisma;
-    env?: NodeJS.ProcessEnv;
-    generateText?: AiTextGenerator;
-  }
-) {
-  const env = options.env ?? process.env;
-  const preset = await resolveSubjectiveGradingPreset(options.db);
-  const prompt = buildSubjectiveGradingPrompt(input);
-  const aiCall = await options.db.aiCall.create({
-    data: {
-      userId,
-      provider: preset.provider,
-      model: preset.model,
-      taskType: AiTaskType.grade_subjective,
-      promptVersion: "subjective-grade-v1",
-      inputContextSource: `question:${input.questionId}`,
-      tokenEstimate: Math.ceil(prompt.input.length / 4),
-      status: "running"
-    }
-  });
-
-  try {
-    const credential = options.generateText ? null : await resolveAiCredential(userId, preset.provider, options.db, env);
-
-    if (credential?.ok === false) {
-      await markAiCallFailed(aiCall.id, credential.error, options.db);
-      return null;
-    }
-
-    if (credential?.ok) {
-      const usageAllowed = await assertAiUsageAllowed(userId, credential.data.source, options.db, env);
-
-      if (!usageAllowed.ok) {
-        await markAiCallFailed(aiCall.id, usageAllowed.error, options.db);
-        return null;
-      }
-
-      await options.db.aiCall.update({
-        where: { id: aiCall.id },
-        data: {
-          credentialSource: credential.data.source
-        }
-      });
-    }
-
-    const result = await (options.generateText ?? generateAiText)({
-      provider: preset.provider,
-      apiKey: credential?.ok ? credential.data.apiKey : "test-key",
-      baseURL: credential?.ok ? credential.data.baseURL : null,
-      model: preset.model,
-      instructions: prompt.instructions,
-      input: prompt.input,
-      maxOutputTokens: preset.maxOutputTokens,
-      temperature: preset.temperature
-    });
-    const parsedScore = parseSubjectiveGradingOutput(result.text, input.maxScore);
-
-    if (!parsedScore.ok) {
-      throw new Error(parsedScore.error);
-    }
-
-    const score = parsedScore.data.score;
-
-    await options.db.aiCall.update({
-      where: { id: aiCall.id },
-      data: {
-        status: "succeeded",
-        usage: result.usage ?? undefined,
-        errorSummary: null
-      }
-    });
-
-    return score;
-  } catch (error) {
-    await markAiCallFailed(aiCall.id, error instanceof Error ? error.message.slice(0, 240) : "主观题 AI 评分失败。", options.db);
-    return null;
-  }
-}
-
-async function resolveSubjectiveGradingPreset(db: typeof prisma) {
-  const preset = await db.aiProviderPreset.findFirst({
-    where: {
-      defaultForTask: AiTaskType.grade_subjective,
-      enabled: true,
-      capabilities: {
-        has: "text"
-      }
-    },
-    orderBy: [{ updatedAt: "desc" }]
-  });
-
-  return {
-    provider: preset?.provider ?? AiProvider.openai,
-    model: preset?.model ?? "gpt-5.5",
-    maxOutputTokens: preset?.maxTokens ?? 300,
-    temperature: preset?.temperature ?? 0
-  };
-}
-
-function buildSubjectiveGradingPrompt(input: { stem: string; answer: string; maxScore: number; rubric: Prisma.JsonValue | null | undefined }) {
-  return {
-    instructions: "你是 OpenExam 的主观题评分助手。只根据题干、评分标准和考生答案给出建议分，输出严格 JSON。",
-    input: [
-      `题干：${input.stem}`,
-      `满分：${input.maxScore}`,
-      `评分标准：${input.rubric ? JSON.stringify(input.rubric) : "未配置"}`,
-      `考生答案：${input.answer}`,
-      '只输出 {"score":数字,"reason":"一句话理由"}，score 必须在 0 到满分之间。'
-    ].join("\n")
-  };
-}
-
-async function markAiCallFailed(aiCallId: string, errorSummary: string, db: typeof prisma) {
-  await db.aiCall.update({
-    where: { id: aiCallId },
-    data: {
-      status: "failed",
-      errorSummary
-    }
-  });
 }
 
 function toPaperListItem(paper: PaperRecord) {

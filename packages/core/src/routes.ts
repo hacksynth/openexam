@@ -64,7 +64,7 @@ export const learnerRoutes: RouteItem[] = [
     label: "知识点",
     description: "大纲知识树、关联题目、常见错误和掌握度信号。",
     section: "learner",
-    status: "planned"
+    status: "foundation"
   },
   {
     id: "materials",
@@ -80,7 +80,7 @@ export const learnerRoutes: RouteItem[] = [
     label: "学习计划",
     description: "基于目标和练习数据生成的结构化 14 天计划。",
     section: "learner",
-    status: "planned"
+    status: "foundation"
   },
   {
     id: "analysis",
@@ -88,7 +88,7 @@ export const learnerRoutes: RouteItem[] = [
     label: "学习分析",
     description: "薄弱点排序、分数风险、掌握度和下一步建议。",
     section: "learner",
-    status: "planned"
+    status: "foundation"
   },
   {
     id: "ai-tasks",
@@ -187,7 +187,7 @@ export const adminRoutes: RouteItem[] = [
     label: "审计",
     description: "可见性、来源、模型和管理设置变更的追加式事件。",
     section: "admin",
-    status: "planned"
+    status: "foundation"
   }
 ];
 

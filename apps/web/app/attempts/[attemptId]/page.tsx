@@ -132,7 +132,7 @@ export default async function AttemptReportPage({ params, searchParams }: Attemp
                     <Link href={`/practice?retry=${answer.questionId}` as Route} className="pixel-button w-fit bg-white px-4 py-2">
                       重练此题
                     </Link>
-                    {answer.isCorrect === true ? (
+                    {answer.isCorrect !== false && answer.userAnswer ? (
                       <form action={collectAttemptQuestionAction}>
                         <input name="attemptId" type="hidden" value={report.id} />
                         <input name="attemptAnswerId" type="hidden" value={answer.id} />
