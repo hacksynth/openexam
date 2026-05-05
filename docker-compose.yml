@@ -77,12 +77,24 @@ services:
       OPENEXAM_UPLOAD_MAX_BYTES: "${OPENEXAM_UPLOAD_MAX_BYTES:-10485760}"
       OPENEXAM_WORKER_POLL_MS: "${OPENEXAM_WORKER_POLL_MS:-3000}"
       OPENEXAM_JOB_STALE_MS: "${OPENEXAM_JOB_STALE_MS:-900000}"
+      OPENEXAM_WORKER_HEALTH_PATH: "${OPENEXAM_WORKER_HEALTH_PATH:-/tmp/openexam-worker-health.json}"
+      OPENEXAM_WORKER_HEALTH_MAX_AGE_MS: "${OPENEXAM_WORKER_HEALTH_MAX_AGE_MS:-30000}"
     volumes:
       - openexam-storage:/app/storage
     depends_on:
       postgres:
         condition: service_healthy
     restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "node -e \"const fs=require('node:fs');const path=process.env.OPENEXAM_WORKER_HEALTH_PATH||'/tmp/openexam-worker-health.json';const max=Number(process.env.OPENEXAM_WORKER_HEALTH_MAX_AGE_MS||30000);try{const health=JSON.parse(fs.readFileSync(path,'utf8'));const updatedAt=Date.parse(health.updatedAt);const age=Date.now()-updatedAt;process.exit(health.status&&health.status!=='stopped'&&Number.isFinite(updatedAt)&&age>=0&&age<=max?0:1);}catch{process.exit(1);}\""
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
 
   postgres:
     image: postgres:17-alpine

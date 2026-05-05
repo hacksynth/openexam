@@ -12,6 +12,8 @@ const envSchema = z.object({
   OPENEXAM_UPLOAD_MAX_BYTES: z.coerce.number().int().positive().default(10485760),
   OPENEXAM_WORKER_POLL_MS: z.coerce.number().int().positive().default(3000),
   OPENEXAM_JOB_STALE_MS: z.coerce.number().int().positive().default(900000),
+  OPENEXAM_WORKER_HEALTH_PATH: z.string().default("/tmp/openexam-worker-health.json"),
+  OPENEXAM_WORKER_HEALTH_MAX_AGE_MS: z.coerce.number().int().positive().default(30000),
   STORAGE_DRIVER: z.enum(["local", "s3"]).default("local"),
   LOCAL_STORAGE_DIR: z.string().default("./storage"),
   NEXT_PUBLIC_APP_NAME: z.string().default("OpenExam")

@@ -80,7 +80,32 @@ docker compose up --build
 
 The learner, admin, worker, and PostgreSQL services run as separate containers. Compose health checks call `/api/health` on ports `3000` and `3001`, and the app images copy standalone `.next/static` assets into the runtime output.
 
-GitHub Actions runs `prisma:validate`, `prisma:generate`, `lint`, `test`, and `build` on pushes to `main` and pull requests.
+### Docker Acceptance Check
+
+Before a release, run the full local container stack:
+
+```sh
+docker compose up -d --build
+docker compose ps
+```
+
+The learner app should be healthy on port `3000`, the admin app should be healthy on port `3001`, PostgreSQL should be reachable on port `5432`, and `docker compose ps worker` should show the worker as `healthy` or `up` after its start period. Check the HTTP health routes directly when needed:
+
+```sh
+curl -f http://127.0.0.1:3000/api/health
+curl -f http://127.0.0.1:3001/api/health
+docker compose logs worker
+```
+
+Exercise the release-critical flows in the running stack: learner login, material upload, worker question extraction, wrong-note review-card generation, and admin `/jobs` inspection for failed jobs and retry behavior.
+
+### Production Checklist
+
+The local Compose defaults are intentionally convenient, but production deployments must override secret defaults. Set strong values for `SESSION_SECRET` and `AI_KEY_ENCRYPTION_SECRET`; configure `OPENAI_API_KEY` and `OPENAI_BASE_URL` only for the platform provider or compatible gateway you intend to use. Use a durable `LOCAL_STORAGE_DIR` volume for local storage, or move uploads and generated assets to S3-compatible storage when that driver is completed.
+
+Keep PostgreSQL on persistent storage with backups and restore testing. Tune `OPENEXAM_WORKER_POLL_MS`, `OPENEXAM_JOB_STALE_MS`, `OPENEXAM_WORKER_HEALTH_PATH`, and `OPENEXAM_WORKER_HEALTH_MAX_AGE_MS` for your worker runtime so queued jobs are picked up promptly, stale running jobs are recovered, and health checks do not mask a stalled worker.
+
+GitHub Actions runs `npm ci`, Prisma generation and validation, TypeScript linting, Vitest, both app builds, migration deploy, and Playwright browser workflows on pushes to `main` and pull requests targeting `main`.
 
 ## Project Layout
 
