@@ -38,7 +38,7 @@ export default async function ProfilePage({ searchParams }: ProfilePageProps) {
                 <input className="border-3 border-black bg-white px-3 py-2" name="apiKey" placeholder={provider.provider === "openai" ? "sk-..." : "输入 provider key"} required type="password" />
               </label>
               <button className="pixel-button w-fit px-4 py-2" type="submit">
-                保存 Key
+                {provider.provider === "openai" ? "保存 Key" : `保存 ${provider.label} Key`}
               </button>
             </form>
 
