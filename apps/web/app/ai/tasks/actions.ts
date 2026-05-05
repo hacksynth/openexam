@@ -19,5 +19,5 @@ export async function retryAiCallAction(formData: FormData) {
     redirect(`/ai/tasks?error=${encodeURIComponent(result.error)}` as Route);
   }
 
-  redirect(`/ai/tasks?notice=${encodeURIComponent("题目 AI 解析已重试成功。")}` as Route);
+  redirect(`/ai/tasks?notice=${encodeURIComponent("错题 AI 解析已重试成功。")}` as Route);
 }
