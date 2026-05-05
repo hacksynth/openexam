@@ -455,7 +455,7 @@ Default storage is local `storage/`. Production can configure S3-compatible stor
 
 Private files are served through authenticated backend routes, not direct public URLs. AI-generated images are private assets by default.
 
-Implementation note: local material upload storage is implemented for TXT, Markdown, PDF, DOCX, and image files. TXT/Markdown/DOCX extraction reads local text; text-based PDFs are parsed locally; scanned PDFs and images are sent as AI document/image input when the selected provider preset supports it.
+Implementation note: material upload storage is implemented for TXT, Markdown, JSON, PDF, DOCX, and image files through the configured storage driver. TXT/Markdown/JSON/DOCX extraction reads text from storage; text-based PDFs are parsed locally; scanned PDFs and images are sent as AI document/image input when the selected provider preset supports it.
 
 ## Admin Surface
 

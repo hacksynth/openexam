@@ -139,9 +139,9 @@ Goal: support user-owned content without building a full knowledge-base product.
 
 Deliverables:
 
-- Material upload. Started for TXT, Markdown, PDF, DOCX, and image local storage.
+- Material upload. Started for TXT, Markdown, JSON, PDF, DOCX, and image storage through the configured storage driver.
 - Material binding to exam goal, subject, or syllabus. Started with subject binding.
-- Text extraction for supported formats. Started for TXT/Markdown/DOCX and text-based PDF.
+- Text extraction for supported formats. Started for TXT/Markdown/JSON/DOCX and text-based PDF.
 - OCR pipeline placeholder or first OCR implementation. Implemented as AI document/image fallback for scanned PDFs and images; no standalone OCR service yet.
 - AI question extraction job. Started with admin-triggered database Jobs.
 - Candidate-question review UI. Started in admin materials.

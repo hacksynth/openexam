@@ -107,6 +107,83 @@ const server = createServer(async (request, response) => {
     return;
   }
 
+  if (request.method === "POST" && url.pathname === "/v1/messages") {
+    responseCount += 1;
+    const body = await readJson(request);
+    const apiKey = request.headers["x-api-key"] ?? "";
+    const model = typeof body.model === "string" ? body.model : "claude-3-5-sonnet-latest";
+
+    if (shouldFailTextRequest(String(apiKey))) {
+      sendJson(response, 500, {
+        error: {
+          message: "Mock Anthropic failure: upstream temporarily unavailable"
+        }
+      });
+      return;
+    }
+
+    const text = buildMockTextResponse(readPromptText(body));
+
+    sendJson(response, 200, {
+      id: `msg_mock_${Date.now()}`,
+      type: "message",
+      role: "assistant",
+      model,
+      content: [
+        {
+          type: "text",
+          text
+        }
+      ],
+      usage: {
+        input_tokens: 128,
+        output_tokens: 36
+      }
+    });
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname.startsWith("/v1beta/models/") && url.pathname.endsWith(":generateContent")) {
+    responseCount += 1;
+    const body = await readJson(request);
+    const apiKey = request.headers["x-goog-api-key"] ?? "";
+    const model = url.pathname.split("/").at(-1)?.replace(":generateContent", "") ?? "gemini-1.5-pro";
+
+    if (shouldFailTextRequest(String(apiKey))) {
+      sendJson(response, 500, {
+        error: {
+          message: "Mock Gemini failure: upstream temporarily unavailable"
+        }
+      });
+      return;
+    }
+
+    const text = buildMockTextResponse(readPromptText(body));
+
+    sendJson(response, 200, {
+      candidates: [
+        {
+          content: {
+            role: "model",
+            parts: [
+              {
+                text
+              }
+            ]
+          },
+          finishReason: "STOP"
+        }
+      ],
+      modelVersion: model,
+      usageMetadata: {
+        promptTokenCount: 128,
+        candidatesTokenCount: 36,
+        totalTokenCount: 164
+      }
+    });
+    return;
+  }
+
   if (request.method === "POST" && url.pathname === "/v1/images/generations") {
     const body = await readJson(request);
     const authorization = request.headers.authorization ?? "";
@@ -176,6 +253,8 @@ function shouldFailTextRequest(authorization) {
 function buildMockTextResponse(input) {
   const isExtraction = input.includes("资料正文");
   const isPlan = input.includes("14 天学习计划");
+  const isPracticeGeneration = input.includes("请为当前考试目标生成") && input.includes("练习题候选");
+  const isDiagnosis = input.includes("请基于当前考试目标、作答统计、错题和薄弱知识点生成学习诊断。");
   const knowledgeNodeId = input.match(/(cm[a-z0-9]+)/)?.[1] ?? "";
   const goalId = input.match(/目标 ID：([^\n]+)/)?.[1]?.trim() ?? "goal_mock";
 
@@ -215,6 +294,35 @@ function buildMockTextResponse(input) {
     });
   }
 
+  if (isPracticeGeneration) {
+    return JSON.stringify({
+      questions: [
+        {
+          stem: "E2E AI 出题：事务原子性最准确的含义是什么？",
+          options: {
+            A: "事务中的操作要么全部成功，要么全部失败。",
+            B: "多个事务可以同时读取同一份数据。",
+            C: "事务提交后数据不会丢失。",
+            D: "事务执行前后数据库约束保持一致。"
+          },
+          answer: "A",
+          explanation: "原子性强调事务不可分割，全部操作要么一起成功，要么一起失败。",
+          difficulty: 2,
+          knowledgeNodeId,
+          sourceRef: "E2E AI 生成"
+        }
+      ]
+    });
+  }
+
+  if (isDiagnosis) {
+    return JSON.stringify({
+      summary: "当前测试账号已完成资料题练习并产生错题，主要风险集中在事务 ACID 概念辨析。建议优先复盘原子性与隔离性的边界，再用错题重练巩固。",
+      weakKnowledgeNodeIds: knowledgeNodeId ? [knowledgeNodeId] : [],
+      recommendations: ["重练事务 ACID 单选题", "整理原子性与隔离性的对比笔记", "完成一次错题复习卡回看"]
+    });
+  }
+
   return "AI E2E 解析：原子性要求事务中的操作要么全部成功，要么全部失败。复习时要区分原子性和隔离性。";
 }
 
@@ -225,6 +333,10 @@ function readPromptText(body) {
 
   if (Array.isArray(body.messages)) {
     return body.messages.map((message) => stringifyPromptContent(message?.content)).join("\n");
+  }
+
+  if (Array.isArray(body.contents)) {
+    return body.contents.map((content) => stringifyPromptContent(content?.parts)).join("\n");
   }
 
   return "";
@@ -241,6 +353,10 @@ function stringifyPromptContent(value) {
 
   if (value && typeof value === "object" && "text" in value) {
     return String(value.text ?? "");
+  }
+
+  if (value && typeof value === "object" && "content" in value) {
+    return stringifyPromptContent(value.content);
   }
 
   return String(value ?? "");

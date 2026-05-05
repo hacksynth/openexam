@@ -1,0 +1,49 @@
+name: Feature Request
+description: Propose an improvement to the OpenExam learning loop.
+title: "feat: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What learner, admin, or self-hosting problem should this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: Describe the smallest useful change.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Practice loop
+        - Wrong notes
+        - Analysis and plans
+        - Materials/import
+        - AI providers
+        - Admin governance
+        - Deployment
+        - Documentation
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance Criteria
+      description: What should be true when this is complete?
+      placeholder: |
+        - A learner can ...
+        - An admin can ...
+        - Tests cover ...
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Optional context, prior art, or tradeoffs.

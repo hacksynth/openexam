@@ -47,7 +47,7 @@ export default async function MaterialsPage({ searchParams }: MaterialsPageProps
             </SelectField>
             <label className={labelClass}>
               文件
-              <input className={inputClass} name="file" required type="file" accept=".txt,.md,.pdf,.docx,.png,.jpg,.jpeg,.webp,text/plain,text/markdown,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/png,image/jpeg,image/webp" />
+              <input className={inputClass} name="file" required type="file" accept=".txt,.md,.json,.pdf,.docx,.png,.jpg,.jpeg,.webp,text/plain,text/markdown,application/json,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/png,image/jpeg,image/webp" />
             </label>
             <button className="pixel-button w-fit px-4 py-2" type="submit">
               上传并创建抽题任务
@@ -63,7 +63,7 @@ export default async function MaterialsPage({ searchParams }: MaterialsPageProps
           {materials.length === 0 ? (
             <section className="pixel-panel p-5">
               <h2 className="text-2xl font-black">暂无资料</h2>
-              <p className="mt-1 font-bold text-[var(--muted)]">上传 TXT、Markdown、PDF、DOCX 或图片后，后台可处理抽题任务并确认候选题。</p>
+              <p className="mt-1 font-bold text-[var(--muted)]">上传 TXT、Markdown、JSON、PDF、DOCX 或图片后，后台可处理抽题任务并确认候选题。</p>
             </section>
           ) : (
             materials.map((material) => (

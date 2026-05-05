@@ -1,9 +1,26 @@
 {
   "name": "openexam",
   "version": "0.1.0",
+  "description": "Self-hostable AI exam preparation platform for individual learners.",
   "private": true,
   "type": "module",
   "license": "AGPL-3.0-only",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hacksynth/openexam.git"
+  },
+  "bugs": {
+    "url": "https://github.com/hacksynth/openexam/issues"
+  },
+  "homepage": "https://github.com/hacksynth/openexam#readme",
+  "keywords": [
+    "ai",
+    "exam-prep",
+    "self-hosted",
+    "nextjs",
+    "prisma",
+    "ruankao"
+  ],
   "workspaces": [
     "apps/*",
     "packages/*"

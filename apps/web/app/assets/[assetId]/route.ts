@@ -42,7 +42,7 @@ export async function GET(_request: Request, context: AssetRouteContext) {
     return new Response("Not found", { status: 404 });
   }
 
-  return new Response(bytes, {
+  return new Response(new Uint8Array(bytes), {
     headers: {
       "Cache-Control": "private, max-age=60",
       "Content-Length": String(bytes.length),

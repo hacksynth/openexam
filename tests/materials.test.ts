@@ -281,6 +281,63 @@ describe("material question extraction", () => {
     }
   });
 
+  it("reads JSON materials as text input for extraction", async () => {
+    const originalStorageDir = process.env.LOCAL_STORAGE_DIR;
+    const storageRoot = path.join(tmpdir(), `openexam-materials-json-${Date.now()}`);
+    const storageKey = "materials/user_1/51cto.json";
+    const filePath = path.join(storageRoot, storageKey);
+    const json = JSON.stringify({
+      detail: {
+        question: [
+          {
+            question_title: "在详细设计结束后，以下选项中不是重点审查内容的是？",
+            option: ["数据流图", "软件界面", "算法", "数据结构"],
+            answer: ["A"]
+          }
+        ]
+      }
+    });
+
+    process.env.LOCAL_STORAGE_DIR = storageRoot;
+    await mkdir(path.dirname(filePath), { recursive: true });
+    await writeFile(filePath, Buffer.from(json));
+
+    const db = {
+      material: {
+        findUnique: async () => ({
+          id: "material_1",
+          ownerId: "user_1",
+          title: "51CTO JSON",
+          mimeType: "application/json",
+          sizeBytes: json.length,
+          sha256: "hash",
+          storageKey,
+          bindingScope: null,
+          extractionState: "queued",
+          extractionMethod: null,
+          extractionError: null,
+          sourceLicense: null,
+          createdAt: new Date("2026-05-05T00:00:00.000Z"),
+          updatedAt: new Date("2026-05-05T00:00:00.000Z")
+        })
+      }
+    };
+
+    try {
+      const result = await readMaterialText("material_1", db as never);
+
+      expect(result.ok).toBe(true);
+      expect(result.ok ? result.data.extractionMethod : "").toBe("local_text");
+      expect(result.ok ? result.data.text : "").toContain("详细设计");
+    } finally {
+      if (originalStorageDir === undefined) {
+        delete process.env.LOCAL_STORAGE_DIR;
+      } else {
+        process.env.LOCAL_STORAGE_DIR = originalStorageDir;
+      }
+    }
+  });
+
   it("returns a clear error when a material file is missing", async () => {
     const originalStorageDir = process.env.LOCAL_STORAGE_DIR;
     const storageRoot = path.join(tmpdir(), `openexam-materials-missing-${Date.now()}`);

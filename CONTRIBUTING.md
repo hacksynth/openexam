@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for helping improve OpenExam. Keep changes aligned with the product and architecture documents before adding implementation details.
+Thanks for helping improve OpenExam. Keep changes aligned with the product and architecture documents before changing implementation details.
 
 ## Before You Start
 
@@ -14,14 +14,49 @@ Read these files first:
 
 ## Working Locally
 
-There is no application scaffold yet. When adding one, preserve the planned stack from `docs/architecture-decisions.md`: Next.js App Router, TypeScript, Prisma, PostgreSQL, Tailwind CSS, shadcn/ui, Vitest, and Playwright.
+OpenExam is a split Next.js monorepo with a learner app, admin app, shared core package, Prisma schema, worker process, Vitest tests, and Playwright workflows.
+
+Install dependencies and generate Prisma Client:
+
+```sh
+npm install
+npm run prisma:generate
+```
+
+Start local infrastructure and seed sample data:
+
+```sh
+docker compose up -d postgres
+npm run db:migrate
+npm run db:seed
+```
+
+Run the apps in separate terminals:
+
+```sh
+npm run dev:web
+npm run dev:admin
+```
 
 Use stable script names in `package.json`:
 
 ```sh
-npm run dev
+npm run dev:web
+npm run dev:admin
+npm run build
 npm run lint
 npm test
+npm run test:e2e
+npm run worker
+```
+
+Before opening a pull request, run the smallest relevant checks plus the full gate when the change touches shared behavior:
+
+```sh
+npm run prisma:validate
+npm run lint
+npm test
+npm run build
 npm run test:e2e
 ```
 
@@ -35,3 +70,5 @@ npm run test:e2e
 ## Pull Requests
 
 Use short, imperative commit messages such as `docs: add roadmap` or `feat: scaffold auth`. Pull requests should include a summary, linked issue when available, test results, migration notes, and screenshots for UI changes.
+
+Keep pull requests focused. Update `docs/`, `CHANGELOG.md`, `.env.example`, migrations, and tests whenever behavior, configuration, release scope, or data contracts change.

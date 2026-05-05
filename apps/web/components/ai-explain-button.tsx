@@ -1,6 +1,6 @@
 "use client";
 
-import { type FormEvent, useCallback, useState, useTransition } from "react";
+import { useCallback, useState, useTransition } from "react";
 
 export function AiExplainButton({ questionId }: { questionId: string }) {
   const [explanation, setExplanation] = useState<string | null>(null);
@@ -8,10 +8,10 @@ export function AiExplainButton({ questionId }: { questionId: string }) {
   const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = useCallback(
-    (e: FormEvent<HTMLFormElement>) => {
-      e.preventDefault();
+    () => {
       setError(null);
-      const formData = new FormData(e.currentTarget);
+      const formData = new FormData();
+      formData.set("questionId", questionId);
 
       startTransition(async () => {
         try {
@@ -38,18 +38,15 @@ export function AiExplainButton({ questionId }: { questionId: string }) {
         }
       });
     },
-    [startTransition]
+    [questionId, startTransition]
   );
 
   return (
     <div className="grid gap-3">
       {!explanation ? (
-        <form onSubmit={handleSubmit} className="inline-block">
-          <input name="questionId" type="hidden" value={questionId} />
-          <button className="pixel-button bg-white px-4 py-2" disabled={isPending} type="submit">
-            {isPending ? "AI 解析中..." : "AI 解析本题"}
-          </button>
-        </form>
+        <button className="pixel-button bg-white px-4 py-2" disabled={isPending} onClick={handleSubmit} type="button">
+          {isPending ? "AI 解析中..." : "AI 解析本题"}
+        </button>
       ) : null}
       {error ? <p className="border-2 border-[var(--danger)] bg-red-50 p-3 text-sm font-bold text-[var(--danger)]">{error}</p> : null}
       {explanation ? (

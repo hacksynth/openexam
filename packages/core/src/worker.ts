@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { mkdir, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -206,7 +207,7 @@ export function createWorkerHealth(input: {
 
 export async function writeWorkerHealth(filePath: string, health: WorkerHealth) {
   await mkdir(dirname(filePath), { recursive: true });
-  const tempPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
+  const tempPath = `${filePath}.${process.pid}.${randomUUID()}.tmp`;
 
   await writeFile(tempPath, `${JSON.stringify(health)}\n`, "utf8");
   await rename(tempPath, filePath);

@@ -111,7 +111,7 @@ export async function writeStorageBytes(input: StorageBytes | WriteStorageInput,
     throw new Error("writeStorageBytes 需以对象形式调用。请升级调用方。");
   }
 
-  const { storageKey, bytes, source = maybeSource } = input;
+  const { storageKey, bytes, source = maybeSource ?? process.env } = input;
   const env = readEnv({
     ...source,
     DATABASE_URL: source?.DATABASE_URL ?? "postgresql://openexam:openexam@localhost:5432/openexam?schema=public"

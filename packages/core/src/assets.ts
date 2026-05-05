@@ -1,7 +1,6 @@
-import { readFile } from "node:fs/promises";
 import { Visibility } from "@prisma/client";
 import { prisma } from "./prisma";
-import { resolveLocalStoragePath } from "./storage";
+import { readStorageBytes } from "./storage";
 
 type AssetDatabase = typeof prisma;
 
@@ -50,7 +49,7 @@ export async function findReadableAsset(assetId: string, access: AssetAccess, db
 }
 
 export async function readAssetBytes(asset: Pick<ReadableAsset, "storageKey">, source: NodeJS.ProcessEnv = process.env) {
-  return readFile(resolveLocalStoragePath(asset.storageKey, source));
+  return readStorageBytes(asset.storageKey, source);
 }
 
 export function canReadAsset(asset: Pick<ReadableAsset, "ownerId" | "visibility">, access: AssetAccess) {

@@ -40,14 +40,14 @@ The MVP must complete this learning loop:
 
 Current implementation status:
 
-- The repository now has separate runnable learner and admin foundation apps with health APIs, shared core helpers, and initial domain tests.
-- The app does not yet complete the full MVP learning loop.
+- The repository now has separate runnable learner and admin apps with health APIs, shared core helpers, Prisma/PostgreSQL persistence, worker-backed jobs, Vitest coverage, and Playwright browser workflows.
+- The `v0.1.0` release candidate covers the release-critical MVP learning loop for the first Ruankao Software Designer sample track.
 - Email/password authentication, database-backed sessions, and route protection are implemented for the learner and admin apps.
 - Admin exam hierarchy and knowledge-tree management are started as a minimal CRUD workflow.
 - Learners can save a primary exam goal and see it on the dashboard.
 - The practice workflow is implemented with goal-scoped question retrieval, repeat avoidance, single-choice/multiple-choice/true-false/blank objective grading, subjective answer capture, paper attempts, attempt reports, wrong-note auto-collection, wrong-note knowledge filters/retry, mastery toggles, and database-backed dashboard summaries.
 - Admin single-choice question CRUD is implemented for question creation, JSON import, editing, filtering, review-status changes, archive/restore, knowledge binding, source, visibility, and review status.
-- Admin paper CRUD is implemented for ordered multi-kind papers with subject binding, visibility, type, question order, section, number, score, archivedAt-based filters, and hide/restore controls. OpenAI/Claude/Gemini BYOK settings, wrong-note AI analysis, AI call logs, failed-call retry, admin model presets, learning analysis, structured 14-day plans, material uploads, worker-backed extraction jobs, wrong-note review-card image jobs, AI candidate questions, private asset serving, and basic usage protection are started; advanced practice modes and deeper admin hardening remain future implementation work.
+- Admin paper CRUD is implemented for ordered multi-kind papers with subject binding, visibility, type, question order, section, number, score, archivedAt-based filters, and hide/restore controls. OpenAI/Claude/Gemini BYOK settings, wrong-note AI analysis, AI call logs, failed-call retry, admin model presets, learning analysis, structured 14-day plans, material uploads, worker-backed extraction jobs, wrong-note review-card image jobs, AI candidate questions, private asset serving, and basic usage protection are implemented for the first release path; advanced practice modes and deeper admin hardening remain future implementation work.
 
 ## Exam Coverage
 
@@ -75,9 +75,9 @@ After login, the first screen is a learner dashboard, not a marketing page. It s
 - Recent AI/import job status.
 - Quick entries for practice, papers, materials, wrong notes, plans, and analysis.
 
-The unauthenticated landing page stays lightweight: product introduction, login/register, open-source and self-hosting notes.
+The unauthenticated landing page stays lightweight: product introduction, learner entry, open-source, and self-hosting notes.
 
-Implementation note: the current `/dashboard` page is authenticated and reads the user's primary exam goal plus pending wrong-note and weak knowledge-node summaries from the database. Task and job-status areas still use representative foundation data.
+Implementation note: the current `/dashboard` page is authenticated and reads the user's primary exam goal, active plan tasks, derived review tasks, pending wrong-note and weak knowledge-node summaries, recent jobs, recent AI calls, and active AI task count from the database.
 
 ### Exam Goals
 
@@ -187,6 +187,7 @@ Supported material types:
 - Images.
 - Markdown.
 - TXT.
+- JSON.
 - DOCX.
 
 Required workflow:
@@ -199,7 +200,7 @@ Required workflow:
 6. Allow materials to be used as AI chat context.
 7. Track import status, source, and processing errors.
 
-Implementation note: TXT, Markdown, DOCX, PDF, and image uploads use local storage. TXT/Markdown/DOCX and text-based PDFs are read locally; scanned PDFs and images are passed to the configured AI provider as document/image input for extraction and context chat. A standalone OCR service remains outside the MVP.
+Implementation note: TXT, Markdown, JSON, DOCX, PDF, and image uploads use the configured storage driver. TXT/Markdown/JSON/DOCX and text-based PDFs are read locally from storage; scanned PDFs and images are passed to the configured AI provider as document/image input for extraction and context chat. A standalone OCR service remains outside the MVP.
 
 The MVP does not include full vector search, automatic copyright determination, knowledge graph fusion, video parsing, or large-scale batch-processing UI.
 

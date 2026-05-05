@@ -1,5 +1,4 @@
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { Prisma, QuestionKind, ReviewStatus, SourceType, Visibility } from "@prisma/client";
 import mammoth from "mammoth";
@@ -9,7 +8,7 @@ import type { AiTextInputPart } from "./ai";
 import { readEnv } from "./env";
 import { prisma } from "./prisma";
 import { singleChoiceAnswerKeys, type SingleChoiceAnswerKey } from "./question-admin";
-import { resolveLocalStoragePath } from "./storage";
+import { readStorageBytes, writeStorageBytes } from "./storage";
 
 type ActionResult<T = undefined> = T extends undefined
   ? { ok: true } | { ok: false; error: string }
@@ -48,10 +47,11 @@ export type MaterialQuestionCandidateUpdateInput = {
 };
 
 export const materialJobType = "extract_material_questions";
-export const supportedMaterialExtensions = [".txt", ".md", ".pdf", ".docx", ".png", ".jpg", ".jpeg", ".webp"] as const;
+export const supportedMaterialExtensions = [".txt", ".md", ".json", ".pdf", ".docx", ".png", ".jpg", ".jpeg", ".webp"] as const;
 export const supportedMaterialMimeTypes = [
   "text/plain",
   "text/markdown",
+  "application/json",
   "application/pdf",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   "image/png",
@@ -89,7 +89,7 @@ export async function uploadMaterial(userId: string, input: UploadMaterialInput,
   }
 
   if (!mimeType) {
-    return { ok: false, error: "支持 .txt、.md、.pdf、.docx、.png、.jpg、.jpeg、.webp 资料。" };
+    return { ok: false, error: "支持 .txt、.md、.json、.pdf、.docx、.png、.jpg、.jpeg、.webp 资料。" };
   }
 
   const subjectId = optionalText(input.subjectId);
@@ -106,11 +106,9 @@ export async function uploadMaterial(userId: string, input: UploadMaterialInput,
   const bytes = Buffer.from(await file.arrayBuffer());
   const sha256 = createHash("sha256").update(bytes).digest("hex");
   const storageKey = `materials/${userId}/${randomUUID()}-${safeFileName(file.name)}`;
-  const storagePath = resolveLocalStoragePath(storageKey);
   const title = optionalText(input.title) || stripExtension(file.name) || "未命名资料";
 
-  await mkdir(path.dirname(storagePath), { recursive: true });
-  await writeFile(storagePath, bytes);
+  await writeStorageBytes({ storageKey, bytes });
 
   try {
     const result = await db.$transaction(async (tx) => {
@@ -354,8 +352,7 @@ export async function readMaterialText(
     return { ok: false, error: "资料不存在。" };
   }
 
-  const filePath = resolveLocalStoragePath(material.storageKey, source);
-  const buffer = await readFile(filePath).catch((error) => {
+  const buffer = await readStorageBytes(material.storageKey, source).catch((error) => {
     if (isMissingStorageFileError(error)) {
       return null;
     }
@@ -369,7 +366,7 @@ export async function readMaterialText(
 
   const maxTextChars = resolveMaterialExtractionContextChars(source);
 
-  if (material.mimeType === "text/plain" || material.mimeType === "text/markdown") {
+  if (material.mimeType === "text/plain" || material.mimeType === "text/markdown" || material.mimeType === "application/json") {
     const text = buffer.toString("utf8").trim();
 
     if (!text) {
@@ -604,7 +601,15 @@ function parseExtractedQuestion(value: unknown): ActionResult<ExtractedMaterialQ
 }
 
 function isMissingStorageFileError(error: unknown) {
-  return error instanceof Error && "code" in error && (error as { code?: unknown }).code === "ENOENT";
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  if ("code" in error && (error as { code?: unknown }).code === "ENOENT") {
+    return true;
+  }
+
+  return error.name === "NoSuchKey" || error.name === "NotFound";
 }
 
 function resolveMaterialExtractionContextChars(source: NodeJS.ProcessEnv) {
@@ -910,6 +915,10 @@ function inferMaterialMimeType(fileName: string, providedType: string | undefine
 
   if (ext === ".md") {
     return "text/markdown";
+  }
+
+  if (ext === ".json") {
+    return "application/json";
   }
 
   if (ext === ".pdf") {

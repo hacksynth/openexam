@@ -4,13 +4,18 @@ OpenExam will handle authentication, AI provider keys, uploaded materials, and u
 
 ## Supported Versions
 
-The project has not shipped a release yet. Security fixes should target the default branch until versioned releases exist.
+Security fixes should target the default branch and the latest `0.1.x` release line while it is supported.
+
+| Version | Supported |
+| --- | --- |
+| 0.1.x | Yes |
+| < 0.1.0 | No |
 
 ## Reporting a Vulnerability
 
 Do not publish working exploits, real API keys, uploaded materials, private question banks, or user data in public issues.
 
-Until a private advisory channel is published, contact the maintainers through the safest available project channel with:
+Use a private security advisory when the repository host supports it. If a private advisory channel is unavailable, contact the maintainers through the safest available project channel with:
 
 - A concise description of the issue.
 - Reproduction steps or affected files.
@@ -24,3 +29,4 @@ Until a private advisory channel is published, contact the maintainers through t
 - Validate uploaded file types and sizes before processing.
 - Keep AI prompts and logs free of unnecessary secrets.
 - Preserve source and licensing metadata for imported questions and materials.
+- Do not attach uploaded materials, generated private questions, learner data, or API responses containing personal content to public issues.

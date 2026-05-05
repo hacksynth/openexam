@@ -1,8 +1,8 @@
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { resolveLocalStorageRoot } from "@openexam/core/storage";
+import { resolveLocalStorageRoot, writeStorageBytes } from "@openexam/core/storage";
 
 const originalCwd = process.cwd();
 const tempDirs: string[] = [];
@@ -37,6 +37,26 @@ describe("local storage path resolution", () => {
     const storagePath = path.join(path.parse(originalCwd).root, "app", "storage");
 
     expect(resolveLocalStorageRoot(storagePath)).toBe(storagePath);
+  });
+
+  it("uses process env storage settings when write source is omitted", async () => {
+    const originalStorageDir = process.env.LOCAL_STORAGE_DIR;
+    const root = await makeTempDir();
+    const storageKey = "materials/user_1/default-source.txt";
+
+    process.env.LOCAL_STORAGE_DIR = root;
+
+    try {
+      await writeStorageBytes({ storageKey, bytes: Buffer.from("default-source") });
+
+      await expect(readFile(path.join(root, storageKey), "utf8")).resolves.toBe("default-source");
+    } finally {
+      if (originalStorageDir === undefined) {
+        delete process.env.LOCAL_STORAGE_DIR;
+      } else {
+        process.env.LOCAL_STORAGE_DIR = originalStorageDir;
+      }
+    }
   });
 });
 

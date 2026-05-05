@@ -1,13 +1,11 @@
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
-import path from "node:path";
 import { AiProvider, AiTaskType, Prisma, Visibility } from "@prisma/client";
 import OpenAI from "openai";
 import { validateReviewCardImagePrompt } from "./ai-output-schemas";
 import { assertAiUsageAllowed, resolveOpenAiCredential, resolveTaskAiPreset } from "./ai";
 import { readSingleChoiceAnswerKey, readSingleChoiceOptions, type SingleChoiceOption } from "./practice";
 import { prisma } from "./prisma";
-import { resolveLocalStoragePath } from "./storage";
+import { writeStorageBytes } from "./storage";
 
 type ActionResult<T = undefined> = T extends undefined
   ? { ok: true } | { ok: false; error: string }
@@ -434,11 +432,9 @@ function toWrongNoteReviewCardContext(wrongNote: NonNullable<Awaited<ReturnType<
 async function storeReviewCardImage(userId: string, bytes: Buffer, mimeType: "image/png", env: NodeJS.ProcessEnv) {
   const extension = mimeType === "image/png" ? "png" : "bin";
   const storageKey = `review-cards/${userId}/${randomUUID()}.${extension}`;
-  const storagePath = resolveLocalStoragePath(storageKey, env);
   const sha256 = createHash("sha256").update(bytes).digest("hex");
 
-  await mkdir(path.dirname(storagePath), { recursive: true });
-  await writeFile(storagePath, bytes);
+  await writeStorageBytes({ storageKey, bytes, source: env });
 
   return {
     storageKey,
