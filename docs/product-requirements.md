@@ -199,7 +199,7 @@ Required workflow:
 6. Allow materials to be used as AI chat context.
 7. Track import status, source, and processing errors.
 
-Implementation note: TXT, Markdown, and PDF uploads are started with local storage. TXT/Markdown can be processed by admin-triggered jobs. PDF upload is accepted, but scanned PDF/OCR extraction remains pending and fails clearly during processing.
+Implementation note: TXT, Markdown, DOCX, PDF, and image uploads use local storage. TXT/Markdown/DOCX and text-based PDFs are read locally; scanned PDFs and images are passed to the configured AI provider as document/image input for extraction and context chat. A standalone OCR service remains outside the MVP.
 
 The MVP does not include full vector search, automatic copyright determination, knowledge graph fusion, video parsing, or large-scale batch-processing UI.
 
@@ -213,7 +213,7 @@ Supported providers:
 - Claude.
 - Gemini.
 
-The MVP uses bring-your-own-key as the primary model. Platform keys are optional for demos, trials, or administrator-managed usage. All provider calls go through the backend. The current implementation supports learner BYOK settings for OpenAI, Claude, and Gemini, platform fallback keys, provider base URL overrides, learner-visible AI call logs, admin-managed model presets, daily call limits, platform token budget protection, and OpenAI Images for wrong-note review cards.
+The MVP uses bring-your-own-key as the primary model. Platform keys are optional for demos, trials, or administrator-managed usage. All provider calls go through the backend. The current implementation supports learner BYOK settings for OpenAI, Claude, and Gemini, platform fallback keys, provider base URL overrides, learner-visible AI call logs, admin-managed model presets, daily call limits, platform token budget protection, OpenAI Images for wrong-note review cards, context-bound chat, AI learning diagnoses, and private AI-generated practice-question candidates.
 
 AI features:
 
@@ -303,7 +303,7 @@ The MVP does not include:
 - Proctoring or anti-cheating.
 - Social community, ranking, or sharing.
 - Full RAG knowledge base.
-- Full i18n UI.
+- Full translated i18n UI beyond the current `zh-CN` locale route skeleton.
 - Desktop app or mobile app.
 - Complex ML scoring predictions, IRT, or peer ranking.
 

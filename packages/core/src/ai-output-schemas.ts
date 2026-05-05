@@ -87,6 +87,22 @@ export function validateReviewCardImagePrompt(prompt: string): ActionResult<{ pr
   return parsed.success ? { ok: true, data: parsed.data } : { ok: false, error: "AI 图片 Prompt 格式无效。" };
 }
 
+export function parseLearningDiagnosisOutput(value: string): ActionResult<z.infer<typeof learningDiagnosisOutputSchema>> {
+  const json = extractJsonObject(value);
+
+  if (!json) {
+    return { ok: false, error: "AI 学习诊断不是有效 JSON。" };
+  }
+
+  try {
+    const parsed = learningDiagnosisOutputSchema.safeParse(JSON.parse(json));
+
+    return parsed.success ? { ok: true, data: parsed.data } : { ok: false, error: "AI 学习诊断格式无效。" };
+  } catch {
+    return { ok: false, error: "AI 学习诊断不是有效 JSON。" };
+  }
+}
+
 function extractJsonObject(value: string) {
   const trimmed = value.trim();
 

@@ -35,6 +35,14 @@ export const learnerRoutes: RouteItem[] = [
     status: "foundation"
   },
   {
+    id: "practice-generate",
+    href: "/practice/generate",
+    label: "AI 出题",
+    description: "按当前考试目标生成私有候选练习题，确认后进入个人题库。",
+    section: "learner",
+    status: "foundation"
+  },
+  {
     id: "papers",
     href: "/papers",
     label: "试卷",
@@ -95,6 +103,14 @@ export const learnerRoutes: RouteItem[] = [
     href: "/ai/tasks",
     label: "AI 任务",
     description: "AI 解析调用记录、模型、提示词版本、状态和错误摘要。",
+    section: "learner",
+    status: "foundation"
+  },
+  {
+    id: "ai-chat",
+    href: "/ai/chat",
+    label: "AI 对话",
+    description: "绑定资料、题目、错题、知识点、计划或报告的上下文问答。",
     section: "learner",
     status: "foundation"
   },

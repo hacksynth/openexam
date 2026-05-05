@@ -116,6 +116,9 @@ export default async function PracticePage({ searchParams }: PracticePageProps) 
                 <Link href={"/wrong-notes" as Route} className="pixel-button bg-white px-4 py-2">
                   查看错题本
                 </Link>
+                <Link href={"/practice/generate" as Route} className="pixel-button bg-white px-4 py-2">
+                  AI 出题
+                </Link>
               </div>
             </form>
           </section>

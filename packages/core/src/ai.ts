@@ -118,6 +118,7 @@ const taskCapabilityRequirements: Record<AiTaskType, string> = {
   [AiTaskType.grade_subjective]: "text",
   [AiTaskType.generate_plan]: "json",
   [AiTaskType.extract_questions]: "json",
+  [AiTaskType.generate_practice_questions]: "json",
   [AiTaskType.diagnose_learning]: "json",
   [AiTaskType.generate_wrong_note_image_prompt]: "text",
   [AiTaskType.generate_image]: "image",

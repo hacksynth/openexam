@@ -79,12 +79,26 @@ export default async function MaterialsPage({ searchParams }: MaterialsPageProps
                 <p className="text-sm font-bold text-[var(--muted)]">{material.mimeType}</p>
                 {material.extractionError || material.latestJob?.error ? <p className="border-2 border-black bg-red-50 p-3 text-sm font-bold text-red-700">{material.extractionError || material.latestJob?.error}</p> : null}
                 {material.candidateCount > material.pendingCandidateCount ? (
-                  <Link href={`/practice?material=${encodeURIComponent(material.id)}` as Route} className="pixel-button w-fit bg-white px-4 py-2">
-                    练习资料题
-                  </Link>
+                  <div className="flex flex-wrap gap-3">
+                    <Link href={`/practice?material=${encodeURIComponent(material.id)}` as Route} className="pixel-button w-fit bg-white px-4 py-2">
+                      练习资料题
+                    </Link>
+                    <Link href={`/ai/chat?contextType=material&contextId=${encodeURIComponent(material.id)}` as Route} className="pixel-button w-fit bg-white px-4 py-2">
+                      用资料提问
+                    </Link>
+                  </div>
                 ) : material.candidateCount > 0 ? (
-                  <p className="border-2 border-black bg-[var(--surface-subtle)] p-3 text-sm font-bold text-[var(--muted)]">候选题确认后会进入个人练习。</p>
-                ) : null}
+                  <div className="grid gap-3">
+                    <p className="border-2 border-black bg-[var(--surface-subtle)] p-3 text-sm font-bold text-[var(--muted)]">候选题确认后会进入个人练习。</p>
+                    <Link href={`/ai/chat?contextType=material&contextId=${encodeURIComponent(material.id)}` as Route} className="pixel-button w-fit bg-white px-4 py-2">
+                      用资料提问
+                    </Link>
+                  </div>
+                ) : (
+                  <Link href={`/ai/chat?contextType=material&contextId=${encodeURIComponent(material.id)}` as Route} className="pixel-button w-fit bg-white px-4 py-2">
+                    用资料提问
+                  </Link>
+                )}
               </article>
             ))
           )}

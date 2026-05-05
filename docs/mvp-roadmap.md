@@ -31,7 +31,7 @@ Deliverables:
 - Next.js App Router projects for learner and admin. Completed.
 - TypeScript strict configuration. Completed.
 - Tailwind CSS base styling. Completed.
-- shadcn/ui base components. Pending.
+- shadcn/ui base components. Started with local Button, Input, Textarea, Select, Card, Tabs, and Dialog primitives styled through the existing pixel tokens.
 - Prisma with PostgreSQL schema and local compose configuration. Completed.
 - Auth and session layer. Completed for email/password and database sessions.
 - `user` and `admin` roles in schema. Completed.
@@ -139,14 +139,14 @@ Goal: support user-owned content without building a full knowledge-base product.
 
 Deliverables:
 
-- Material upload. Started for TXT, Markdown, and PDF local storage.
+- Material upload. Started for TXT, Markdown, PDF, DOCX, and image local storage.
 - Material binding to exam goal, subject, or syllabus. Started with subject binding.
-- Text extraction for supported formats. Started for TXT/Markdown; PDF OCR remains pending.
-- OCR pipeline placeholder or first OCR implementation.
+- Text extraction for supported formats. Started for TXT/Markdown/DOCX and text-based PDF.
+- OCR pipeline placeholder or first OCR implementation. Implemented as AI document/image fallback for scanned PDFs and images; no standalone OCR service yet.
 - AI question extraction job. Started with admin-triggered database Jobs.
 - Candidate-question review UI. Started in admin materials.
 - Manual confirmation into private question bank. Started for single-choice candidates.
-- Material-based AI chat context.
+- Material-based AI chat context. Started through `/ai/chat` with material text or AI document/image input.
 
 Acceptance:
 
@@ -158,14 +158,14 @@ Acceptance:
 
 Goal: convert learning history into diagnosis and actionable plans.
 
-Status: started with database-backed analysis and structured plan generation.
+Status: started with database-backed analysis, AI diagnosis, and structured plan generation.
 
 Deliverables:
 
 - Mastery calculation rules. Started from attempts and wrong-note mastery state.
 - Weak-point ranking. Started from knowledge-node accuracy and pending wrong notes.
 - Goal-based analysis page. Started.
-- AI diagnosis grounded in statistics.
+- AI diagnosis grounded in statistics. Started with persisted `LearningDiagnosis` records on `/analysis`.
 - Structured study-plan schema. Started.
 - Plan generation. Started with 14-day JSON plans.
 - Daily plan and task completion. Started.

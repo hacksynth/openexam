@@ -17,6 +17,7 @@ const taskLabels: Record<string, string> = {
   grade_subjective: "主观题评分",
   generate_plan: "学习计划",
   extract_questions: "题目抽取",
+  generate_practice_questions: "AI 练习题生成",
   diagnose_learning: "学习诊断",
   generate_wrong_note_image_prompt: "错题卡提示词",
   generate_image: "图片生成",

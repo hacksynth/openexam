@@ -1,5 +1,8 @@
+import { mkdir, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { createMaterialQuestionCandidates, validateExtractedQuestionsJson } from "@openexam/core/materials";
+import { createMaterialQuestionCandidates, readMaterialText, validateExtractedQuestionsJson } from "@openexam/core/materials";
 
 describe("material question extraction", () => {
   it("accepts valid single-choice extraction JSON", () => {
@@ -115,5 +118,58 @@ describe("material question extraction", () => {
         ]
       }
     });
+  });
+
+  it("uses AI OCR input for image materials", async () => {
+    const originalStorageDir = process.env.LOCAL_STORAGE_DIR;
+    const storageRoot = path.join(tmpdir(), `openexam-materials-${Date.now()}`);
+    const storageKey = "materials/user_1/image.png";
+    const filePath = path.join(storageRoot, storageKey);
+
+    process.env.LOCAL_STORAGE_DIR = storageRoot;
+    await mkdir(path.dirname(filePath), { recursive: true });
+    await writeFile(filePath, Buffer.from("fake-image"));
+
+    const db = {
+      material: {
+        findUnique: async () => ({
+          id: "material_1",
+          ownerId: "user_1",
+          title: "扫描资料",
+          mimeType: "image/png",
+          sizeBytes: 10,
+          sha256: "hash",
+          storageKey,
+          bindingScope: null,
+          extractionState: "queued",
+          extractionMethod: null,
+          extractionError: null,
+          sourceLicense: null,
+          createdAt: new Date("2026-05-05T00:00:00.000Z"),
+          updatedAt: new Date("2026-05-05T00:00:00.000Z")
+        })
+      }
+    };
+
+    try {
+      const result = await readMaterialText("material_1", db as never);
+
+      expect(result.ok).toBe(true);
+      expect(result.ok ? result.data.extractionMethod : "").toBe("ai_ocr");
+      expect(result.ok ? result.data.ocrInput : null).toMatchObject({
+        type: "image",
+        mimeType: "image/png",
+        filename: "扫描资料"
+      });
+      const ocrInput = result.ok ? result.data.ocrInput : null;
+
+      expect(ocrInput && ocrInput.type !== "text" ? ocrInput.dataBase64 : "").toBe(Buffer.from("fake-image").toString("base64"));
+    } finally {
+      if (originalStorageDir === undefined) {
+        delete process.env.LOCAL_STORAGE_DIR;
+      } else {
+        process.env.LOCAL_STORAGE_DIR = originalStorageDir;
+      }
+    }
   });
 });

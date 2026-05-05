@@ -201,10 +201,11 @@ function aiTaskLabel(type: string) {
       grade_subjective: "主观题评分",
       generate_plan: "学习计划生成",
       extract_questions: "资料题目抽取",
+      generate_practice_questions: "AI 练习题生成",
       diagnose_learning: "学习诊断",
       generate_wrong_note_image_prompt: "图片 Prompt",
       generate_image: "图片生成",
-      chat_with_context: "知识点问答"
+      chat_with_context: "上下文对话"
     }[type] ?? type
   );
 }

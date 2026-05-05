@@ -3,14 +3,21 @@ import type { Route } from "next";
 import { AppShell } from "@/components/app-shell";
 import { requireWebSession } from "@/lib/auth";
 import { getLearningAnalysis } from "@openexam/core/analysis";
+import { getLatestLearningDiagnosis } from "@openexam/core/learning-diagnosis";
+import { generateLearningDiagnosisAction } from "./actions";
 
-export default async function AnalysisPage() {
+type AnalysisPageProps = {
+  searchParams: Promise<{ error?: string; notice?: string }>;
+};
+
+export default async function AnalysisPage({ searchParams }: AnalysisPageProps) {
   const session = await requireWebSession();
-  const state = await getLearningAnalysis(session.user.id);
+  const [params, state, diagnosis] = await Promise.all([searchParams, getLearningAnalysis(session.user.id), getLatestLearningDiagnosis(session.user.id)]);
 
   return (
     <AppShell section="learner" eyebrow="学习分析" title="学习分析">
       <section className="grid gap-5">
+        <Feedback error={params.error} notice={params.notice} />
         {state.status === "no_goal" ? (
           <EmptyState title="请先设置考试目标" description="学习分析会按当前主目标统计练习、试卷和错题。" href="/goals" action="设置目标" />
         ) : (
@@ -28,6 +35,11 @@ export default async function AnalysisPage() {
                 <Link href={"/plan" as Route} className="pixel-button bg-white px-4 py-2">
                   生成计划
                 </Link>
+                <form action={generateLearningDiagnosisAction}>
+                  <button className="pixel-button bg-white px-4 py-2" type="submit">
+                    {diagnosis ? "重新生成诊断" : "生成学习诊断"}
+                  </button>
+                </form>
               </div>
             </section>
 
@@ -42,6 +54,30 @@ export default async function AnalysisPage() {
               <EmptyState title="暂无学习数据" description="完成单题练习或试卷后，这里会显示薄弱知识点和最近作答。" href="/practice" action="开始练习" />
             ) : (
               <>
+                <section className="pixel-panel grid gap-4 p-5">
+                  <div>
+                    <p className="text-xs font-bold uppercase text-[var(--muted)]">AI Diagnosis</p>
+                    <h2 className="mt-1 text-xl font-black">学习诊断</h2>
+                  </div>
+                  {diagnosis ? (
+                    <div className="grid gap-3">
+                      <p className="whitespace-pre-line border-2 border-black bg-[var(--ai-soft)] p-3 font-bold leading-7">{diagnosis.summary}</p>
+                      {diagnosis.recommendations.length > 0 ? (
+                        <div className="grid gap-2">
+                          {diagnosis.recommendations.map((item) => (
+                            <p key={item} className="border-2 border-black bg-white p-3 text-sm font-bold">
+                              {item}
+                            </p>
+                          ))}
+                        </div>
+                      ) : null}
+                      <p className="text-xs font-bold text-[var(--muted)]">生成时间：{formatDateTime(diagnosis.createdAt)}</p>
+                    </div>
+                  ) : (
+                    <p className="border-2 border-black bg-[var(--surface-subtle)] p-3 text-sm font-bold text-[var(--muted)]">尚未生成 AI 学习诊断。</p>
+                  )}
+                </section>
+
                 <section className="pixel-panel grid gap-4 p-5">
                   <div>
                     <p className="text-xs font-bold uppercase text-[var(--muted)]">Weak Points</p>
@@ -86,6 +122,14 @@ export default async function AnalysisPage() {
       </section>
     </AppShell>
   );
+}
+
+function Feedback({ error, notice }: { error?: string; notice?: string }) {
+  if (!error && !notice) {
+    return null;
+  }
+
+  return <p className={`border-3 border-black p-3 text-sm font-bold ${error ? "bg-red-50 text-red-700" : "bg-[var(--primary)] text-black"}`}>{error || notice}</p>;
 }
 
 function Metric({ label, value }: { label: string; value: string }) {

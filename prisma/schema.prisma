@@ -69,6 +69,7 @@ enum AiTaskType {
   grade_subjective
   generate_plan
   extract_questions
+  generate_practice_questions
   diagnose_learning
   generate_wrong_note_image_prompt
   generate_image
@@ -92,26 +93,29 @@ enum JobStatus {
 }
 
 model User {
-  id             String              @id @default(cuid())
-  email          String              @unique
-  name           String?
-  passwordHash   String?
-  role           UserRole            @default(user)
-  createdAt      DateTime            @default(now())
-  updatedAt      DateTime            @updatedAt
-  goals          ExamGoal[]
-  attempts       Attempt[]
-  wrongNotes     WrongNote[]
-  questions      Question[]          @relation("QuestionOwner")
-  materials      Material[]
-  assets         Asset[]
-  aiCalls        AiCall[]
-  jobs           Job[]
-  providerKeys   UserProviderKey[]
-  studyPlans     StudyPlan[]
-  sessions       Session[]
-  auditLogs      AuditLog[]          @relation("AuditActor")
-  knowledgeNotes UserKnowledgeNote[]
+  id               String                   @id @default(cuid())
+  email            String                   @unique
+  name             String?
+  passwordHash     String?
+  role             UserRole                 @default(user)
+  createdAt        DateTime                 @default(now())
+  updatedAt        DateTime                 @updatedAt
+  goals            ExamGoal[]
+  attempts         Attempt[]
+  wrongNotes       WrongNote[]
+  questions        Question[]               @relation("QuestionOwner")
+  materials        Material[]
+  assets           Asset[]
+  aiCalls          AiCall[]
+  aiChatThreads    AiChatThread[]
+  diagnoses        LearningDiagnosis[]
+  generatedBatches GeneratedQuestionBatch[]
+  jobs             Job[]
+  providerKeys     UserProviderKey[]
+  studyPlans       StudyPlan[]
+  sessions         Session[]
+  auditLogs        AuditLog[]               @relation("AuditActor")
+  knowledgeNotes   UserKnowledgeNote[]
 }
 
 model Session {
@@ -530,6 +534,92 @@ model AiCall {
   updatedAt          DateTime     @updatedAt
 
   @@index([userId, taskType, status])
+}
+
+model AiChatThread {
+  id                 String          @id @default(cuid())
+  userId             String
+  user               User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title              String
+  contextType        String
+  contextId          String
+  inputContextSource String
+  status             String          @default("active")
+  messages           AiChatMessage[]
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+
+  @@index([userId, updatedAt])
+  @@index([contextType, contextId])
+}
+
+model AiChatMessage {
+  id        String       @id @default(cuid())
+  threadId  String
+  thread    AiChatThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  role      String
+  content   String
+  aiCallId  String?
+  createdAt DateTime     @default(now())
+
+  @@index([threadId, createdAt])
+}
+
+model LearningDiagnosis {
+  id                   String   @id @default(cuid())
+  userId               String
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  goalId               String
+  goalPath             String
+  summary              String
+  weakKnowledgeNodeIds String[] @default([])
+  recommendations      String[] @default([])
+  sourceStats          Json?
+  aiCallId             String?
+  createdAt            DateTime @default(now())
+
+  @@index([userId, goalId, createdAt])
+}
+
+model GeneratedQuestionBatch {
+  id                String                       @id @default(cuid())
+  userId            String
+  user              User                         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  goalId            String?
+  goalPath          String?
+  prompt            String
+  sourceContextType String?
+  sourceContextId   String?
+  status            String                       @default("running")
+  aiCallId          String?
+  errorSummary      String?
+  candidates        GeneratedQuestionCandidate[]
+  createdAt         DateTime                     @default(now())
+  updatedAt         DateTime                     @updatedAt
+
+  @@index([userId, createdAt])
+  @@index([status])
+}
+
+model GeneratedQuestionCandidate {
+  id                  String                 @id @default(cuid())
+  batchId             String
+  batch               GeneratedQuestionBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  kind                QuestionKind           @default(single_choice)
+  stem                String
+  payload             Json
+  answerKey           Json
+  explanation         String?
+  difficulty          Int?
+  knowledgeNodeId     String?
+  sourceRef           String?
+  status              String                 @default("pending")
+  confirmedQuestionId String?
+  createdAt           DateTime               @default(now())
+  updatedAt           DateTime               @updatedAt
+
+  @@index([batchId, status])
+  @@index([confirmedQuestionId])
 }
 
 model Job {

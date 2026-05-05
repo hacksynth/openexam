@@ -33,7 +33,7 @@ MVP stack:
 
 Admin and learner UI are separate Next.js applications in the same monorepo. They are deployed as separate containers and share only explicit packages such as `packages/core`.
 
-The first UI locale is `zh-CN`. Product-facing copy should be written in Simplified Chinese until the project explicitly adds an i18n layer.
+The first UI locale is `zh-CN`. Product-facing copy should be written in Simplified Chinese. Learner and admin apps expose a `/zh-CN` URL skeleton through middleware while internally reusing the current route tree.
 
 Current implementation status:
 
@@ -44,8 +44,8 @@ Current implementation status:
 - The first Exam Core workflow is implemented with admin exam hierarchy and knowledge-tree management, learner primary goal selection, and a dashboard goal read path.
 - The first Practice Loop workflow is implemented for multi-kind objective practice, subjective answer capture, paper attempts, graded attempts, attempt reports, answer-card submission, wrong-note auto-collection, filters, retry, mastery toggles, and database-backed dashboard summaries.
 - Playwright now covers the first critical browser workflow across admin content creation/import, learner paper submission/reporting, unanswered confirmation, paper hide/restore, wrong-note retry, and role rejection.
-- shadcn/ui installation and S3 storage adapters are still pending.
-- Full i18n routing and locale negotiation are not implemented.
+- shadcn/ui-style base components are started in the learner app and mapped to the existing hard-outline design tokens. S3 storage adapters are still pending.
+- Full translated i18n and locale negotiation are not implemented beyond the `zh-CN` route skeleton.
 
 ## Deployment Shape
 
@@ -300,7 +300,10 @@ Implementation note:
 - `/wrong-notes` can synchronously generate or regenerate a plain-text AI analysis for one wrong note and stores it in `WrongNote.aiAnalysis`.
 - `/ai/tasks` lists the user's recent `AiCall` records with model, status, prompt version, duration, token usage, error summary, and retry for failed wrong-note explanations.
 - Admin `/ai` manages provider model presets, default task routing, temperature, max tokens, and enabled state.
-- Material extraction jobs use the text provider adapter and write Zod-validated pending `MaterialQuestionCandidate` records before admin confirmation creates private questions.
+- Material extraction jobs use text, document, or vision-capable provider adapters and write Zod-validated pending `MaterialQuestionCandidate` records before admin confirmation creates private questions.
+- `/analysis` can generate persisted `LearningDiagnosis` records from current statistics.
+- `/ai/chat` stores context-bound chat threads and messages for question, wrong-note, knowledge-node, plan, attempt, and material contexts.
+- `/practice/generate` creates private AI-generated question candidates that require confirmation before becoming practiceable private questions.
 
 Each AI task records:
 
@@ -331,6 +334,7 @@ Task types:
 - `grade_subjective`
 - `generate_plan`
 - `extract_questions`
+- `generate_practice_questions`
 - `diagnose_learning`
 - `generate_wrong_note_image_prompt`
 - `generate_image`
@@ -451,7 +455,7 @@ Default storage is local `storage/`. Production can configure S3-compatible stor
 
 Private files are served through authenticated backend routes, not direct public URLs. AI-generated images are private assets by default.
 
-Implementation note: local material upload storage is implemented for TXT, Markdown, and PDF files. TXT/Markdown extraction jobs read UTF-8 text directly; PDF OCR/text extraction is still pending and fails with an explicit processing error.
+Implementation note: local material upload storage is implemented for TXT, Markdown, PDF, DOCX, and image files. TXT/Markdown/DOCX extraction reads local text; text-based PDFs are parsed locally; scanned PDFs and images are sent as AI document/image input when the selected provider preset supports it.
 
 ## Admin Surface
 
@@ -494,7 +498,7 @@ Rules:
 - UI language: `zh-CN`.
 - Prompt language: Chinese by default.
 - Data model may reserve `locale`.
-- Content can contain any language, but complete UI i18n is not part of the MVP.
+- Current browser routes redirect to `/zh-CN/...`; content can contain any language, but translated UI dictionaries and locale negotiation are not part of the MVP.
 
 ## License
 
