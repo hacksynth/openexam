@@ -159,7 +159,7 @@ export async function submitSingleChoiceAnswer(userId: string, input: { question
   const question = await prisma.question.findFirst({
     where: {
       id: input.questionId,
-      ...buildPracticeQuestionWhere(goal)
+      ...buildPracticeQuestionWhere(userId, goal)
     },
     include: practiceQuestionInclude
   });
@@ -506,7 +506,7 @@ async function getRetryQuestion(userId: string, goal: NonNullable<PrimaryGoal>, 
   return prisma.question.findFirst({
     where: {
       AND: [
-        buildPracticeQuestionWhere(goal),
+        buildPracticeQuestionWhere(userId, goal),
         {
           id: questionId
         }
@@ -517,7 +517,7 @@ async function getRetryQuestion(userId: string, goal: NonNullable<PrimaryGoal>, 
 }
 
 async function selectPracticeQuestion(userId: string, goal: NonNullable<PrimaryGoal>, excludeQuestionId?: string | null) {
-  const baseWhere = buildPracticeQuestionWhere(goal);
+  const baseWhere = buildPracticeQuestionWhere(userId, goal);
   const attemptedIds = await listAttemptedQuestionIds(userId, goal);
   const recentIds = await listRecentQuestionIds(userId, goal);
   const excludedCurrent = compactIds([excludeQuestionId]);
@@ -537,7 +537,7 @@ async function listAttemptedQuestionIds(userId: string, goal: NonNullable<Primar
         userId,
         goalId: goal.id
       },
-      question: buildPracticeQuestionWhere(goal)
+      question: buildPracticeQuestionWhere(userId, goal)
     },
     distinct: ["questionId"],
     select: {
@@ -555,7 +555,7 @@ async function listRecentQuestionIds(userId: string, goal: NonNullable<PrimaryGo
         userId,
         goalId: goal.id
       },
-      question: buildPracticeQuestionWhere(goal)
+      question: buildPracticeQuestionWhere(userId, goal)
     },
     orderBy: [{ createdAt: "desc" }],
     take: 10,
@@ -611,13 +611,27 @@ function toPracticeQuestion(question: PracticeQuestionRecord): PracticeQuestion 
   };
 }
 
-function buildPracticeQuestionWhere(goal: NonNullable<PrimaryGoal>): Prisma.QuestionWhereInput {
+export function buildPracticeQuestionWhere(userId: string, goal: NonNullable<PrimaryGoal>): Prisma.QuestionWhereInput {
   return {
     kind: "single_choice",
-    visibility: "public",
     reviewStatus: "approved",
     deletedAt: null,
-    OR: buildGoalScopeWhere(goal)
+    AND: [
+      {
+        OR: [
+          {
+            visibility: "public"
+          },
+          {
+            ownerId: userId,
+            visibility: "private"
+          }
+        ]
+      },
+      {
+        OR: buildGoalScopeWhere(goal)
+      }
+    ]
   };
 }
 

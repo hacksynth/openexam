@@ -77,9 +77,13 @@ export default async function MaterialsPage({ searchParams }: MaterialsPageProps
                 <h2 className="break-words text-xl font-black">{material.title}</h2>
                 <p className="text-sm font-bold text-[var(--muted)]">{material.mimeType}</p>
                 {material.latestJob?.error ? <p className="border-2 border-black bg-red-50 p-3 text-sm font-bold text-red-700">{material.latestJob.error}</p> : null}
-                <Link href={"/practice" as Route} className="pixel-button w-fit bg-white px-4 py-2">
-                  去练习
-                </Link>
+                {material.candidateCount > material.pendingCandidateCount ? (
+                  <Link href={"/practice" as Route} className="pixel-button w-fit bg-white px-4 py-2">
+                    练习资料题
+                  </Link>
+                ) : material.candidateCount > 0 ? (
+                  <p className="border-2 border-black bg-[var(--surface-subtle)] p-3 text-sm font-bold text-[var(--muted)]">候选题确认后会进入个人练习。</p>
+                ) : null}
               </article>
             ))
           )}

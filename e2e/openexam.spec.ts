@@ -109,6 +109,7 @@ test.describe.serial("OpenExam auth, question, paper, and wrong-note flows", () 
     await uploadMaterial(webPage);
     await loginAdmin(adminPage);
     await processMaterialJobAndConfirmQuestion(adminPage);
+    await practiceConfirmedMaterialQuestion(webPage);
   });
 
   test("admin hides and restores a paper", async ({ browser }) => {
@@ -343,6 +344,27 @@ async function processMaterialJobAndConfirmQuestion(page: Page) {
   await page.goto(`${adminUrl}/questions?q=${encodeURIComponent(extractedQuestionStem)}`);
   await expect(page.locator("body")).toContainText(extractedQuestionStem);
   await expect(page.locator("body")).toContainText("AI 生成");
+}
+
+async function practiceConfirmedMaterialQuestion(page: Page) {
+  await page.goto(`${webUrl}/materials`);
+  await expect(page.locator("article").filter({ hasText: materialTitle }).first()).toContainText("练习资料题");
+
+  const importedQuestion = await prisma.question.findFirst({
+    where: {
+      stem: importedQuestionStem
+    },
+    select: {
+      id: true
+    }
+  });
+  const skipQuery = importedQuestion ? `?skip=${encodeURIComponent(importedQuestion.id)}` : "";
+
+  await page.goto(`${webUrl}/practice${skipQuery}`);
+  await expect(page.locator("body")).toContainText(extractedQuestionStem);
+  await page.locator('input[name="answer"][value="A"]').check();
+  await page.getByRole("button", { name: "提交答案" }).click();
+  await expect(page.getByText("回答正确")).toBeVisible();
 }
 
 async function configureAdminAiPreset(page: Page) {

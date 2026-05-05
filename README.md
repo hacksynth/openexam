@@ -4,7 +4,9 @@ OpenExam is a self-hostable AI exam preparation platform for individual learners
 
 ## Status
 
-This repository is in the foundation stage. The web app, admin app, shared core package, Prisma domain schema, and initial rule tests are in place. The product and architecture source of truth remains in `docs/`.
+This repository has a runnable foundation plus early MVP learning-loop slices. The learner and admin apps, shared core package, Prisma/PostgreSQL schema, auth/session layer, exam hierarchy management, single-choice practice, paper attempts, wrong notes, OpenAI BYOK explanations, AI call logs, material uploads, and AI-assisted material question extraction are in place.
+
+The app does not yet complete the full MVP loop. Plan/analysis generation, OCR and richer file extraction, Claude/Gemini support, subjective grading, image generation, dedicated workers, audit hardening, and advanced practice modes remain future work. The product and architecture source of truth remains in `docs/`.
 
 The first product version targets Simplified Chinese (`zh-CN`) UI copy by default.
 
