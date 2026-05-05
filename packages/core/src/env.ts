@@ -11,6 +11,7 @@ const envSchema = z.object({
   OPENEXAM_DAILY_PLATFORM_TOKEN_LIMIT: z.coerce.number().int().positive().default(100000),
   OPENEXAM_UPLOAD_MAX_BYTES: z.coerce.number().int().positive().default(10485760),
   OPENEXAM_WORKER_POLL_MS: z.coerce.number().int().positive().default(3000),
+  OPENEXAM_JOB_STALE_MS: z.coerce.number().int().positive().default(900000),
   STORAGE_DRIVER: z.enum(["local", "s3"]).default("local"),
   LOCAL_STORAGE_DIR: z.string().default("./storage"),
   NEXT_PUBLIC_APP_NAME: z.string().default("OpenExam")

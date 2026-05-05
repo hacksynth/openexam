@@ -3,7 +3,7 @@ import type { Route } from "next";
 import { AppShell } from "@/components/app-shell";
 import { requireAdminSession } from "@/lib/auth";
 import { listJobs } from "@openexam/core/jobs";
-import { processJobAction, processNextJobAction, retryJobAction } from "./actions";
+import { processJobAction, processNextJobAction, recoverStaleJobsAction, retryJobAction } from "./actions";
 
 type AdminJobsPageProps = {
   searchParams: Promise<{ error?: string; notice?: string; status?: string }>;
@@ -36,6 +36,11 @@ export default async function AdminJobsPage({ searchParams }: AdminJobsPageProps
             <form action={processNextJobAction}>
               <button className="pixel-button px-4 py-2" type="submit">
                 处理下一条
+              </button>
+            </form>
+            <form action={recoverStaleJobsAction}>
+              <button className="pixel-button bg-white px-4 py-2" type="submit">
+                恢复超时任务
               </button>
             </form>
           </div>
@@ -72,6 +77,18 @@ export default async function AdminJobsPage({ searchParams }: AdminJobsPageProps
                 <h2 className="break-words text-xl font-black">{job.materialTitle ?? job.wrongNoteTitle ?? job.id}</h2>
                 <p className="text-sm font-bold text-[var(--muted)]">创建 {formatDate(job.createdAt)} / 更新 {formatDate(job.updatedAt)}</p>
                 {job.error ? <p className="border-2 border-black bg-red-50 p-3 text-sm font-bold text-red-700">{job.error}</p> : null}
+                <div className="grid gap-3 border-2 border-black bg-[var(--surface-subtle)] p-3 text-sm font-bold md:grid-cols-2">
+                  <p className="break-all">ID：{job.id}</p>
+                  <p>Run At：{formatDate(job.runAt)}</p>
+                  <p>Started：{job.startedAt ? formatDate(job.startedAt) : "未开始"}</p>
+                  <p>Finished：{job.finishedAt ? formatDate(job.finishedAt) : "未完成"}</p>
+                  {job.materialId ? <p className="break-all">Material：{job.materialId}</p> : null}
+                  {job.wrongNoteId ? <p className="break-all">Wrong Note：{job.wrongNoteId}</p> : null}
+                </div>
+                <div className="grid gap-3 lg:grid-cols-2">
+                  <JsonBlock label="Payload" value={job.payload} />
+                  <JsonBlock label="Result" value={job.result} />
+                </div>
                 <div className="flex flex-wrap gap-2">
                   {job.status === "queued" || job.status === "failed" ? (
                     <form action={processJobAction}>
@@ -96,6 +113,15 @@ export default async function AdminJobsPage({ searchParams }: AdminJobsPageProps
         </section>
       </section>
     </AppShell>
+  );
+}
+
+function JsonBlock({ label, value }: { label: string; value: unknown }) {
+  return (
+    <div className="grid gap-2 border-2 border-black bg-white p-3">
+      <p className="text-sm font-bold text-[var(--muted)]">{label}</p>
+      <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words text-xs font-bold leading-5">{formatJson(value)}</pre>
+    </div>
   );
 }
 
@@ -126,4 +152,12 @@ function formatDate(value: Date) {
   })
     .format(value)
     .replaceAll("/", "-");
+}
+
+function formatJson(value: unknown) {
+  if (value === null || value === undefined) {
+    return "null";
+  }
+
+  return JSON.stringify(value, null, 2);
 }

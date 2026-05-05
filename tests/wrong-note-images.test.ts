@@ -9,6 +9,7 @@ import { processJob } from "@openexam/core/jobs";
 import {
   buildWrongNoteReviewCardPrompt,
   generateOpenAiImage,
+  listWrongNoteReviewCardViews,
   processWrongNoteReviewCardJob,
   queueWrongNoteReviewCard,
   wrongNoteReviewCardJobType
@@ -109,6 +110,58 @@ describe("wrong-note review-card jobs", () => {
     );
   });
 
+  it("shows the latest successful review-card asset for a wrong note", async () => {
+    const db = {
+      job: {
+        findMany: async () => [
+          {
+            id: "job_new",
+            status: "succeeded",
+            progress: 100,
+            error: null,
+            payload: { wrongNoteId: "wrong_1" },
+            result: { wrongNoteId: "wrong_1", assetId: "asset_new" },
+            updatedAt: new Date("2026-05-05T10:00:00.000Z")
+          },
+          {
+            id: "job_old",
+            status: "succeeded",
+            progress: 100,
+            error: null,
+            payload: { wrongNoteId: "wrong_1" },
+            result: { wrongNoteId: "wrong_1", assetId: "asset_old" },
+            updatedAt: new Date("2026-05-05T09:00:00.000Z")
+          }
+        ]
+      },
+      asset: {
+        findMany: async () => [
+          {
+            id: "asset_new",
+            mimeType: "image/png",
+            createdAt: new Date("2026-05-05T10:00:00.000Z")
+          },
+          {
+            id: "asset_old",
+            mimeType: "image/png",
+            createdAt: new Date("2026-05-05T09:00:00.000Z")
+          }
+        ]
+      }
+    };
+    const views = await listWrongNoteReviewCardViews("user_1", ["wrong_1"], db as never);
+
+    expect(views.get("wrong_1")).toMatchObject({
+      latestJob: {
+        id: "job_new",
+        status: "succeeded"
+      },
+      asset: {
+        id: "asset_new"
+      }
+    });
+  });
+
   it("marks the AI call failed when image generation returns no usable image", async () => {
     const calls: { method: string; args?: unknown }[] = [];
     const tempDir = await makeTempDir();
@@ -170,29 +223,50 @@ describe("private asset access", () => {
 });
 
 function createWrongNoteImageDb(calls: { method: string; args?: unknown }[]) {
+  const job = {
+    id: "job_1",
+    type: wrongNoteReviewCardJobType,
+    status: "queued",
+    priority: 100,
+    userId: "user_1",
+    payload: { wrongNoteId: "wrong_1" },
+    result: null,
+    error: null,
+    progress: 0,
+    runAt: new Date("2026-05-05T00:00:00.000Z"),
+    startedAt: null,
+    finishedAt: null,
+    createdAt: new Date("2026-05-05T00:00:00.000Z"),
+    updatedAt: new Date("2026-05-05T00:00:00.000Z")
+  };
+
   return {
     job: {
       findFirst: async (args: unknown) => {
         calls.push({ method: "job.findFirst", args });
-        return {
-          id: "job_1",
-          type: wrongNoteReviewCardJobType,
-          status: "queued",
-          priority: 100,
-          userId: "user_1",
-          payload: { wrongNoteId: "wrong_1" },
-          result: null,
-          error: null,
-          progress: 0,
-          runAt: new Date(),
-          startedAt: null,
-          finishedAt: null,
-          createdAt: new Date(),
-          updatedAt: new Date()
-        };
+        return matchesJobWhere(job, readWhere(args)) ? { ...job } : null;
+      },
+      findUnique: async (args: unknown) => {
+        calls.push({ method: "job.findUnique", args });
+        const id = readWhere(args).id;
+
+        return id === job.id ? { ...job } : null;
+      },
+      updateMany: async (args: unknown) => {
+        calls.push({ method: "job.updateMany", args });
+
+        if (!matchesJobWhere(job, readWhere(args))) {
+          return { count: 0 };
+        }
+
+        Object.assign(job, readData(args));
+
+        return { count: 1 };
       },
       update: async (args: unknown) => {
         calls.push({ method: "job.update", args });
+        Object.assign(job, readData(args));
+
         return args;
       }
     },
@@ -219,6 +293,42 @@ function createWrongNoteImageDb(calls: { method: string; args?: unknown }[]) {
       }
     }
   };
+}
+
+function readWhere(args: unknown) {
+  if (args && typeof args === "object" && "where" in args && args.where && typeof args.where === "object") {
+    return args.where as Record<string, unknown>;
+  }
+
+  return {};
+}
+
+function readData(args: unknown) {
+  if (args && typeof args === "object" && "data" in args && args.data && typeof args.data === "object") {
+    return args.data as Record<string, unknown>;
+  }
+
+  return {};
+}
+
+function matchesJobWhere(job: { id: string; status: string; runAt: Date }, where: Record<string, unknown>) {
+  if (typeof where.id === "string" && where.id !== job.id) {
+    return false;
+  }
+
+  if (where.status && typeof where.status === "object" && "in" in where.status && Array.isArray(where.status.in)) {
+    return where.status.in.includes(job.status);
+  }
+
+  if (typeof where.status === "string" && where.status !== job.status) {
+    return false;
+  }
+
+  if (where.runAt && typeof where.runAt === "object" && "lte" in where.runAt && where.runAt.lte instanceof Date && job.runAt > where.runAt.lte) {
+    return false;
+  }
+
+  return true;
 }
 
 function wrongNoteRecord() {

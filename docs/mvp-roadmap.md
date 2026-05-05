@@ -209,9 +209,9 @@ Status: started with a persistent worker, material extraction jobs, and wrong-no
 
 Deliverables:
 
-- Database-backed job queue. Started for material extraction and wrong-note review cards.
+- Database-backed job queue. Started for material extraction and wrong-note review cards, with atomic claim and stale running-job recovery.
 - Worker process. Started with `npm run worker` and a `docker-compose` worker service.
-- Job status UI. Started in admin `/jobs` and learner wrong-note cards.
+- Job status UI. Started in admin `/jobs` with payload/result/timestamp details, and learner wrong-note cards.
 - AI image provider adapter. Started with OpenAI Images.
 - Wrong-note review-card generation. Started.
 - Problem-solving diagram generation.
@@ -223,6 +223,7 @@ Acceptance:
 - A learner can request a wrong-note review card and see job progress. Started.
 - Generated images are private authenticated assets. Started.
 - Failed image jobs expose useful error summaries without leaking secrets. Started.
+- Running jobs that exceed the configured stale threshold can be automatically or manually requeued. Started.
 
 ## 9. Admin Hardening
 

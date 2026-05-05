@@ -348,7 +348,11 @@ async function failAndRetryWrongNoteReviewCard(webPage: Page, adminPage: Page) {
 
   await adminPage.goto(`${adminUrl}/jobs?status=failed`);
   await expect(adminPage.locator("body")).toContainText("Mock OpenAI image failure");
-  await adminPage.locator("article").filter({ hasText: "Mock OpenAI image failure" }).first().getByRole("button", { name: "重试" }).click();
+  const failedJob = adminPage.locator("article").filter({ hasText: "Mock OpenAI image failure" }).first();
+
+  await expect(failedJob).toContainText("Payload");
+  await expect(failedJob).toContainText("wrongNoteId");
+  await failedJob.getByRole("button", { name: "重试" }).click();
   await expect(adminPage.getByText("任务已重试。")).toBeVisible();
 
   await waitForWrongNoteReviewCard(webPage, "成功");

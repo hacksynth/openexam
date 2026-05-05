@@ -247,7 +247,7 @@ Image styles are limited to:
 
 The text provider may generate the image prompt. The image provider is configured separately, with OpenAI Images as the preferred first implementation.
 
-Implementation note: wrong-note review-card images are generated asynchronously by the job worker using OpenAI Images. The default image model is `gpt-image-1.5` unless an enabled admin preset is set for `generate_image`. Generated files are stored under `review-cards/{userId}/` as private `Asset` records and served through authenticated `/assets/[assetId]`; owner or admin access is required. Failed image jobs store an error summary and do not create placeholder images.
+Implementation note: wrong-note review-card images are generated asynchronously by the job worker using OpenAI Images. The default image model is `gpt-image-1.5` unless an enabled admin preset is set for `generate_image`. Generated files are stored under `review-cards/{userId}/` as private `Asset` records and served through authenticated `/assets/[assetId]`; owner or admin access is required. Failed image jobs store an error summary and do not create placeholder images. The worker claims jobs with conditional status updates, requeues stale running jobs by `OPENEXAM_JOB_STALE_MS`, and admin `/jobs` exposes payload, result, timestamps, retry, and recovery controls.
 
 ## AI Diagnosis And Plans
 

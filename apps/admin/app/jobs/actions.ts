@@ -3,10 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { Route } from "next";
-import { processJob, processNextJob, retryJob } from "@openexam/core/jobs";
+import { processJob, processNextJob, recoverStaleJobs, retryJob } from "@openexam/core/jobs";
 import { requireAdminSession } from "@/lib/auth";
 
-type Result = Awaited<ReturnType<typeof processJob>>;
+type Result = { ok: true } | { ok: true; data: unknown } | { ok: false; error: string };
 
 export async function processNextJobAction() {
   await requireAdminSession();
@@ -21,6 +21,13 @@ export async function processJobAction(formData: FormData) {
 export async function retryJobAction(formData: FormData) {
   await requireAdminSession();
   finish(await retryJob(value(formData, "jobId")), "任务已重试。");
+}
+
+export async function recoverStaleJobsAction() {
+  await requireAdminSession();
+  const result = await recoverStaleJobs();
+
+  finish(result, result.ok ? `已恢复 ${result.data.count} 条超时任务。` : "超时任务恢复完成。");
 }
 
 function value(formData: FormData, name: string) {
