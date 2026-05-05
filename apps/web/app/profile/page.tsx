@@ -34,7 +34,7 @@ export default async function ProfilePage({ searchParams }: ProfilePageProps) {
             <form action={saveOpenAiKeyAction} className="grid gap-3">
               <input name="provider" type="hidden" value={provider.provider} />
               <label className="grid gap-2 text-sm font-bold">
-                API Key
+                {provider.provider === "openai" ? "API Key" : `${provider.label} Key`}
                 <input className="border-3 border-black bg-white px-3 py-2" name="apiKey" placeholder={provider.provider === "openai" ? "sk-..." : "输入 provider key"} required type="password" />
               </label>
               <button className="pixel-button w-fit px-4 py-2" type="submit">

@@ -14,21 +14,21 @@ export async function saveOpenAiKeyAction(formData: FormData) {
     apiKey: value(formData, "apiKey")
   });
 
-  finish(result, "API Key 已保存。");
+  finish(result, `${providerLabel(provider)} API Key 已保存。`);
 }
 
 export async function deleteOpenAiKeyAction(formData?: FormData) {
   const session = await requireWebSession();
   const result = await deleteUserProviderKey(session.user.id, valueFromProvider(formData) || "openai");
 
-  finish(result, "API Key 已删除。");
+  finish(result, `${providerLabel(valueFromProvider(formData) || "openai")} API Key 已删除。`);
 }
 
 export async function deleteProviderKeyAction(formData: FormData) {
   const session = await requireWebSession();
   const result = await deleteUserProviderKey(session.user.id, value(formData, "provider"));
 
-  finish(result, "API Key 已删除。");
+  finish(result, `${providerLabel(value(formData, "provider"))} API Key 已删除。`);
 }
 
 function value(formData: FormData, name: string) {
@@ -37,6 +37,10 @@ function value(formData: FormData, name: string) {
 
 function valueFromProvider(value: unknown) {
   return value instanceof FormData ? String(value.get("provider") ?? "") : "";
+}
+
+function providerLabel(provider: string) {
+  return { openai: "OpenAI", anthropic: "Claude", gemini: "Gemini" }[provider] ?? "AI";
 }
 
 function finish(result: { ok: true } | { ok: false; error: string }, success: string): never {
