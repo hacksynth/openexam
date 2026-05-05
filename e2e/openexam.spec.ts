@@ -491,7 +491,10 @@ async function configureAdminAiPreset(page: Page) {
 
   await form.locator('input[name="model"]').fill(aiPresetModel);
   await form.locator('input[name="label"]').fill("E2E OpenAI Mock");
-  await choosePixelSelect(form, "defaultForTask", "explain_question");
+  for (const taskType of ["explain_question", "generate_image", "extract_questions", "generate_plan"]) {
+    await form.locator(`input[name="defaultForTasks"][value="${taskType}"]`).check();
+  }
+  await form.locator('input[name="capabilities"][value="image"]').check();
   await form.locator('input[name="temperature"]').fill("0.2");
   await form.locator('input[name="maxTokens"]').fill("640");
   await form.getByRole("button", { name: "新增预设" }).click();

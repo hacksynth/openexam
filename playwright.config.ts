@@ -1,8 +1,22 @@
 import { defineConfig } from "@playwright/test";
 
-const databaseUrl = process.env.DATABASE_URL ?? "postgresql://openexam:openexam@localhost:5432/openexam?schema=public";
-const sessionSecret = process.env.SESSION_SECRET ?? "openexam-e2e-session-secret";
-const openAiBaseUrl = process.env.OPENAI_BASE_URL ?? "http://127.0.0.1:8317/v1";
+const databaseUrl = envOrDefault("DATABASE_URL", "postgresql://openexam:openexam@localhost:5432/openexam?schema=public");
+const sessionSecret = envOrDefault("SESSION_SECRET", "openexam-e2e-session-secret");
+const openAiBaseUrl = envOrDefault("OPENAI_BASE_URL", "http://127.0.0.1:8317/v1");
+const webUrl = envOrDefault("E2E_WEB_URL", "http://127.0.0.1:3000");
+const adminUrl = envOrDefault("E2E_ADMIN_URL", "http://127.0.0.1:3001");
+
+function envOrDefault(name: string, fallback: string) {
+  return process.env[name]?.trim() || fallback;
+}
+
+function portFromUrl(value: string, fallback: string) {
+  try {
+    return new URL(value).port || fallback;
+  } catch {
+    return fallback;
+  }
+}
 
 export default defineConfig({
   testDir: "./e2e",
@@ -23,7 +37,7 @@ export default defineConfig({
     },
     {
       command: "npm run dev:web",
-      url: "http://127.0.0.1:3000",
+      url: webUrl,
       reuseExistingServer: false,
       timeout: 120_000,
       env: {
@@ -31,12 +45,12 @@ export default defineConfig({
         SESSION_SECRET: sessionSecret,
         AI_KEY_ENCRYPTION_SECRET: "openexam-e2e-ai-key-secret",
         OPENAI_BASE_URL: openAiBaseUrl,
-        PORT: "3000"
+        PORT: portFromUrl(webUrl, "3000")
       }
     },
     {
       command: "npm run dev:admin",
-      url: "http://127.0.0.1:3001",
+      url: adminUrl,
       reuseExistingServer: false,
       timeout: 120_000,
       env: {
@@ -44,7 +58,7 @@ export default defineConfig({
         SESSION_SECRET: sessionSecret,
         AI_KEY_ENCRYPTION_SECRET: "openexam-e2e-ai-key-secret",
         OPENAI_BASE_URL: openAiBaseUrl,
-        PORT: "3001"
+        PORT: portFromUrl(adminUrl, "3001")
       }
     },
     {

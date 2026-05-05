@@ -23,12 +23,9 @@ const server = createServer(async (request, response) => {
     responseCount += 1;
     const body = await readJson(request);
     const authorization = request.headers.authorization ?? "";
-    const failedCount = failedKeyCounts.get(authorization) ?? 0;
-    const shouldFailKey = authorization.includes("fail-once") && failedCount < 3;
     const model = typeof body.model === "string" ? body.model : "gpt-5.5";
 
-    if (shouldFailKey) {
-      failedKeyCounts.set(authorization, failedCount + 1);
+    if (shouldFailTextRequest(authorization)) {
       sendJson(response, 500, {
         error: {
           message: "Mock OpenAI failure: upstream temporarily unavailable"
@@ -37,44 +34,7 @@ const server = createServer(async (request, response) => {
       return;
     }
 
-    const input = String(body.input ?? "");
-    const isExtraction = input.includes("资料正文");
-    const isPlan = input.includes("14 天学习计划");
-    const knowledgeNodeId = String(body.input ?? "").match(/(cm[a-z0-9]+)/)?.[1] ?? "";
-    const goalId = input.match(/目标 ID：([^\n]+)/)?.[1]?.trim() ?? "goal_mock";
-    const text = isPlan
-      ? JSON.stringify({
-          goalId,
-          generatedAt: "2026-05-05T00:00:00.000Z",
-          days: 14,
-          tasks: Array.from({ length: 14 }, (_, index) => ({
-            day: index + 1,
-            title: `第 ${index + 1} 天复习事务基础并完成单选练习`,
-            kind: index % 5 === 4 ? "wrong_note_review" : "practice",
-            minutes: 45,
-            knowledgeNodeIds: knowledgeNodeId ? [knowledgeNodeId] : []
-          }))
-        })
-      : isExtraction
-      ? JSON.stringify({
-          questions: [
-            {
-              stem: "E2E 资料抽题：事务原子性最准确的含义是什么？",
-              options: {
-                A: "事务中的操作要么全部成功，要么全部失败。",
-                B: "并发事务之间互不影响。",
-                C: "事务提交后数据永久保存。",
-                D: "事务执行前后数据库满足约束。"
-              },
-              answer: "A",
-              explanation: "原子性强调事务不可分割，不能只成功一部分。",
-              difficulty: 2,
-              knowledgeNodeId,
-              sourceRef: "E2E 资料第 1 段"
-            }
-          ]
-        })
-      : "AI E2E 解析：原子性要求事务中的操作要么全部成功，要么全部失败。复习时要区分原子性和隔离性。";
+    const text = buildMockTextResponse(readPromptText(body));
 
     sendJson(response, 200, {
       id: `resp_mock_${Date.now()}`,
@@ -100,6 +60,47 @@ const server = createServer(async (request, response) => {
       usage: {
         input_tokens: 128,
         output_tokens: 36,
+        total_tokens: 164
+      }
+    });
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/v1/chat/completions") {
+    responseCount += 1;
+    const body = await readJson(request);
+    const authorization = request.headers.authorization ?? "";
+    const model = typeof body.model === "string" ? body.model : "gpt-5.5";
+
+    if (shouldFailTextRequest(authorization)) {
+      sendJson(response, 500, {
+        error: {
+          message: "Mock OpenAI failure: upstream temporarily unavailable"
+        }
+      });
+      return;
+    }
+
+    const text = buildMockTextResponse(readPromptText(body));
+
+    sendJson(response, 200, {
+      id: `chatcmpl_mock_${Date.now()}`,
+      object: "chat.completion",
+      created: Math.floor(Date.now() / 1000),
+      model,
+      choices: [
+        {
+          index: 0,
+          finish_reason: "stop",
+          message: {
+            role: "assistant",
+            content: text
+          }
+        }
+      ],
+      usage: {
+        prompt_tokens: 128,
+        completion_tokens: 36,
         total_tokens: 164
       }
     });
@@ -159,6 +160,90 @@ function sendJson(response, statusCode, payload) {
     "content-type": "application/json"
   });
   response.end(JSON.stringify(payload));
+}
+
+function shouldFailTextRequest(authorization) {
+  const failedCount = failedKeyCounts.get(authorization) ?? 0;
+  const shouldFailKey = authorization.includes("fail-once") && failedCount < 3;
+
+  if (shouldFailKey) {
+    failedKeyCounts.set(authorization, failedCount + 1);
+  }
+
+  return shouldFailKey;
+}
+
+function buildMockTextResponse(input) {
+  const isExtraction = input.includes("资料正文");
+  const isPlan = input.includes("14 天学习计划");
+  const knowledgeNodeId = input.match(/(cm[a-z0-9]+)/)?.[1] ?? "";
+  const goalId = input.match(/目标 ID：([^\n]+)/)?.[1]?.trim() ?? "goal_mock";
+
+  if (isPlan) {
+    return JSON.stringify({
+      goalId,
+      generatedAt: "2026-05-05T00:00:00.000Z",
+      days: 14,
+      tasks: Array.from({ length: 14 }, (_, index) => ({
+        day: index + 1,
+        title: `第 ${index + 1} 天复习事务基础并完成单选练习`,
+        kind: index % 5 === 4 ? "wrong_note_review" : "practice",
+        minutes: 45,
+        knowledgeNodeIds: knowledgeNodeId ? [knowledgeNodeId] : []
+      }))
+    });
+  }
+
+  if (isExtraction) {
+    return JSON.stringify({
+      questions: [
+        {
+          stem: "E2E 资料抽题：事务原子性最准确的含义是什么？",
+          options: {
+            A: "事务中的操作要么全部成功，要么全部失败。",
+            B: "并发事务之间互不影响。",
+            C: "事务提交后数据永久保存。",
+            D: "事务执行前后数据库满足约束。"
+          },
+          answer: "A",
+          explanation: "原子性强调事务不可分割，不能只成功一部分。",
+          difficulty: 2,
+          knowledgeNodeId,
+          sourceRef: "E2E 资料第 1 段"
+        }
+      ]
+    });
+  }
+
+  return "AI E2E 解析：原子性要求事务中的操作要么全部成功，要么全部失败。复习时要区分原子性和隔离性。";
+}
+
+function readPromptText(body) {
+  if (typeof body.input !== "undefined") {
+    return stringifyPromptContent(body.input);
+  }
+
+  if (Array.isArray(body.messages)) {
+    return body.messages.map((message) => stringifyPromptContent(message?.content)).join("\n");
+  }
+
+  return "";
+}
+
+function stringifyPromptContent(value) {
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((item) => stringifyPromptContent(item)).join("\n");
+  }
+
+  if (value && typeof value === "object" && "text" in value) {
+    return String(value.text ?? "");
+  }
+
+  return String(value ?? "");
 }
 
 async function readJson(request) {
