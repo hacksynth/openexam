@@ -12,3 +12,14 @@ export function AiAnalysisSubmitButton({ hasAnalysis }: { hasAnalysis: boolean }
     </button>
   );
 }
+
+export function ReviewCardSubmitButton({ hasCard, busy }: { hasCard: boolean; busy: boolean }) {
+  const { pending } = useFormStatus();
+  const label = hasCard ? "重新生成复习卡" : "生成复习卡";
+
+  return (
+    <button className="pixel-button w-fit bg-white px-4 py-2 disabled:opacity-60" disabled={pending || busy} type="submit">
+      {pending ? "排队中..." : busy ? "任务处理中" : label}
+    </button>
+  );
+}

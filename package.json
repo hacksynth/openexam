@@ -16,6 +16,7 @@
     "build:admin": "npm --workspace @openexam/admin run build",
     "start:web": "npm --workspace @openexam/web run start",
     "start:admin": "npm --workspace @openexam/admin run start",
+    "worker": "tsx packages/core/src/worker.ts",
     "lint": "npm run lint:root && npm --workspace @openexam/web run lint && npm --workspace @openexam/admin run lint",
     "lint:root": "tsc --noEmit",
     "test": "vitest run",

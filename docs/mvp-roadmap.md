@@ -17,6 +17,7 @@ Current progress:
 - Learners can save a primary exam goal and see that goal on the dashboard.
 - The first Practice Loop slice is implemented for goal-scoped single-choice practice, improved question rotation, objective grading, paper attempts, attempt reports, answer-card submission, wrong-note filters/retry, and dashboard weak-node summaries.
 - Admins can create and govern single-choice questions, filter and archive questions, and create/filter/hide ordered public papers.
+- Learning analysis, structured 14-day plans, worker-backed jobs, private generated assets, and wrong-note review-card images are started.
 - The visible foundation UI uses Simplified Chinese (`zh-CN`) copy.
 
 ## 1. Foundation
@@ -35,7 +36,7 @@ Deliverables:
 - Auth and session layer. Completed for email/password and database sessions.
 - `user` and `admin` roles in schema. Completed.
 - Base layout for learner and admin routes in separate apps. Completed.
-- Local asset storage adapter. Started for material uploads.
+- Local asset storage adapter. Started for material uploads and private review-card images.
 - Basic environment configuration. Completed.
 - Test setup with Vitest and Playwright. Completed for the current core and browser workflow slice.
 
@@ -45,7 +46,7 @@ Acceptance:
 - An admin can reach the admin app root `/` on the admin service. Completed with seeded admin credentials.
 - PostgreSQL migrations run cleanly. Completed against local Docker PostgreSQL.
 - Private routes reject anonymous users. Completed for learner and admin routes.
-- Docker images for `web` and `admin` build successfully. Completed with app health checks in Compose.
+- Docker images for `web` and `admin` build successfully. Completed with app health checks in Compose and runtime standalone static assets copied into the image output.
 
 ## 2. Exam Core
 
@@ -157,21 +158,23 @@ Acceptance:
 
 Goal: convert learning history into diagnosis and actionable plans.
 
+Status: started with database-backed analysis and structured plan generation.
+
 Deliverables:
 
-- Mastery calculation rules.
-- Weak-point ranking.
-- Goal-based analysis page.
+- Mastery calculation rules. Started from attempts and wrong-note mastery state.
+- Weak-point ranking. Started from knowledge-node accuracy and pending wrong notes.
+- Goal-based analysis page. Started.
 - AI diagnosis grounded in statistics.
-- Structured study-plan schema.
-- Plan generation.
-- Daily plan and task completion.
+- Structured study-plan schema. Started.
+- Plan generation. Started with 14-day JSON plans.
+- Daily plan and task completion. Started.
 - Plan history and abandon/regenerate flow.
 
 Acceptance:
 
-- A learner can generate a 14-day plan from a target date, availability, and learning data.
-- Plan tasks are checkable and linked to practice, papers, materials, or knowledge nodes.
+- A learner can generate a 14-day plan from a target date, availability, and learning data. Started.
+- Plan tasks are checkable and linked to practice, papers, materials, or knowledge nodes. Started.
 - AI diagnosis cites the data it used.
 
 ## 7. Exam Simulation
@@ -202,22 +205,24 @@ Acceptance:
 
 Goal: make long-running work reliable and visible.
 
+Status: started with a persistent worker, material extraction jobs, and wrong-note review-card image jobs.
+
 Deliverables:
 
-- Database-backed job queue.
-- Worker process.
-- Job status UI.
-- AI image provider adapter.
-- Wrong-note review-card generation.
+- Database-backed job queue. Started for material extraction and wrong-note review cards.
+- Worker process. Started with `npm run worker` and a `docker-compose` worker service.
+- Job status UI. Started in admin `/jobs` and learner wrong-note cards.
+- AI image provider adapter. Started with OpenAI Images.
+- Wrong-note review-card generation. Started.
 - Problem-solving diagram generation.
-- Image asset storage.
-- Image limits and error handling.
+- Image asset storage. Started with private local `Asset` records served through authenticated `/assets/[assetId]`.
+- Image limits and error handling. Started with daily AI call limits and failed-job error summaries.
 
 Acceptance:
 
-- A learner can request a wrong-note review card and see job progress.
-- Generated images are private authenticated assets.
-- Failed image jobs expose useful error summaries without leaking secrets.
+- A learner can request a wrong-note review card and see job progress. Started.
+- Generated images are private authenticated assets. Started.
+- Failed image jobs expose useful error summaries without leaking secrets. Started.
 
 ## 9. Admin Hardening
 
@@ -259,7 +264,7 @@ Minimum test coverage should include:
 - Admin paper validation, filters, and hide/restore behavior.
 - Browser workflow coverage for auth, goal selection, admin content creation/import, paper submission/report, unanswered confirmation, paper hide/restore, wrong-note retry, and non-admin rejection.
 
-Current tests cover public question visibility constraints, admin single-choice validation, JSON import validation and filters, admin paper validation and archivedAt filters, paper submission scoring, report statistics, objective grading, single-choice practice helpers, wrong-note summarization, study-plan schema validation, and the first Playwright browser workflow. The remaining priorities are still required before MVP exit.
+Current tests cover public question visibility constraints, admin single-choice validation, JSON import validation and filters, admin paper validation and archivedAt filters, paper submission scoring, report statistics, objective grading, single-choice practice helpers, wrong-note summarization, study-plan schema validation, wrong-note review-card prompt/job/asset behavior, and the first Playwright browser workflow. The remaining priorities are still required before MVP exit.
 
 Browser workflow tests should cover:
 
@@ -272,7 +277,8 @@ Browser workflow tests should cover:
 - Non-admin admin access rejection. Started.
 - Configure BYOK and request AI explanation. Started with an OpenAI-compatible mock browser workflow, including failure and retry.
 - Upload material and confirm extracted question.
-- Generate plan.
+- Generate plan. Started.
+- Generate wrong-note review-card images. Started, including success, failed job summary, and admin retry.
 
 ## MVP Exit Criteria
 

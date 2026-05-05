@@ -9,6 +9,12 @@ import {
   validateExtractedQuestionsJson
 } from "./materials";
 import { prisma } from "./prisma";
+import {
+  processWrongNoteReviewCardJob,
+  readPayloadWrongNoteId,
+  wrongNoteReviewCardJobType,
+  type AiImageGenerator
+} from "./wrong-note-images";
 
 type ActionResult<T = undefined> = T extends undefined
   ? { ok: true } | { ok: false; error: string }
@@ -24,6 +30,7 @@ export type JobProcessorOptions = {
   db?: JobDatabase;
   env?: NodeJS.ProcessEnv;
   generateText?: AiTextGenerator;
+  generateImage?: AiImageGenerator;
 };
 
 export async function listJobs(filters: { status?: string | null } = {}, db: JobDatabase = prisma) {
@@ -37,6 +44,7 @@ export async function listJobs(filters: { status?: string | null } = {}, db: Job
     take: 100
   });
   const materialIds = jobs.map((job) => readPayloadMaterialId(job.payload)).filter((id): id is string => Boolean(id));
+  const wrongNoteIds = jobs.map((job) => readPayloadWrongNoteId(job.payload)).filter((id): id is string => Boolean(id));
   const materials = materialIds.length
     ? await db.material.findMany({
         where: {
@@ -50,10 +58,31 @@ export async function listJobs(filters: { status?: string | null } = {}, db: Job
         }
       })
     : [];
+  const wrongNotes = wrongNoteIds.length
+    ? await db.wrongNote.findMany({
+        where: {
+          id: {
+            in: wrongNoteIds
+          }
+        },
+        include: {
+          question: {
+            include: {
+              versions: {
+                orderBy: { version: "desc" },
+                take: 1
+              }
+            }
+          }
+        }
+      })
+    : [];
   const materialTitles = new Map(materials.map((material) => [material.id, material.title]));
+  const wrongNoteTitles = new Map(wrongNotes.map((wrongNote) => [wrongNote.id, wrongNote.question.versions[0]?.stem ?? wrongNote.question.stem]));
 
   return jobs.map((job) => {
     const materialId = readPayloadMaterialId(job.payload);
+    const wrongNoteId = readPayloadWrongNoteId(job.payload);
 
     return {
       id: job.id,
@@ -66,6 +95,8 @@ export async function listJobs(filters: { status?: string | null } = {}, db: Job
       userEmail: job.user?.email ?? null,
       materialId,
       materialTitle: materialId ? materialTitles.get(materialId) ?? null : null,
+      wrongNoteId,
+      wrongNoteTitle: wrongNoteId ? wrongNoteTitles.get(wrongNoteId) ?? null : null,
       createdAt: job.createdAt,
       updatedAt: job.updatedAt,
       startedAt: job.startedAt,
@@ -126,11 +157,7 @@ export async function processJob(jobId: string, options: JobProcessorOptions = {
   });
 
   try {
-    if (job.type !== materialJobType) {
-      throw new JobProcessingError("暂不支持该任务类型。");
-    }
-
-    const result = await processMaterialExtractionJob(job.id, job.payload, options);
+    const result = await processJobByType(job, options);
 
     await db.job.update({
       where: { id: job.id },
@@ -159,6 +186,18 @@ export async function processJob(jobId: string, options: JobProcessorOptions = {
 
     return { ok: false, error: message };
   }
+}
+
+async function processJobByType(job: Prisma.JobGetPayload<object>, options: JobProcessorOptions) {
+  if (job.type === materialJobType) {
+    return processMaterialExtractionJob(job.id, job.payload, options);
+  }
+
+  if (job.type === wrongNoteReviewCardJobType) {
+    return processWrongNoteReviewCardJob(job.id, job.userId, job.payload, options);
+  }
+
+  throw new JobProcessingError("暂不支持该任务类型。");
 }
 
 export async function retryJob(jobId: string, options: JobProcessorOptions = {}): Promise<ActionResult<{ jobId: string }>> {

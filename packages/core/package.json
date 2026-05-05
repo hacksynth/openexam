@@ -8,7 +8,10 @@
     "./auth": "./src/auth.ts",
     "./env": "./src/env.ts",
     "./exam-core": "./src/exam-core.ts",
+    "./assets": "./src/assets.ts",
     "./grading": "./src/grading.ts",
+    "./jobs": "./src/jobs.ts",
+    "./materials": "./src/materials.ts",
     "./password": "./src/password.ts",
     "./paper-admin": "./src/paper-admin.ts",
     "./papers": "./src/papers.ts",
@@ -21,7 +24,9 @@
     "./question-governance": "./src/question-governance.ts",
     "./routes": "./src/routes.ts",
     "./study-plan": "./src/study-plan.ts",
-    "./study-plan-schema": "./src/study-plan-schema.ts"
+    "./study-plan-schema": "./src/study-plan-schema.ts",
+    "./worker": "./src/worker.ts",
+    "./wrong-note-images": "./src/wrong-note-images.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.19.0",

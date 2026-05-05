@@ -6,6 +6,7 @@ import { z } from "zod";
 import { readEnv } from "./env";
 import { prisma } from "./prisma";
 import { singleChoiceAnswerKeys, type SingleChoiceAnswerKey } from "./question-admin";
+import { resolveLocalStoragePath } from "./storage";
 
 type ActionResult<T = undefined> = T extends undefined
   ? { ok: true } | { ok: false; error: string }
@@ -478,27 +479,6 @@ function inferMaterialMimeType(fileName: string, providedType: string | undefine
   }
 
   return null;
-}
-
-function resolveLocalStoragePath(storageKey: string) {
-  const env = readEnv({ ...process.env, DATABASE_URL: process.env.DATABASE_URL ?? "postgresql://openexam:openexam@localhost:5432/openexam?schema=public" });
-  const root = resolveLocalStorageRoot(env.LOCAL_STORAGE_DIR);
-
-  return path.join(root, storageKey);
-}
-
-function resolveLocalStorageRoot(value: string) {
-  if (path.isAbsolute(value)) {
-    return value;
-  }
-
-  const cwd = /*turbopackIgnore: true*/ process.cwd();
-
-  if (path.basename(path.dirname(cwd)) === "apps") {
-    return path.resolve(/*turbopackIgnore: true*/ cwd, "../..", value);
-  }
-
-  return path.resolve(/*turbopackIgnore: true*/ cwd, value);
 }
 
 function safeFileName(value: string) {

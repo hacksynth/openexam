@@ -3,12 +3,17 @@ import type { Route } from "next";
 import { AppShell } from "@/components/app-shell";
 import { requireWebSession } from "@/lib/auth";
 import { listWrongNotes, summarizeWrongNotes } from "@openexam/core/practice";
-import { generateWrongNoteAiAnalysisAction, setWrongNoteMasteredAction } from "./actions";
-import { AiAnalysisSubmitButton } from "./submit-button";
+import { listWrongNoteReviewCardViews } from "@openexam/core/wrong-note-images";
+import { generateWrongNoteAiAnalysisAction, queueWrongNoteReviewCardAction, setWrongNoteMasteredAction } from "./actions";
+import { AiAnalysisSubmitButton, ReviewCardSubmitButton } from "./submit-button";
 
 type WrongNotesPageProps = {
   searchParams: Promise<{ error?: string; notice?: string; filter?: string; knowledgeNodeId?: string }>;
 };
+
+type WrongNoteListItem = Awaited<ReturnType<typeof listWrongNotes>>[number];
+type ReviewCardMap = Awaited<ReturnType<typeof listWrongNoteReviewCardViews>>;
+type ReviewCardView = ReviewCardMap extends Map<string, infer View> ? View : never;
 
 const filterOptions = [
   { value: "all", label: "全部" },
@@ -38,6 +43,10 @@ export default async function WrongNotesPage({ searchParams }: WrongNotesPagePro
 
     return true;
   });
+  const reviewCards = await listWrongNoteReviewCardViews(
+    session.user.id,
+    notes.map((note) => note.id)
+  );
   const pendingCount = allNotes.filter((note) => !note.mastered).length;
   const summary = summarizeWrongNotes(
     allNotes.map((note) => ({
@@ -126,71 +135,118 @@ export default async function WrongNotesPage({ searchParams }: WrongNotesPagePro
         ) : (
           <section className="grid gap-4">
             {notes.map((note) => (
-              <article key={note.id} className="pixel-panel grid gap-4 p-5">
-                <div className="grid gap-3 lg:grid-cols-[1fr_auto]">
-                  <div className="min-w-0">
-                    <div className="mb-3 flex flex-wrap gap-2">
-                      <span className={`status-chip px-2 py-1 ${note.mastered ? "bg-[var(--teal)]" : "bg-[var(--danger)] text-white"}`}>
-                        {note.mastered ? "已掌握" : "未掌握"}
-                      </span>
-                      <span className="status-chip px-2 py-1">错误 {note.errorCount} 次</span>
-                      <span className="status-chip px-2 py-1">更新 {formatDate(note.updatedAt)}</span>
-                    </div>
-                    <h2 className="break-words text-xl font-black leading-8">{note.stem}</h2>
-                  </div>
-                  <form action={setWrongNoteMasteredAction} className="self-start">
-                    <input name="wrongNoteId" type="hidden" value={note.id} />
-                    <input name="mastered" type="hidden" value={note.mastered ? "false" : "true"} />
-                    <div className="flex flex-wrap justify-start gap-2 lg:justify-end">
-                      <Link href={`/practice?retry=${note.questionId}` as Route} className="pixel-button whitespace-nowrap bg-white px-4 py-2">
-                        重练此题
-                      </Link>
-                      <button className="pixel-button whitespace-nowrap px-4 py-2" type="submit">
-                        {note.mastered ? "标记未掌握" : "标记已掌握"}
-                      </button>
-                    </div>
-                  </form>
-                </div>
-
-                <div className="flex flex-wrap gap-2">
-                  {note.knowledgeNodes.map((node) => (
-                    <span key={node.id} className="status-chip px-2 py-1">
-                      {node.title}
-                    </span>
-                  ))}
-                </div>
-
-                <div className="grid gap-3 lg:grid-cols-[220px_1fr]">
-                  <div className="border-2 border-black bg-[var(--surface-subtle)] p-3">
-                    <p className="text-sm font-bold text-[var(--muted)]">正确答案</p>
-                    <p className="mt-1 text-2xl font-black">{note.correctAnswer ?? "未配置"}</p>
-                  </div>
-                  {note.explanation ? (
-                    <div className="border-2 border-black bg-white p-3">
-                      <p className="text-sm font-bold text-[var(--muted)]">解析</p>
-                      <p className="mt-1 leading-7">{note.explanation}</p>
-                    </div>
-                  ) : null}
-                </div>
-
-                {note.aiAnalysis ? (
-                  <div className="border-2 border-black bg-[var(--ai-soft)] p-3">
-                    <p className="text-sm font-bold text-[var(--muted)]">AI 解析</p>
-                    <p className="mt-1 whitespace-pre-line leading-7">{note.aiAnalysis}</p>
-                  </div>
-                ) : null}
-
-                <form action={generateWrongNoteAiAnalysisAction}>
-                  <input name="wrongNoteId" type="hidden" value={note.id} />
-                  <input name="returnTo" type="hidden" value={currentHref} />
-                  <AiAnalysisSubmitButton hasAnalysis={Boolean(note.aiAnalysis)} />
-                </form>
-              </article>
+              <WrongNoteCard key={note.id} currentHref={currentHref} note={note} reviewCard={reviewCards.get(note.id) ?? null} />
             ))}
           </section>
         )}
       </section>
     </AppShell>
+  );
+}
+
+function WrongNoteCard({
+  note,
+  currentHref,
+  reviewCard
+}: {
+  note: WrongNoteListItem;
+  currentHref: string;
+  reviewCard: ReviewCardView | null;
+}) {
+  const busy = reviewCard?.latestJob?.status === "queued" || reviewCard?.latestJob?.status === "running";
+
+  return (
+    <article className="pixel-panel grid gap-4 p-5">
+      <div className="grid gap-3 lg:grid-cols-[1fr_auto]">
+        <div className="min-w-0">
+          <div className="mb-3 flex flex-wrap gap-2">
+            <span className={`status-chip px-2 py-1 ${note.mastered ? "bg-[var(--teal)]" : "bg-[var(--danger)] text-white"}`}>
+              {note.mastered ? "已掌握" : "未掌握"}
+            </span>
+            <span className="status-chip px-2 py-1">错误 {note.errorCount} 次</span>
+            <span className="status-chip px-2 py-1">更新 {formatDate(note.updatedAt)}</span>
+          </div>
+          <h2 className="break-words text-xl font-black leading-8">{note.stem}</h2>
+        </div>
+        <form action={setWrongNoteMasteredAction} className="self-start">
+          <input name="wrongNoteId" type="hidden" value={note.id} />
+          <input name="mastered" type="hidden" value={note.mastered ? "false" : "true"} />
+          <div className="flex flex-wrap justify-start gap-2 lg:justify-end">
+            <Link href={`/practice?retry=${note.questionId}` as Route} className="pixel-button whitespace-nowrap bg-white px-4 py-2">
+              重练此题
+            </Link>
+            <button className="pixel-button whitespace-nowrap px-4 py-2" type="submit">
+              {note.mastered ? "标记未掌握" : "标记已掌握"}
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        {note.knowledgeNodes.map((node) => (
+          <span key={node.id} className="status-chip px-2 py-1">
+            {node.title}
+          </span>
+        ))}
+      </div>
+
+      <div className="grid gap-3 lg:grid-cols-[220px_1fr]">
+        <div className="border-2 border-black bg-[var(--surface-subtle)] p-3">
+          <p className="text-sm font-bold text-[var(--muted)]">正确答案</p>
+          <p className="mt-1 text-2xl font-black">{note.correctAnswer ?? "未配置"}</p>
+        </div>
+        {note.explanation ? (
+          <div className="border-2 border-black bg-white p-3">
+            <p className="text-sm font-bold text-[var(--muted)]">解析</p>
+            <p className="mt-1 leading-7">{note.explanation}</p>
+          </div>
+        ) : null}
+      </div>
+
+      {note.aiAnalysis ? (
+        <div className="border-2 border-black bg-[var(--ai-soft)] p-3">
+          <p className="text-sm font-bold text-[var(--muted)]">AI 解析</p>
+          <p className="mt-1 whitespace-pre-line leading-7">{note.aiAnalysis}</p>
+        </div>
+      ) : null}
+
+      <div className="grid gap-3 border-2 border-black bg-[var(--surface-subtle)] p-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-bold text-[var(--muted)]">复习卡图片</p>
+            {reviewCard?.latestJob ? (
+              <p className="mt-1 text-sm font-bold">
+                任务 {reviewCardStatusLabel(reviewCard.latestJob.status)} · 更新 {formatDateTime(reviewCard.latestJob.updatedAt)}
+              </p>
+            ) : null}
+          </div>
+          {reviewCard?.latestJob ? (
+            <span className={`status-chip px-2 py-1 ${reviewCard.latestJob.status === "failed" ? "bg-[var(--danger)] text-white" : reviewCard.latestJob.status === "succeeded" ? "bg-[var(--teal)]" : ""}`}>
+              {reviewCardStatusLabel(reviewCard.latestJob.status)}
+            </span>
+          ) : null}
+        </div>
+        {reviewCard?.latestJob?.error ? <p className="border-2 border-black bg-red-50 p-3 text-sm font-bold text-red-700">{reviewCard.latestJob.error}</p> : null}
+        {reviewCard?.asset ? (
+          <img
+            alt="错题复习卡"
+            className="w-full max-w-[520px] border-3 border-black bg-white object-contain"
+            src={`/assets/${reviewCard.asset.id}`}
+          />
+        ) : null}
+        <form action={queueWrongNoteReviewCardAction}>
+          <input name="wrongNoteId" type="hidden" value={note.id} />
+          <input name="returnTo" type="hidden" value={currentHref} />
+          <ReviewCardSubmitButton busy={busy} hasCard={Boolean(reviewCard?.asset)} />
+        </form>
+      </div>
+
+      <form action={generateWrongNoteAiAnalysisAction}>
+        <input name="wrongNoteId" type="hidden" value={note.id} />
+        <input name="returnTo" type="hidden" value={currentHref} />
+        <AiAnalysisSubmitButton hasAnalysis={Boolean(note.aiAnalysis)} />
+      </form>
+    </article>
   );
 }
 
@@ -246,4 +302,20 @@ function formatDate(value: Date) {
   })
     .format(value)
     .replaceAll("/", "-");
+}
+
+function formatDateTime(value: Date) {
+  return new Intl.DateTimeFormat("zh-CN", {
+    timeZone: "Asia/Shanghai",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit"
+  })
+    .format(value)
+    .replaceAll("/", "-");
+}
+
+function reviewCardStatusLabel(value: string) {
+  return { queued: "排队中", running: "运行中", succeeded: "成功", failed: "失败", canceled: "已取消" }[value] ?? value;
 }

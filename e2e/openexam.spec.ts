@@ -95,6 +95,21 @@ test.describe.serial("OpenExam auth, question, paper, and wrong-note flows", () 
     await configureByokAndGenerateWrongNoteAnalysis(webPage);
   });
 
+  test("learner queues a wrong-note review card image", async ({ browser }) => {
+    const webPage = await newPage(browser);
+    await loginLearner(webPage);
+    await generateWrongNoteReviewCard(webPage);
+  });
+
+  test("failed review-card image jobs appear and can be retried by admin", async ({ browser }) => {
+    const webPage = await newPage(browser);
+    const adminPage = await newPage(browser);
+
+    await loginLearner(webPage);
+    await loginAdmin(adminPage);
+    await failAndRetryWrongNoteReviewCard(webPage, adminPage);
+  });
+
   test("learner retries the wrong note", async ({ browser }) => {
     const webPage = await newPage(browser);
     await loginLearner(webPage);
@@ -311,6 +326,68 @@ async function configureByokAndGenerateWrongNoteAnalysis(page: Page) {
   await expect(page.getByText("错题 AI 解析已重试成功。")).toBeVisible();
   await expect(page.locator("body")).toContainText("成功");
   await expect(page.locator("body")).toContainText(aiPresetModel);
+
+  await saveLearnerOpenAiKey(page, "sk-e2e-openai-test-key");
+}
+
+async function generateWrongNoteReviewCard(page: Page) {
+  await saveLearnerOpenAiKey(page, "sk-e2e-openai-test-key");
+  await page.goto(`${webUrl}/wrong-notes?knowledgeNodeId=${fixtureIds.knowledgeNodeId}`);
+  await wrongNoteArticle(page).getByRole("button", { name: "生成复习卡" }).click();
+  await expect(page.getByText("复习卡图片任务已加入队列。")).toBeVisible();
+  await waitForWrongNoteReviewCard(page, "成功");
+  await expect(wrongNoteArticle(page).getByAltText("错题复习卡")).toBeVisible();
+}
+
+async function failAndRetryWrongNoteReviewCard(webPage: Page, adminPage: Page) {
+  await saveLearnerOpenAiKey(webPage, "sk-e2e-openai-fail-once");
+  await webPage.goto(`${webUrl}/wrong-notes?knowledgeNodeId=${fixtureIds.knowledgeNodeId}`);
+  await wrongNoteArticle(webPage).getByRole("button", { name: "重新生成复习卡" }).click();
+  await expect(webPage.getByText("复习卡图片任务已加入队列。")).toBeVisible();
+  await waitForWrongNoteReviewCard(webPage, "Mock OpenAI image failure");
+
+  await adminPage.goto(`${adminUrl}/jobs?status=failed`);
+  await expect(adminPage.locator("body")).toContainText("Mock OpenAI image failure");
+  await adminPage.locator("article").filter({ hasText: "Mock OpenAI image failure" }).first().getByRole("button", { name: "重试" }).click();
+  await expect(adminPage.getByText("任务已重试。")).toBeVisible();
+
+  await waitForWrongNoteReviewCard(webPage, "成功");
+  await expect(wrongNoteArticle(webPage).getByAltText("错题复习卡")).toBeVisible();
+  await saveLearnerOpenAiKey(webPage, "sk-e2e-openai-test-key");
+}
+
+async function saveLearnerOpenAiKey(page: Page, apiKey: string) {
+  await page.goto(`${webUrl}/profile`);
+  await page.getByLabel("API Key").fill(apiKey);
+  await page.getByRole("button", { name: "保存 Key" }).click();
+  await expect(page.getByText("OpenAI API Key 已保存。")).toBeVisible();
+}
+
+async function waitForWrongNoteReviewCard(page: Page, expectedText: string) {
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    await page.goto(`${webUrl}/wrong-notes?knowledgeNodeId=${fixtureIds.knowledgeNodeId}`);
+    const card = wrongNoteArticle(page);
+    const matched =
+      expectedText === "成功"
+        ? await card.getByAltText("错题复习卡").isVisible().catch(() => false)
+        : await card.getByText(expectedText).first().isVisible().catch(() => false);
+
+    if (matched) {
+      return;
+    }
+
+    await page.waitForTimeout(500);
+  }
+
+  if (expectedText === "成功") {
+    await expect(wrongNoteArticle(page).getByAltText("错题复习卡")).toBeVisible();
+  } else {
+    await expect(wrongNoteArticle(page).getByText(expectedText).first()).toBeVisible();
+  }
+}
+
+function wrongNoteArticle(page: Page) {
+  return page.locator("article").filter({ hasText: questionStem }).first();
 }
 
 async function uploadMaterial(page: Page) {
@@ -331,12 +408,14 @@ async function uploadMaterial(page: Page) {
 async function processMaterialJobAndConfirmQuestion(page: Page) {
   await page.goto(`${adminUrl}/jobs?status=queued`);
   await expect(page.getByRole("heading", { name: "任务", exact: true })).toBeVisible();
-  await expect(page.locator("body")).toContainText(materialTitle);
-  await page.locator("article").filter({ hasText: materialTitle }).first().getByRole("button", { name: "立即处理" }).click();
-  await expect(page).toHaveURL(/\/jobs\?notice=/);
-  await expect(page.locator("body")).toContainText("任务已处理。");
+  const queuedMaterialJob = page.locator("article").filter({ hasText: materialTitle }).first();
 
-  await page.goto(`${adminUrl}/materials`);
+  if (await queuedMaterialJob.isVisible().catch(() => false)) {
+    await queuedMaterialJob.getByRole("button", { name: "立即处理" }).click();
+    await expect(page).toHaveURL(/\/jobs\?/);
+  }
+
+  await waitForExtractedMaterialQuestion(page);
   await expect(page.getByRole("heading", { name: "资料", exact: true })).toBeVisible();
   await expect(page.locator("body")).toContainText(extractedQuestionStem);
   await page.locator("article").filter({ hasText: extractedQuestionStem }).first().getByRole("button", { name: "确认入题库" }).click();
@@ -345,6 +424,20 @@ async function processMaterialJobAndConfirmQuestion(page: Page) {
   await page.goto(`${adminUrl}/questions?q=${encodeURIComponent(extractedQuestionStem)}`);
   await expect(page.locator("body")).toContainText(extractedQuestionStem);
   await expect(page.locator("body")).toContainText("AI 生成");
+}
+
+async function waitForExtractedMaterialQuestion(page: Page) {
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    await page.goto(`${adminUrl}/materials`);
+
+    if (await page.locator("body").getByText(extractedQuestionStem).isVisible().catch(() => false)) {
+      return;
+    }
+
+    await page.waitForTimeout(500);
+  }
+
+  await page.goto(`${adminUrl}/materials`);
 }
 
 async function practiceConfirmedMaterialQuestion(page: Page) {
@@ -576,6 +669,37 @@ async function cleanupE2eData() {
     select: { id: true, storageKey: true }
   });
   const materialIds = materials.map((material) => material.id);
+
+  if (userIds.length > 0) {
+    await prisma.asset.deleteMany({
+      where: {
+        OR: [
+          {
+            ownerId: {
+              in: userIds
+            }
+          },
+          {
+            source: "wrong_note_review_card"
+          }
+        ]
+      }
+    });
+    await prisma.job.deleteMany({
+      where: {
+        OR: [
+          {
+            userId: {
+              in: userIds
+            }
+          },
+          {
+            type: "generate_wrong_note_review_card"
+          }
+        ]
+      }
+    });
+  }
 
   if (userIds.length > 0 || questionIds.length > 0) {
     await prisma.wrongNote.deleteMany({

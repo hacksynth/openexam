@@ -106,6 +106,44 @@ const server = createServer(async (request, response) => {
     return;
   }
 
+  if (request.method === "POST" && url.pathname === "/v1/images/generations") {
+    const body = await readJson(request);
+    const authorization = request.headers.authorization ?? "";
+    const failedCount = failedKeyCounts.get(`image:${authorization}`) ?? 0;
+    const shouldFailKey = authorization.includes("fail-once") && failedCount < 3;
+    const model = typeof body.model === "string" ? body.model : "gpt-image-1.5";
+
+    if (shouldFailKey) {
+      failedKeyCounts.set(`image:${authorization}`, failedCount + 1);
+      sendJson(response, 500, {
+        error: {
+          message: "Mock OpenAI image failure: upstream temporarily unavailable"
+        }
+      });
+      return;
+    }
+
+    sendJson(response, 200, {
+      created: Math.floor(Date.now() / 1000),
+      model,
+      data: [
+        {
+          b64_json:
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="
+        }
+      ],
+      output_format: "png",
+      size: "1024x1536",
+      quality: "medium",
+      usage: {
+        input_tokens: 64,
+        output_tokens: 32,
+        total_tokens: 96
+      }
+    });
+    return;
+  }
+
   sendJson(response, 404, { error: { message: "Not found" } });
 });
 

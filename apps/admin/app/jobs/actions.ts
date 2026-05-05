@@ -31,6 +31,7 @@ function finish(result: Result, success: string): never {
   revalidatePath("/jobs" as Route);
   revalidatePath("/materials" as Route);
   revalidatePath("/questions" as Route);
+  revalidatePath("/wrong-notes" as Route);
   const params = result.ok ? `notice=${encodeURIComponent(success)}` : `error=${encodeURIComponent(result.error)}`;
 
   redirect(`/jobs?${params}` as Route);

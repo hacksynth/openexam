@@ -18,13 +18,13 @@ export default defineConfig({
     {
       command: "node e2e/openai-mock.mjs",
       url: "http://127.0.0.1:8317/health",
-      reuseExistingServer: true,
+      reuseExistingServer: false,
       timeout: 30_000
     },
     {
       command: "npm run dev:web",
       url: "http://127.0.0.1:3000",
-      reuseExistingServer: true,
+      reuseExistingServer: false,
       timeout: 120_000,
       env: {
         DATABASE_URL: databaseUrl,
@@ -37,7 +37,7 @@ export default defineConfig({
     {
       command: "npm run dev:admin",
       url: "http://127.0.0.1:3001",
-      reuseExistingServer: true,
+      reuseExistingServer: false,
       timeout: 120_000,
       env: {
         DATABASE_URL: databaseUrl,
@@ -45,6 +45,24 @@ export default defineConfig({
         AI_KEY_ENCRYPTION_SECRET: "openexam-e2e-ai-key-secret",
         OPENAI_BASE_URL: openAiBaseUrl,
         PORT: "3001"
+      }
+    },
+    {
+      command: "npm run worker",
+      wait: {
+        stdout: /OpenExam worker started/
+      },
+      gracefulShutdown: {
+        signal: "SIGTERM",
+        timeout: 1000
+      },
+      timeout: 30_000,
+      env: {
+        DATABASE_URL: databaseUrl,
+        SESSION_SECRET: sessionSecret,
+        AI_KEY_ENCRYPTION_SECRET: "openexam-e2e-ai-key-secret",
+        OPENAI_BASE_URL: openAiBaseUrl,
+        OPENEXAM_WORKER_POLL_MS: "500"
       }
     }
   ]

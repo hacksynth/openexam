@@ -41,13 +41,13 @@ The MVP must complete this learning loop:
 Current implementation status:
 
 - The repository now has separate runnable learner and admin foundation apps with health APIs, shared core helpers, and initial domain tests.
-- The app does not yet complete the MVP learning loop.
+- The app does not yet complete the full MVP learning loop.
 - Email/password authentication, database-backed sessions, and route protection are implemented for the learner and admin apps.
 - Admin exam hierarchy and knowledge-tree management are started as a minimal CRUD workflow.
 - Learners can save a primary exam goal and see it on the dashboard.
 - The first single-choice practice workflow is implemented with goal-scoped question retrieval, repeat avoidance, graded attempts, paper attempts, attempt reports, wrong-note auto-collection, wrong-note knowledge filters/retry, mastery toggles, and weak-point dashboard summaries.
 - Admin single-choice question CRUD is implemented for question creation, JSON import, editing, filtering, review-status changes, archive/restore, knowledge binding, source, visibility, and review status.
-- Admin paper CRUD is implemented for ordered single-choice papers with subject binding, visibility, type, question order, section, number, score, archivedAt-based filters, and hide/restore controls. OpenAI BYOK, wrong-note AI analysis, AI call logs, failed-call retry, admin model presets, material uploads, admin-triggered extraction jobs, AI candidate questions, and basic usage protection are started; image generation, advanced practice modes, and deeper admin hardening remain future implementation work.
+- Admin paper CRUD is implemented for ordered single-choice papers with subject binding, visibility, type, question order, section, number, score, archivedAt-based filters, and hide/restore controls. OpenAI BYOK, wrong-note AI analysis, AI call logs, failed-call retry, admin model presets, learning analysis, structured 14-day plans, material uploads, worker-backed extraction jobs, wrong-note review-card image jobs, AI candidate questions, private asset serving, and basic usage protection are started; advanced practice modes and deeper admin hardening remain future implementation work.
 
 ## Exam Coverage
 
@@ -156,7 +156,7 @@ Required behavior:
 - Filter by exam goal, subject, knowledge node, question type, error count, and recency.
 - Feed status into diagnosis and study plans.
 
-Implementation note: `/wrong-notes` lists auto-collected wrong notes, shows correct answer and explanation, supports all/unmastered/mastered and knowledge-node filters, lets the learner toggle mastered/not mastered, links directly to retry, and marks a note mastered after a correct retry. Mistake reason tags, user notes, AI analysis, and review-card generation remain pending.
+Implementation note: `/wrong-notes` lists auto-collected wrong notes, shows correct answer and explanation, supports all/unmastered/mastered and knowledge-node filters, lets the learner toggle mastered/not mastered, links directly to retry, marks a note mastered after a correct retry, generates OpenAI wrong-note analysis, and can queue private review-card image generation. The page displays the latest review-card job status, generated image asset, and failed-job error summary. Mistake reason tags and user notes remain pending.
 
 ### Knowledge Points
 
@@ -213,7 +213,7 @@ Supported providers:
 - Claude.
 - Gemini.
 
-The MVP uses bring-your-own-key as the primary model. Platform keys are optional for demos, trials, or administrator-managed usage. All provider calls go through the backend. The current implementation supports OpenAI BYOK first, with `OPENAI_API_KEY` as fallback, `OPENAI_BASE_URL` for OpenAI-compatible gateways, learner-visible AI call logs, admin-managed OpenAI model presets, daily call limits, and platform token budget protection.
+The MVP uses bring-your-own-key as the primary model. Platform keys are optional for demos, trials, or administrator-managed usage. All provider calls go through the backend. The current implementation supports OpenAI BYOK first, with `OPENAI_API_KEY` as fallback, `OPENAI_BASE_URL` for OpenAI-compatible gateways, learner-visible AI call logs, admin-managed OpenAI model presets, daily call limits, platform token budget protection, and OpenAI Images for wrong-note review cards.
 
 AI features:
 
@@ -247,6 +247,8 @@ Image styles are limited to:
 
 The text provider may generate the image prompt. The image provider is configured separately, with OpenAI Images as the preferred first implementation.
 
+Implementation note: wrong-note review-card images are generated asynchronously by the job worker using OpenAI Images. The default image model is `gpt-image-1.5` unless an enabled admin preset is set for `generate_image`. Generated files are stored under `review-cards/{userId}/` as private `Asset` records and served through authenticated `/assets/[assetId]`; owner or admin access is required. Failed image jobs store an error summary and do not create placeholder images.
+
 ## AI Diagnosis And Plans
 
 AI diagnosis and study plans must be grounded in learning data, not free-form chat.
@@ -271,7 +273,7 @@ Diagnosis outputs:
 
 Study plans must be structured task tables, not plain text. Tasks are checkable and can bind to subjects, knowledge nodes, papers, materials, and question sets.
 
-Implementation note: `packages/core/src/study-plan-schema.ts` defines the first Zod schema for structured 14-day plans. Plan generation and task completion UI are not implemented yet.
+Implementation note: `/analysis` summarizes practice history, weak knowledge nodes, and wrong-note pressure from database-backed learning data. `/plan` generates structured 14-day plans with the first schema in `packages/core/src/study-plan-schema.ts`, stores tasks, and supports task completion state.
 
 ## Question Bank Policy
 

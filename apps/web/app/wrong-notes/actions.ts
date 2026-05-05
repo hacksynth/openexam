@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import type { Route } from "next";
 import { generateWrongNoteAiAnalysis } from "@openexam/core/ai";
 import { setWrongNoteMastered } from "@openexam/core/practice";
+import { queueWrongNoteReviewCard } from "@openexam/core/wrong-note-images";
 import { requireWebSession } from "@/lib/auth";
 
 export async function setWrongNoteMasteredAction(formData: FormData) {
@@ -34,6 +35,21 @@ export async function generateWrongNoteAiAnalysisAction(formData: FormData) {
   }
 
   redirect(`${returnTo}${returnTo.includes("?") ? "&" : "?"}notice=${encodeURIComponent("AI 解析已生成。")}` as Route);
+}
+
+export async function queueWrongNoteReviewCardAction(formData: FormData) {
+  const session = await requireWebSession();
+  const returnTo = safeWrongNotesReturnTo(String(formData.get("returnTo") ?? ""));
+  const result = await queueWrongNoteReviewCard(session.user.id, String(formData.get("wrongNoteId") ?? ""));
+
+  revalidatePath("/wrong-notes" as Route);
+  revalidatePath("/ai/tasks" as Route);
+
+  if (!result.ok) {
+    redirect(`${returnTo}${returnTo.includes("?") ? "&" : "?"}error=${encodeURIComponent(result.error)}` as Route);
+  }
+
+  redirect(`${returnTo}${returnTo.includes("?") ? "&" : "?"}notice=${encodeURIComponent("复习卡图片任务已加入队列。")}` as Route);
 }
 
 function safeWrongNotesReturnTo(value: string) {

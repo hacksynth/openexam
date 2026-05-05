@@ -56,7 +56,7 @@ export default async function AdminJobsPage({ searchParams }: AdminJobsPageProps
           {jobs.length === 0 ? (
             <section className="pixel-panel p-5">
               <h2 className="text-2xl font-black">暂无任务</h2>
-              <p className="mt-1 font-bold text-[var(--muted)]">上传资料后会创建抽题任务。</p>
+              <p className="mt-1 font-bold text-[var(--muted)]">上传资料或生成错题复习卡后会创建任务。</p>
             </section>
           ) : (
             jobs.map((job) => (
@@ -69,7 +69,7 @@ export default async function AdminJobsPage({ searchParams }: AdminJobsPageProps
                   <span className="status-chip px-2 py-1">进度 {job.progress}%</span>
                   {job.userEmail ? <span className="status-chip px-2 py-1">{job.userEmail}</span> : null}
                 </div>
-                <h2 className="break-words text-xl font-black">{job.materialTitle ?? job.id}</h2>
+                <h2 className="break-words text-xl font-black">{job.materialTitle ?? job.wrongNoteTitle ?? job.id}</h2>
                 <p className="text-sm font-bold text-[var(--muted)]">创建 {formatDate(job.createdAt)} / 更新 {formatDate(job.updatedAt)}</p>
                 {job.error ? <p className="border-2 border-black bg-red-50 p-3 text-sm font-bold text-red-700">{job.error}</p> : null}
                 <div className="flex flex-wrap gap-2">
