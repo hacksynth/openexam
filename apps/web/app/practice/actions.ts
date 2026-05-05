@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { Route } from "next";
-import { submitSingleChoiceAnswer } from "@openexam/core/practice";
+import { collectQuestionForReview, submitSingleChoiceAnswer } from "@openexam/core/practice";
 import { requireWebSession } from "@/lib/auth";
 
 export async function submitSingleChoiceAnswerAction(formData: FormData) {
@@ -27,10 +27,30 @@ export async function submitSingleChoiceAnswerAction(formData: FormData) {
   redirect(practiceRedirect({ attemptId: result.attemptId, materialId }));
 }
 
+export async function collectPracticeQuestionAction(formData: FormData) {
+  const session = await requireWebSession();
+  const result = await collectQuestionForReview(session.user.id, {
+    questionId: value(formData, "questionId")
+  });
+
+  revalidatePath("/wrong-notes" as Route);
+  revalidatePath("/practice" as Route);
+
+  if (!result.ok) {
+    redirect(practiceRedirect({ error: result.error }));
+  }
+
+  redirect(practiceRedirect({ attemptId: value(formData, "attemptId") || undefined, materialId: optionalText(value(formData, "materialId")) }));
+}
+
 function optionalText(value: string) {
   const text = value.trim();
 
   return text || null;
+}
+
+function value(formData: FormData, name: string) {
+  return String(formData.get(name) ?? "");
 }
 
 function practiceRedirect(input: { attemptId?: string; error?: string; materialId?: string | null }) {

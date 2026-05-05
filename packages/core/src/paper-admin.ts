@@ -1,4 +1,4 @@
-import { Prisma, QuestionKind, type Visibility } from "@prisma/client";
+import { Prisma, type Visibility } from "@prisma/client";
 import { validateSlug } from "./exam-core";
 import { prisma } from "./prisma";
 
@@ -136,7 +136,6 @@ export function buildAdminPaperWhere(filters: AdminPaperFilters = {}) {
 export async function listAdminPaperQuestionOptions() {
   const questions = await prisma.question.findMany({
     where: {
-      kind: QuestionKind.single_choice,
       deletedAt: null
     },
     orderBy: [{ updatedAt: "desc" }],
@@ -152,6 +151,7 @@ export async function listAdminPaperQuestionOptions() {
 
   return questions.map((question) => ({
     id: question.id,
+    kind: question.kind,
     stem: question.stem,
     visibility: question.visibility,
     reviewStatus: question.reviewStatus,
@@ -373,10 +373,10 @@ async function parsePaperInputWithDatabase(input: PaperInput) {
     return { ok: false, error: "试卷包含不存在的题目。" } as const;
   }
 
-  const invalidQuestion = questions.find((question) => question.kind !== QuestionKind.single_choice || question.deletedAt);
+  const invalidQuestion = questions.find((question) => question.deletedAt);
 
   if (invalidQuestion) {
-    return { ok: false, error: "试卷只能绑定未归档的单选题。" } as const;
+    return { ok: false, error: "试卷只能绑定未归档题目。" } as const;
   }
 
   if (parsed.data.visibility === "public") {

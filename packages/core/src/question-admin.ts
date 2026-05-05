@@ -48,6 +48,9 @@ export type SingleChoiceQuestionInput = {
   knowledgeNodeId: string;
   visibility?: string | null;
   sourceType?: string | null;
+  sourceTitle?: string | null;
+  sourceUrl?: string | null;
+  sourceLicense?: string | null;
   reviewStatus?: string | null;
 };
 
@@ -68,6 +71,9 @@ type ParsedSingleChoiceQuestion = {
   knowledgeNodeId: string;
   visibility: QuestionVisibility;
   sourceType: QuestionSourceType;
+  sourceTitle: string | null;
+  sourceUrl: string | null;
+  sourceLicense: string | null;
   reviewStatus: QuestionReviewStatus;
 };
 
@@ -540,6 +546,9 @@ function parseSingleChoiceQuestionInputSync(input: SingleChoiceQuestionInput) {
   const sourceType = parseEnum(input.sourceType, questionSourceTypeOptions, "original");
   const reviewStatus = parseEnum(input.reviewStatus, questionReviewStatusOptions, "draft");
   const explanation = optionalText(input.explanation);
+  const sourceTitle = optionalText(input.sourceTitle);
+  const sourceUrl = optionalText(input.sourceUrl);
+  const sourceLicense = optionalText(input.sourceLicense);
   const knowledgeNodeId = input.knowledgeNodeId.trim();
 
   if (!stem) {
@@ -584,6 +593,10 @@ function parseSingleChoiceQuestionInputSync(input: SingleChoiceQuestionInput) {
     return { ok: false, error: publicationError(publication.reasons) } as const;
   }
 
+  if (visibility.value === "public" && sourceType.value !== "original" && (!sourceTitle || !sourceLicense)) {
+    return { ok: false, error: "公开题必须填写来源标题和来源许可。" } as const;
+  }
+
   return {
     ok: true,
     data: {
@@ -599,6 +612,9 @@ function parseSingleChoiceQuestionInputSync(input: SingleChoiceQuestionInput) {
       knowledgeNodeId,
       visibility: visibility.value,
       sourceType: sourceType.value,
+      sourceTitle,
+      sourceUrl,
+      sourceLicense,
       reviewStatus: reviewStatus.value
     }
   } as const;
@@ -619,6 +635,9 @@ function toImportQuestionInput(item: Record<string, unknown>): SingleChoiceQuest
     knowledgeNodeId: textValue(item.knowledgeNodeId),
     visibility: textValue(item.visibility),
     sourceType: textValue(item.sourceType),
+    sourceTitle: textValue(item.sourceTitle),
+    sourceUrl: textValue(item.sourceUrl),
+    sourceLicense: textValue(item.sourceLicense),
     reviewStatus: textValue(item.reviewStatus)
   };
 }
@@ -631,6 +650,9 @@ function questionData(data: ParsedSingleChoiceQuestion) {
     explanation: data.explanation,
     difficulty: data.difficulty,
     sourceType: data.sourceType as SourceType,
+    sourceTitle: data.sourceTitle,
+    sourceUrl: data.sourceUrl,
+    sourceLicense: data.sourceLicense,
     visibility: data.visibility as Visibility,
     reviewStatus: data.reviewStatus as ReviewStatus,
     deletedAt: null
@@ -656,6 +678,9 @@ function toAdminQuestion(question: AdminQuestionRecord) {
     difficulty: question.difficulty,
     visibility: question.visibility,
     sourceType: question.sourceType,
+    sourceTitle: question.sourceTitle ?? "",
+    sourceUrl: question.sourceUrl ?? "",
+    sourceLicense: question.sourceLicense ?? "",
     reviewStatus: question.reviewStatus,
     currentVersion: question.currentVersion,
     updatedAt: question.updatedAt,

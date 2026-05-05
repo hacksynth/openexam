@@ -4,10 +4,10 @@ import { AppShell } from "@/components/app-shell";
 import { requireWebSession } from "@/lib/auth";
 import { formatGoalPath } from "@openexam/core/exam-core";
 import { getAttemptResult, getPracticeQuestion } from "@openexam/core/practice";
-import { submitSingleChoiceAnswerAction } from "./actions";
+import { collectPracticeQuestionAction, submitSingleChoiceAnswerAction } from "./actions";
 
 type PracticePageProps = {
-  searchParams: Promise<{ attempt?: string; error?: string; material?: string; retry?: string; skip?: string }>;
+  searchParams: Promise<{ attempt?: string; error?: string; material?: string; retry?: string; skip?: string; knowledgeNodeId?: string }>;
 };
 
 const sourceTypeLabels: Record<string, string> = {
@@ -26,6 +26,7 @@ export default async function PracticePage({ searchParams }: PracticePageProps) 
   const [state, attemptResult] = await Promise.all([
     getPracticeQuestion(session.user.id, {
       excludeQuestionId: params.skip,
+      knowledgeNodeId: params.knowledgeNodeId,
       materialId,
       retryQuestionId: params.retry
     }),
@@ -167,6 +168,16 @@ function AttemptResultCard({
         <Link href={"/wrong-notes" as Route} className="pixel-button bg-white px-4 py-2">
           查看错题本
         </Link>
+        {result.isCorrect ? (
+          <form action={collectPracticeQuestionAction}>
+            <input name="questionId" type="hidden" value={result.question.id} />
+            <input name="attemptId" type="hidden" value={result.id} />
+            <input name="materialId" type="hidden" value={materialId ?? ""} />
+            <button className="pixel-button bg-white px-4 py-2" type="submit">
+              收藏复习
+            </button>
+          </form>
+        ) : null}
       </div>
     </section>
   );

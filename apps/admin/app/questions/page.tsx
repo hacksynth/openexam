@@ -294,6 +294,11 @@ function QuestionForm({
           ))}
         </SelectField>
       </div>
+      <div className="grid gap-3 lg:grid-cols-3">
+        <TextField label="来源标题" name="sourceTitle" defaultValue={question?.sourceTitle ?? ""} placeholder="教材 / 真题 / 用户资料标题" />
+        <TextField label="来源 URL" name="sourceUrl" defaultValue={question?.sourceUrl ?? ""} placeholder="https://..." />
+        <TextField label="来源许可" name="sourceLicense" defaultValue={question?.sourceLicense ?? ""} placeholder="原创 / 授权 / CC BY" />
+      </div>
       <label className={labelClass}>
         解析
         <textarea className={inputClass} defaultValue={question?.explanation ?? ""} name="explanation" placeholder="解释正确答案和关键知识点" rows={3} />

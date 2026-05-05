@@ -8,23 +8,35 @@ import { requireWebSession } from "@/lib/auth";
 
 export async function saveOpenAiKeyAction(formData: FormData) {
   const session = await requireWebSession();
+  const provider = value(formData, "provider") || "openai";
   const result = await saveUserProviderKey(session.user.id, {
-    provider: "openai",
+    provider,
     apiKey: value(formData, "apiKey")
   });
 
-  finish(result, "OpenAI API Key 已保存。");
+  finish(result, "API Key 已保存。");
 }
 
-export async function deleteOpenAiKeyAction() {
+export async function deleteOpenAiKeyAction(formData?: FormData) {
   const session = await requireWebSession();
-  const result = await deleteUserProviderKey(session.user.id, "openai");
+  const result = await deleteUserProviderKey(session.user.id, valueFromProvider(formData) || "openai");
 
-  finish(result, "OpenAI API Key 已删除。");
+  finish(result, "API Key 已删除。");
+}
+
+export async function deleteProviderKeyAction(formData: FormData) {
+  const session = await requireWebSession();
+  const result = await deleteUserProviderKey(session.user.id, value(formData, "provider"));
+
+  finish(result, "API Key 已删除。");
 }
 
 function value(formData: FormData, name: string) {
   return String(formData.get(name) ?? "");
+}
+
+function valueFromProvider(value: unknown) {
+  return value instanceof FormData ? String(value.get("provider") ?? "") : "";
 }
 
 function finish(result: { ok: true } | { ok: false; error: string }, success: string): never {

@@ -1,7 +1,8 @@
-import { Prisma } from "@prisma/client";
+import { AiProvider, AiTaskType, Prisma, QuestionKind } from "@prisma/client";
+import { assertAiUsageAllowed, generateAiText, resolveAiCredential, type AiTextGenerator } from "./ai";
 import { getPrimaryExamGoal, type PrimaryGoal } from "./exam-core";
+import { gradeObjectiveAnswer, type ObjectiveQuestionKind } from "./grading";
 import {
-  gradeSingleChoiceQuestion,
   readSingleChoiceAnswerKey,
   readSingleChoiceOptions,
   syncWrongNoteForObjectiveAnswer,
@@ -65,6 +66,7 @@ type PaperQuestionRecord = PaperRecord["questions"][number];
 
 export type PaperQuestionForAttempt = {
   id: string;
+  kind: QuestionKind;
   order: number;
   number: string;
   section: string | null;
@@ -90,10 +92,27 @@ export type PaperAttemptState =
       };
     };
 
+export type PaperAttemptSessionState =
+  | Exclude<PaperAttemptState, { status: "ready" }>
+  | {
+      status: "ready";
+      goal: NonNullable<PrimaryGoal>;
+      attempt: {
+        id: string;
+        status: string;
+        startedAt: Date;
+        pausedAt: Date | null;
+        answers: Record<string, string>;
+      };
+      paper: Extract<PaperAttemptState, { status: "ready" }>["paper"];
+    };
+
 export type PaperSubmissionQuestion = {
   questionId: string;
   questionVersionId: string | null;
+  kind?: QuestionKind | string;
   answerKey: Prisma.JsonValue | null | undefined;
+  rubric?: Prisma.JsonValue | null | undefined;
   score: number;
 };
 
@@ -169,20 +188,81 @@ export async function getPaperForAttempt(userId: string, paperId: string): Promi
   };
 }
 
+export async function getPaperAttemptSession(userId: string, paperId: string): Promise<PaperAttemptSessionState> {
+  const state = await getPaperForAttempt(userId, paperId);
+
+  if (state.status !== "ready") {
+    return state;
+  }
+
+  const attempt = await prisma.$transaction(async (tx) => {
+    const existing = await tx.attempt.findFirst({
+      where: {
+        userId,
+        paperId: state.paper.id,
+        status: {
+          in: ["in_progress", "paused"]
+        }
+      },
+      include: {
+        answers: true
+      },
+      orderBy: [{ updatedAt: "desc" }]
+    });
+
+    if (existing) {
+      return existing;
+    }
+
+    return tx.attempt.create({
+      data: {
+        userId,
+        goalId: state.goal.id,
+        paperId: state.paper.id,
+        status: "in_progress",
+        maxScore: state.paper.totalScore
+      },
+      include: {
+        answers: true
+      }
+    });
+  });
+
+  return {
+    status: "ready",
+    goal: state.goal,
+    paper: state.paper,
+    attempt: {
+      id: attempt.id,
+      status: attempt.status,
+      startedAt: attempt.startedAt,
+      pausedAt: attempt.pausedAt,
+      answers: Object.fromEntries(attempt.answers.map((answer) => [answer.questionId, readSubmittedAnswer(answer.userAnswer)]))
+    }
+  };
+}
+
 export async function submitPaperAttempt(
   userId: string,
   input: {
     paperId: string;
+    attemptId?: string | null;
     answers: Record<string, string>;
-  }
+  },
+  options: {
+    generateText?: AiTextGenerator;
+    env?: NodeJS.ProcessEnv;
+    db?: typeof prisma;
+  } = {}
 ): Promise<ActionResult<{ attemptId: string; totalScore: number; maxScore: number }>> {
+  const db = options.db ?? prisma;
   const goal = await getPrimaryExamGoal(userId);
 
   if (!goal) {
     return { ok: false, error: "请先设置考试目标。" };
   }
 
-  const paper = await prisma.paper.findFirst({
+  const paper = await db.paper.findFirst({
     where: {
       AND: [
         buildPublicPaperWhere(goal),
@@ -210,7 +290,9 @@ export async function submitPaperAttempt(
       return {
         questionId: paperQuestion.question.id,
         questionVersionId: currentVersion?.id ?? null,
+        kind: paperQuestion.question.kind,
         answerKey: currentVersion?.answerKey ?? paperQuestion.question.answerKey,
+        rubric: currentVersion?.rubric ?? paperQuestion.question.rubric,
         score: paperQuestion.score
       };
     }),
@@ -223,34 +305,125 @@ export async function submitPaperAttempt(
 
   const maxScore = grading.data.maxScore;
   const totalScore = grading.data.totalScore;
-  const attemptId = await prisma.$transaction(async (tx) => {
-    const attempt = await tx.attempt.create({
+  const subjectiveSuggestions = await Promise.all(
+    grading.data.answers.map(async (answer) => {
+      if (answer.isCorrect !== null) {
+        return null;
+      }
+
+      const paperQuestion = paper.questions.find((item) => item.questionId === answer.questionId);
+
+      if (!paperQuestion || !readSubmittedAnswer(answer.userAnswer)) {
+        return null;
+      }
+
+      return {
+        questionId: answer.questionId,
+        score: await generateSubjectiveScoreSuggestion(
+          userId,
+          {
+            questionId: answer.questionId,
+            stem: paperQuestion.question.versions[0]?.stem ?? paperQuestion.question.stem,
+            answer: readSubmittedAnswer(answer.userAnswer),
+            maxScore: answer.maxScore,
+            rubric: paperQuestion.question.versions[0]?.rubric ?? paperQuestion.question.rubric
+          },
+          {
+            db,
+            env: options.env,
+            generateText: options.generateText
+          }
+        )
+      };
+    })
+  );
+  const suggestionByQuestionId = new Map(subjectiveSuggestions.filter((item): item is { questionId: string; score: number } => typeof item?.score === "number").map((item) => [item.questionId, item.score]));
+
+  const attemptId = await db.$transaction(async (tx) => {
+    const existingAttempt = input.attemptId
+      ? await tx.attempt.findFirst({
+          where: {
+            id: input.attemptId,
+            userId,
+            paperId: paper.id,
+            status: {
+              in: ["in_progress", "paused"]
+            }
+          },
+          select: {
+            id: true
+          }
+        })
+      : null;
+
+    const attempt = existingAttempt
+      ? await tx.attempt.update({
+          where: { id: existingAttempt.id },
+          data: {
+            status: "submitted",
+            submittedAt: now,
+            pausedAt: null,
+            totalScore,
+            maxScore
+          }
+        })
+      : await tx.attempt.create({
+          data: {
+            userId,
+            goalId: goal.id,
+            paperId: paper.id,
+            status: "submitted",
+            submittedAt: now,
+            totalScore,
+            maxScore
+          }
+        });
+
+    await tx.attemptPause.updateMany({
+      where: {
+        attemptId: attempt.id,
+        resumedAt: null
+      },
       data: {
-        userId,
-        goalId: goal.id,
-        paperId: paper.id,
-        status: "submitted",
-        submittedAt: now,
-        totalScore,
-        maxScore
+        resumedAt: now
       }
     });
 
     for (const answer of grading.data.answers) {
-      const attemptAnswer = await tx.attemptAnswer.create({
-        data: {
+      const existingAnswer = await tx.attemptAnswer.findFirst({
+        where: {
           attemptId: attempt.id,
-          ...answer
+          questionId: answer.questionId
+        },
+        select: {
+          id: true
         }
       });
+      const data = {
+        ...answer,
+        aiSuggestedScore: suggestionByQuestionId.get(answer.questionId) ?? null
+      };
+      const attemptAnswer = existingAnswer
+        ? await tx.attemptAnswer.update({
+            where: { id: existingAnswer.id },
+            data
+          })
+        : await tx.attemptAnswer.create({
+            data: {
+              attemptId: attempt.id,
+              ...data
+            }
+          });
 
-      await syncWrongNoteForObjectiveAnswer(tx, {
-        userId,
-        questionId: answer.questionId,
-        attemptAnswerId: attemptAnswer.id,
-        isCorrect: answer.isCorrect,
-        reviewedAt: now
-      });
+      if (answer.isCorrect !== null) {
+        await syncWrongNoteForObjectiveAnswer(tx, {
+          userId,
+          questionId: answer.questionId,
+          attemptAnswerId: attemptAnswer.id,
+          isCorrect: answer.isCorrect,
+          reviewedAt: now
+        });
+      }
     }
 
     return attempt.id;
@@ -271,44 +444,50 @@ export function gradePaperSubmission(questions: PaperSubmissionQuestion[], answe
     questionId: string;
     questionVersionId: string | null;
     userAnswer: Prisma.InputJsonObject;
-    isCorrect: boolean;
-    score: number;
+    isCorrect: boolean | null;
+    score: number | null;
     maxScore: number;
   }[] = [];
 
   for (const question of questions) {
-    const answer = (answers[question.questionId] ?? "").trim().toUpperCase();
+    const kind = parseQuestionKind(question.kind);
+    const answer = (answers[question.questionId] ?? "").trim();
 
-    if (!readSingleChoiceAnswerKey(question.answerKey)) {
+    if (isSubjectiveKind(kind)) {
+      gradedAnswers.push({
+        questionId: question.questionId,
+        questionVersionId: question.questionVersionId,
+        userAnswer: { value: answer },
+        isCorrect: null,
+        score: null,
+        maxScore: question.score
+      });
+
+      continue;
+    }
+
+    const answerKey = readObjectiveAnswerKey(question.answerKey);
+
+    if (answerKey === null) {
       return { ok: false, error: "试卷包含答案配置不完整的题目。" } as const;
     }
 
+    const objectiveKind = kind as ObjectiveQuestionKind;
     const grading = answer
-      ? gradeSingleChoiceQuestion({
-          answerKey: question.answerKey,
-          response: answer,
-          maxScore: question.score
-        })
+      ? gradeObjectiveAnswer(objectiveKind, answerKey, normalizeObjectiveResponse(objectiveKind, answer), question.score)
       : {
-          ok: true as const,
-          result: {
-            isCorrect: false,
-            score: 0,
-            maxScore: question.score
-          }
+          isCorrect: false,
+          score: 0,
+          maxScore: question.score
         };
-
-    if (!grading.ok) {
-      return { ok: false, error: grading.error } as const;
-    }
 
     gradedAnswers.push({
       questionId: question.questionId,
       questionVersionId: question.questionVersionId,
       userAnswer: { value: answer },
-      isCorrect: grading.result.isCorrect,
-      score: grading.result.score,
-      maxScore: grading.result.maxScore
+      isCorrect: grading.isCorrect,
+      score: grading.score,
+      maxScore: grading.maxScore
     });
   }
 
@@ -316,10 +495,240 @@ export function gradePaperSubmission(questions: PaperSubmissionQuestion[], answe
     ok: true,
     data: {
       answers: gradedAnswers,
-      totalScore: gradedAnswers.reduce((sum, answer) => sum + answer.score, 0),
+      totalScore: gradedAnswers.reduce((sum, answer) => sum + (answer.score ?? 0), 0),
       maxScore: gradedAnswers.reduce((sum, answer) => sum + answer.maxScore, 0)
     }
   } as const;
+}
+
+export async function savePaperAttemptAnswer(
+  userId: string,
+  input: {
+    attemptId: string;
+    questionId: string;
+    answer: string;
+  }
+): Promise<ActionResult> {
+  const attempt = await prisma.attempt.findFirst({
+    where: {
+      id: input.attemptId.trim(),
+      userId,
+      status: "in_progress",
+      paper: {
+        questions: {
+          some: {
+            questionId: input.questionId.trim()
+          }
+        }
+      }
+    },
+    include: {
+      paper: {
+        include: paperInclude
+      }
+    }
+  });
+
+  if (!attempt?.paper) {
+    return { ok: false, error: "作答记录不存在或已暂停/提交。" };
+  }
+
+  const paperQuestion = attempt.paper.questions.find((question) => question.questionId === input.questionId.trim());
+
+  if (!paperQuestion) {
+    return { ok: false, error: "题目不属于当前试卷。" };
+  }
+
+  const currentVersion = paperQuestion.question.versions.find((version) => version.version === paperQuestion.question.currentVersion) ?? paperQuestion.question.versions[0] ?? null;
+  const existing = await prisma.attemptAnswer.findFirst({
+    where: {
+      attemptId: attempt.id,
+      questionId: paperQuestion.questionId
+    },
+    select: {
+      id: true
+    }
+  });
+  const data = {
+    questionId: paperQuestion.questionId,
+    questionVersionId: currentVersion?.id ?? null,
+    userAnswer: { value: input.answer.trim() },
+    maxScore: paperQuestion.score
+  };
+
+  if (existing) {
+    await prisma.attemptAnswer.update({
+      where: { id: existing.id },
+      data
+    });
+  } else {
+    await prisma.attemptAnswer.create({
+      data: {
+        attemptId: attempt.id,
+        ...data
+      }
+    });
+  }
+
+  return { ok: true };
+}
+
+export async function pausePaperAttempt(userId: string, attemptId: string): Promise<ActionResult> {
+  const attempt = await prisma.attempt.findFirst({
+    where: {
+      id: attemptId.trim(),
+      userId,
+      status: "in_progress"
+    },
+    select: {
+      id: true
+    }
+  });
+
+  if (!attempt) {
+    return { ok: false, error: "只能暂停进行中的试卷。" };
+  }
+
+  const now = new Date();
+
+  await prisma.$transaction([
+    prisma.attempt.update({
+      where: { id: attempt.id },
+      data: {
+        status: "paused",
+        pausedAt: now
+      }
+    }),
+    prisma.attemptPause.create({
+      data: {
+        attemptId: attempt.id,
+        pausedAt: now
+      }
+    })
+  ]);
+
+  return { ok: true };
+}
+
+export async function resumePaperAttempt(userId: string, attemptId: string): Promise<ActionResult> {
+  const attempt = await prisma.attempt.findFirst({
+    where: {
+      id: attemptId.trim(),
+      userId,
+      status: "paused"
+    },
+    select: {
+      id: true
+    }
+  });
+
+  if (!attempt) {
+    return { ok: false, error: "只能恢复已暂停的试卷。" };
+  }
+
+  const now = new Date();
+
+  await prisma.$transaction([
+    prisma.attempt.update({
+      where: { id: attempt.id },
+      data: {
+        status: "in_progress",
+        pausedAt: null
+      }
+    }),
+    prisma.attemptPause.updateMany({
+      where: {
+        attemptId: attempt.id,
+        resumedAt: null
+      },
+      data: {
+        resumedAt: now
+      }
+    })
+  ]);
+
+  return { ok: true };
+}
+
+export async function confirmAttemptAnswerScore(
+  userId: string,
+  input: {
+    attemptAnswerId: string;
+    score: string | number;
+  }
+): Promise<ActionResult> {
+  const score = parseScore(input.score);
+
+  if (!score.ok) {
+    return score;
+  }
+
+  const answer = await prisma.attemptAnswer.findFirst({
+    where: {
+      id: input.attemptAnswerId.trim(),
+      attempt: {
+        userId
+      }
+    },
+    include: {
+      attempt: true
+    }
+  });
+
+  if (!answer) {
+    return { ok: false, error: "作答记录不存在。" };
+  }
+
+  const maxScore = answer.maxScore ?? 0;
+
+  if (score.value > maxScore) {
+    return { ok: false, error: "确认分不能超过题目满分。" };
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.attemptAnswer.update({
+      where: { id: answer.id },
+      data: {
+        score: score.value,
+        isCorrect: score.value >= maxScore && maxScore > 0,
+        userConfirmed: true
+      }
+    });
+
+    const answers = await tx.attemptAnswer.findMany({
+      where: {
+        attemptId: answer.attemptId
+      },
+      select: {
+        score: true,
+        maxScore: true,
+        questionId: true,
+        id: true,
+        isCorrect: true
+      }
+    });
+    const totalScore = answers.reduce((sum, item) => sum + (item.score ?? 0), 0);
+    const totalMaxScore = answers.reduce((sum, item) => sum + (item.maxScore ?? 0), 0);
+
+    await tx.attempt.update({
+      where: { id: answer.attemptId },
+      data: {
+        status: "graded",
+        totalScore,
+        maxScore: totalMaxScore
+      }
+    });
+
+    await syncWrongNoteForObjectiveAnswer(tx, {
+      userId,
+      questionId: answer.questionId,
+      attemptAnswerId: answer.id,
+      isCorrect: score.value >= maxScore && maxScore > 0,
+      reviewedAt: new Date()
+    });
+  });
+
+  return { ok: true };
 }
 
 export async function getAttemptReport(userId: string, attemptId: string) {
@@ -368,9 +777,12 @@ export async function getAttemptReport(userId: string, attemptId: string) {
       id: answer.id,
       order: index + 1,
       questionId: answer.questionId,
-      isCorrect: Boolean(answer.isCorrect),
+      kind: answer.question.kind,
+      isCorrect: answer.isCorrect,
       score: answer.score ?? 0,
       maxScore: answer.maxScore ?? 0,
+      aiSuggestedScore: answer.aiSuggestedScore,
+      userConfirmed: answer.userConfirmed,
       userAnswer: readSubmittedAnswer(answer.userAnswer),
       correctAnswer: readSingleChoiceAnswerKey(answerKey),
       explanation: answer.questionVersion?.explanation ?? answer.question.explanation,
@@ -384,7 +796,7 @@ export async function getAttemptReport(userId: string, attemptId: string) {
   });
   const summary = summarizeAttemptReportAnswers(
     answers.map((answer) => ({
-      isCorrect: answer.isCorrect,
+      isCorrect: answer.isCorrect === true,
       score: answer.score,
       maxScore: answer.maxScore,
       userAnswer: answer.userAnswer,
@@ -442,6 +854,151 @@ export function summarizeAttemptReportAnswers(answers: AttemptReportAnswerSummar
   };
 }
 
+async function generateSubjectiveScoreSuggestion(
+  userId: string,
+  input: {
+    questionId: string;
+    stem: string;
+    answer: string;
+    maxScore: number;
+    rubric: Prisma.JsonValue | null | undefined;
+  },
+  options: {
+    db: typeof prisma;
+    env?: NodeJS.ProcessEnv;
+    generateText?: AiTextGenerator;
+  }
+) {
+  const env = options.env ?? process.env;
+  const preset = await resolveSubjectiveGradingPreset(options.db);
+  const prompt = buildSubjectiveGradingPrompt(input);
+  const aiCall = await options.db.aiCall.create({
+    data: {
+      userId,
+      provider: preset.provider,
+      model: preset.model,
+      taskType: AiTaskType.grade_subjective,
+      promptVersion: "subjective-grade-v1",
+      inputContextSource: `question:${input.questionId}`,
+      tokenEstimate: Math.ceil(prompt.input.length / 4),
+      status: "running"
+    }
+  });
+
+  try {
+    const credential = options.generateText ? null : await resolveAiCredential(userId, preset.provider, options.db, env);
+
+    if (credential?.ok === false) {
+      await markAiCallFailed(aiCall.id, credential.error, options.db);
+      return null;
+    }
+
+    if (credential?.ok) {
+      const usageAllowed = await assertAiUsageAllowed(userId, credential.data.source, options.db, env);
+
+      if (!usageAllowed.ok) {
+        await markAiCallFailed(aiCall.id, usageAllowed.error, options.db);
+        return null;
+      }
+
+      await options.db.aiCall.update({
+        where: { id: aiCall.id },
+        data: {
+          credentialSource: credential.data.source
+        }
+      });
+    }
+
+    const result = await (options.generateText ?? generateAiText)({
+      provider: preset.provider,
+      apiKey: credential?.ok ? credential.data.apiKey : "test-key",
+      baseURL: credential?.ok ? credential.data.baseURL : null,
+      model: preset.model,
+      instructions: prompt.instructions,
+      input: prompt.input,
+      maxOutputTokens: preset.maxOutputTokens,
+      temperature: preset.temperature
+    });
+    const score = parseSuggestedScore(result.text, input.maxScore);
+
+    await options.db.aiCall.update({
+      where: { id: aiCall.id },
+      data: {
+        status: "succeeded",
+        usage: result.usage ?? undefined,
+        errorSummary: null
+      }
+    });
+
+    return score;
+  } catch (error) {
+    await markAiCallFailed(aiCall.id, error instanceof Error ? error.message.slice(0, 240) : "主观题 AI 评分失败。", options.db);
+    return null;
+  }
+}
+
+async function resolveSubjectiveGradingPreset(db: typeof prisma) {
+  const preset = await db.aiProviderPreset.findFirst({
+    where: {
+      defaultForTask: AiTaskType.grade_subjective,
+      enabled: true,
+      capabilities: {
+        has: "text"
+      }
+    },
+    orderBy: [{ updatedAt: "desc" }]
+  });
+
+  return {
+    provider: preset?.provider ?? AiProvider.openai,
+    model: preset?.model ?? "gpt-5.5",
+    maxOutputTokens: preset?.maxTokens ?? 300,
+    temperature: preset?.temperature ?? 0
+  };
+}
+
+function buildSubjectiveGradingPrompt(input: { stem: string; answer: string; maxScore: number; rubric: Prisma.JsonValue | null | undefined }) {
+  return {
+    instructions: "你是 OpenExam 的主观题评分助手。只根据题干、评分标准和考生答案给出建议分，输出严格 JSON。",
+    input: [
+      `题干：${input.stem}`,
+      `满分：${input.maxScore}`,
+      `评分标准：${input.rubric ? JSON.stringify(input.rubric) : "未配置"}`,
+      `考生答案：${input.answer}`,
+      '只输出 {"score":数字,"reason":"一句话理由"}，score 必须在 0 到满分之间。'
+    ].join("\n")
+  };
+}
+
+function parseSuggestedScore(value: string, maxScore: number) {
+  const jsonMatch = value.match(/\{[\s\S]*\}/);
+  const parsed = jsonMatch ? safeJson(jsonMatch[0]) : safeJson(value);
+  const rawScore = parsed && typeof parsed === "object" && "score" in parsed ? Number(parsed.score) : Number(value.match(/-?\d+(?:\.\d+)?/)?.[0]);
+  const score = Number.isFinite(rawScore) ? rawScore : 0;
+
+  return Math.min(maxScore, Math.max(0, score));
+}
+
+function safeJson(value: string): Record<string, unknown> | null {
+  try {
+    const parsed = JSON.parse(value);
+
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+}
+
+async function markAiCallFailed(aiCallId: string, errorSummary: string, db: typeof prisma) {
+  await db.aiCall.update({
+    where: { id: aiCallId },
+    data: {
+      status: "failed",
+      errorSummary
+    }
+  });
+}
+
 function toPaperListItem(paper: PaperRecord) {
   return {
     id: paper.id,
@@ -459,18 +1016,19 @@ function toPaperQuestionForAttempt(paperQuestion: PaperQuestionRecord): PaperQue
   const currentVersion = question.versions.find((version) => version.version === question.currentVersion) ?? question.versions[0] ?? null;
   const options = readSingleChoiceOptions(currentVersion?.payload ?? question.payload);
 
-  if (!options) {
+  if (isChoiceKind(question.kind) && !options) {
     return null;
   }
 
   return {
     id: question.id,
+    kind: question.kind,
     order: paperQuestion.order,
     number: paperQuestion.number,
     section: paperQuestion.section,
     score: paperQuestion.score,
     stem: currentVersion?.stem ?? question.stem,
-    options,
+    options: options ?? [],
     knowledgeNodes: question.knowledgeBindings.map((binding) => binding.knowledgeNode.title)
   };
 }
@@ -659,9 +1217,78 @@ function formatPaperSubjectPath(paper: PaperRecord) {
   return "未绑定科目";
 }
 
-function readSubmittedAnswer(value: Prisma.JsonValue | null | undefined) {
-  if (value && typeof value === "object" && !Array.isArray(value) && typeof value.value === "string") {
-    return value.value;
+function parseQuestionKind(value: string | null | undefined): QuestionKind {
+  return Object.values(QuestionKind).includes(value as QuestionKind) ? (value as QuestionKind) : QuestionKind.single_choice;
+}
+
+function isChoiceKind(kind: QuestionKind) {
+  return kind === QuestionKind.single_choice || kind === QuestionKind.multiple_choice;
+}
+
+function isSubjectiveKind(kind: QuestionKind) {
+  return kind === QuestionKind.short_answer || kind === QuestionKind.case_analysis;
+}
+
+function readObjectiveAnswerKey(value: Prisma.JsonValue | null | undefined): string | boolean | Array<string | boolean> | null {
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return typeof value === "number" ? String(value) : value;
+  }
+
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  if (Array.isArray(value.values)) {
+    return value.values.map((item) => (typeof item === "boolean" ? item : String(item)));
+  }
+
+  if ("value" in value && (typeof value.value === "string" || typeof value.value === "number" || typeof value.value === "boolean")) {
+    return typeof value.value === "number" ? String(value.value) : value.value;
+  }
+
+  return null;
+}
+
+function normalizeObjectiveResponse(kind: ObjectiveQuestionKind, answer: string) {
+  if (kind === "multiple_choice") {
+    return answer
+      .split(/[,\s]+/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+
+  if (kind === "true_false") {
+    const normalized = answer.trim().toLowerCase();
+
+    if (["true", "t", "yes", "y", "1", "对", "正确"].includes(normalized)) {
+      return true;
+    }
+
+    if (["false", "f", "no", "n", "0", "错", "错误"].includes(normalized)) {
+      return false;
+    }
+  }
+
+  return answer;
+}
+
+function parseScore(value: string | number) {
+  const score = typeof value === "number" ? value : Number(value);
+
+  if (!Number.isFinite(score) || score < 0) {
+    return { ok: false, error: "确认分必须是非负数字。" } as const;
+  }
+
+  return { ok: true, value: score } as const;
+}
+
+function readSubmittedAnswer(value: unknown) {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    const record = value as Record<string, unknown>;
+
+    if (typeof record.value === "string") {
+      return record.value;
+    }
   }
 
   return "";

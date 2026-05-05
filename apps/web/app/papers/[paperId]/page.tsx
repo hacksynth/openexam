@@ -2,23 +2,23 @@ import Link from "next/link";
 import type { Route } from "next";
 import { AppShell } from "@/components/app-shell";
 import { requireWebSession } from "@/lib/auth";
-import { getPaperForAttempt } from "@openexam/core/papers";
+import { getPaperAttemptSession } from "@openexam/core/papers";
 import { PaperAttemptForm } from "./paper-attempt-form";
 
 type PaperAttemptPageProps = {
   params: Promise<{ paperId: string }>;
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; notice?: string }>;
 };
 
 export default async function PaperAttemptPage({ params, searchParams }: PaperAttemptPageProps) {
   const session = await requireWebSession();
   const [{ paperId }, query] = await Promise.all([params, searchParams]);
-  const state = await getPaperForAttempt(session.user.id, paperId);
+  const state = await getPaperAttemptSession(session.user.id, paperId);
 
   return (
     <AppShell section="learner" eyebrow="试卷作答" title="试卷">
       <section className="grid gap-5">
-        <Feedback error={query.error} />
+        <Feedback error={query.error} notice={query.notice} />
         {state.status === "no_goal" ? (
           <EmptyState title="请先设置考试目标" description="设置目标后才能进入匹配的公开试卷。" href="/goals" action="设置目标" />
         ) : state.status === "empty" ? (
@@ -36,7 +36,7 @@ export default async function PaperAttemptPage({ params, searchParams }: PaperAt
               </div>
             </section>
 
-            <PaperAttemptForm paper={state.paper} />
+            <PaperAttemptForm attempt={state.attempt} paper={state.paper} />
           </>
         )}
       </section>
@@ -44,12 +44,12 @@ export default async function PaperAttemptPage({ params, searchParams }: PaperAt
   );
 }
 
-function Feedback({ error }: { error?: string }) {
-  if (!error) {
+function Feedback({ error, notice }: { error?: string; notice?: string }) {
+  if (!error && !notice) {
     return null;
   }
 
-  return <p className="border-3 border-black bg-red-50 p-3 text-sm font-bold text-red-700">{error}</p>;
+  return <p className={`border-3 border-black p-3 text-sm font-bold ${error ? "bg-red-50 text-red-700" : "bg-[var(--primary)] text-black"}`}>{error || notice}</p>;
 }
 
 function EmptyState({ title, description, href, action }: { title: string; description: string; href: string; action: string }) {

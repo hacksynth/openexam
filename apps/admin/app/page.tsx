@@ -1,17 +1,26 @@
 import Link from "next/link";
 import type { Route } from "next";
 import { AppShell } from "@/components/app-shell";
+import { getAdminDashboardMetrics } from "@openexam/core/admin-dashboard";
 import { adminRoutes } from "@openexam/core/routes";
 
-export default function AdminPage() {
+export default async function AdminPage() {
+  const metrics = await getAdminDashboardMetrics();
+  const metricItems = [
+    { label: "待审核题", value: metrics.pendingQuestions },
+    { label: "失败任务", value: metrics.failedJobs },
+    { label: "今日 AI 调用", value: metrics.todayAiCalls },
+    { label: "审计事件", value: metrics.auditEvents }
+  ];
+
   return (
     <AppShell section="admin" eyebrow="管理端基础版" title="管理台">
       <section className="grid gap-5">
         <div className="grid gap-4 md:grid-cols-4">
-          {["公开审核", "队列任务", "AI 调用", "审计事件"].map((label, index) => (
-            <article key={label} className="pixel-panel p-4">
-              <p className="text-xs font-bold uppercase text-[var(--muted)]">{label}</p>
-              <p className="mt-2 text-4xl font-black">{[0, 2, 0, 0][index]}</p>
+          {metricItems.map((item) => (
+            <article key={item.label} className="pixel-panel p-4">
+              <p className="text-xs font-bold uppercase text-[var(--muted)]">{item.label}</p>
+              <p className="mt-2 text-4xl font-black">{item.value}</p>
             </article>
           ))}
         </div>

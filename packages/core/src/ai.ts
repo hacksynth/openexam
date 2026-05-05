@@ -11,14 +11,27 @@ type ActionResult<T = undefined> = T extends undefined
 type AiDatabase = typeof prisma;
 
 export type AiTextRequest = {
+  provider?: AiProvider;
   apiKey: string;
   baseURL?: string | null;
   model: string;
   instructions: string;
-  input: string;
+  input: string | AiTextInputPart[];
   maxOutputTokens?: number | null;
   temperature?: number | null;
 };
+
+export type AiTextInputPart =
+  | {
+      type: "text";
+      text: string;
+    }
+  | {
+      type: "image" | "document";
+      mimeType: string;
+      dataBase64: string;
+      filename?: string | null;
+    };
 
 export type AiTextResponse = {
   text: string;
@@ -27,7 +40,7 @@ export type AiTextResponse = {
 
 export type AiTextGenerator = (request: AiTextRequest) => Promise<AiTextResponse>;
 
-export type OpenAiCredentialResult =
+export type AiCredentialResult =
   | {
       ok: true;
       data: {
@@ -38,6 +51,8 @@ export type OpenAiCredentialResult =
     }
   | { ok: false; error: string };
 
+export type OpenAiCredentialResult = AiCredentialResult;
+
 export type WrongNoteAiContext = {
   stem: string;
   options: SingleChoiceOption[];
@@ -45,6 +60,8 @@ export type WrongNoteAiContext = {
   correctAnswer: string | null;
   officialExplanation: string | null;
   knowledgeNodes: string[];
+  mistakeTags?: string[];
+  userNotes?: string | null;
   errorCount: number;
 };
 
@@ -53,6 +70,7 @@ export type AiProviderPresetInput = {
   provider: string;
   model: string;
   label: string;
+  capabilities?: string | string[] | null;
   defaultForTask?: string | null;
   temperature?: string | number | null;
   maxTokens?: string | number | null;
@@ -60,12 +78,40 @@ export type AiProviderPresetInput = {
 };
 
 const openAiProvider = AiProvider.openai;
+const supportedAiProviders = [AiProvider.openai, AiProvider.anthropic, AiProvider.gemini] as const;
 const wrongNoteTask = AiTaskType.explain_question;
 const wrongNotePromptVersion = "wrong-note-explain-v1";
 const defaultOpenAiModel = "gpt-5.5";
+const defaultAnthropicModel = "claude-sonnet-4-5-20250929";
+const defaultGeminiModel = "gemini-2.5-flash";
 const defaultMaxOutputTokens = 700;
 const defaultDailyAiCallLimit = 50;
 const defaultDailyPlatformTokenLimit = 100000;
+const providerLabels: Record<AiProvider, string> = {
+  [AiProvider.openai]: "OpenAI",
+  [AiProvider.anthropic]: "Claude",
+  [AiProvider.gemini]: "Gemini"
+};
+const platformKeyEnv: Record<AiProvider, string> = {
+  [AiProvider.openai]: "OPENAI_API_KEY",
+  [AiProvider.anthropic]: "ANTHROPIC_API_KEY",
+  [AiProvider.gemini]: "GEMINI_API_KEY"
+};
+const platformBaseUrlEnv: Record<AiProvider, string> = {
+  [AiProvider.openai]: "OPENAI_BASE_URL",
+  [AiProvider.anthropic]: "ANTHROPIC_BASE_URL",
+  [AiProvider.gemini]: "GEMINI_BASE_URL"
+};
+const taskCapabilityRequirements: Record<AiTaskType, string> = {
+  [AiTaskType.explain_question]: "text",
+  [AiTaskType.grade_subjective]: "text",
+  [AiTaskType.generate_plan]: "json",
+  [AiTaskType.extract_questions]: "json",
+  [AiTaskType.diagnose_learning]: "json",
+  [AiTaskType.generate_wrong_note_image_prompt]: "text",
+  [AiTaskType.generate_image]: "image",
+  [AiTaskType.chat_with_context]: "text"
+};
 
 export function providerKeyHint(apiKey: string) {
   const normalized = apiKey.trim();
@@ -141,26 +187,29 @@ export function decryptAiSecret(encryptedValue: string, env: NodeJS.ProcessEnv =
 }
 
 export async function getUserAiSettings(userId: string, db: AiDatabase = prisma, env: NodeJS.ProcessEnv = process.env) {
-  const openAiKey = await db.userProviderKey.findUnique({
+  const keys = await db.userProviderKey.findMany({
     where: {
-      userId_provider: {
-        userId,
-        provider: openAiProvider
+      userId,
+      provider: {
+        in: [...supportedAiProviders]
       }
     }
   });
+  const keyByProvider = new Map(keys.map((key) => [key.provider, key]));
 
   return {
-    providers: [
-      {
-        provider: openAiProvider,
-        label: "OpenAI",
-        configured: Boolean(openAiKey),
-        keyHint: openAiKey?.keyHint ?? null,
-        updatedAt: openAiKey?.updatedAt ?? null,
-        platformAvailable: Boolean(env.OPENAI_API_KEY?.trim())
-      }
-    ]
+    providers: supportedAiProviders.map((provider) => {
+      const key = keyByProvider.get(provider);
+
+      return {
+        provider,
+        label: providerLabels[provider],
+        configured: Boolean(key),
+        keyHint: key?.keyHint ?? null,
+        updatedAt: key?.updatedAt ?? null,
+        platformAvailable: Boolean(env[platformKeyEnv[provider]]?.trim())
+      };
+    })
   };
 }
 
@@ -170,15 +219,15 @@ export async function saveUserProviderKey(
   db: AiDatabase = prisma,
   env: NodeJS.ProcessEnv = process.env
 ): Promise<ActionResult> {
-  const provider = input.provider.trim();
+  const provider = parseAiProvider(input.provider);
   const apiKey = input.apiKey.trim();
 
-  if (provider !== openAiProvider) {
-    return { ok: false, error: "首版仅支持 OpenAI。" };
+  if (!provider) {
+    return { ok: false, error: "请选择有效的 AI Provider。" };
   }
 
   if (apiKey.length < 8) {
-    return { ok: false, error: "请输入有效的 OpenAI API Key。" };
+    return { ok: false, error: `请输入有效的 ${providerLabels[provider]} API Key。` };
   }
 
   const encrypted = encryptAiSecret(apiKey, env);
@@ -191,7 +240,7 @@ export async function saveUserProviderKey(
     where: {
       userId_provider: {
         userId,
-        provider: openAiProvider
+        provider
       }
     },
     update: {
@@ -200,7 +249,7 @@ export async function saveUserProviderKey(
     },
     create: {
       userId,
-      provider: openAiProvider,
+      provider,
       encryptedKey: encrypted.data.encrypted,
       keyHint: providerKeyHint(apiKey)
     }
@@ -210,14 +259,16 @@ export async function saveUserProviderKey(
 }
 
 export async function deleteUserProviderKey(userId: string, provider: string, db: AiDatabase = prisma): Promise<ActionResult> {
-  if (provider.trim() !== openAiProvider) {
-    return { ok: false, error: "首版仅支持 OpenAI。" };
+  const parsedProvider = parseAiProvider(provider);
+
+  if (!parsedProvider) {
+    return { ok: false, error: "请选择有效的 AI Provider。" };
   }
 
   await db.userProviderKey.deleteMany({
     where: {
       userId,
-      provider: openAiProvider
+      provider: parsedProvider
     }
   });
 
@@ -225,11 +276,15 @@ export async function deleteUserProviderKey(userId: string, provider: string, db
 }
 
 export async function resolveOpenAiCredential(userId: string, db: AiDatabase = prisma, env: NodeJS.ProcessEnv = process.env): Promise<OpenAiCredentialResult> {
+  return resolveAiCredential(userId, openAiProvider, db, env);
+}
+
+export async function resolveAiCredential(userId: string, provider: AiProvider, db: AiDatabase = prisma, env: NodeJS.ProcessEnv = process.env): Promise<AiCredentialResult> {
   const savedKey = await db.userProviderKey.findUnique({
     where: {
       userId_provider: {
         userId,
-        provider: openAiProvider
+        provider
       }
     }
   });
@@ -245,26 +300,26 @@ export async function resolveOpenAiCredential(userId: string, db: AiDatabase = p
       ok: true,
       data: {
         apiKey: decrypted.data.plaintext,
-        baseURL: normalizeOpenAiBaseUrl(env.OPENAI_BASE_URL),
+        baseURL: normalizeBaseUrl(env[platformBaseUrlEnv[provider]]),
         source: "byok" as const
       }
     };
   }
 
-  const platformKey = env.OPENAI_API_KEY?.trim();
+  const platformKey = env[platformKeyEnv[provider]]?.trim();
 
   if (platformKey) {
     return {
       ok: true,
       data: {
         apiKey: platformKey,
-        baseURL: normalizeOpenAiBaseUrl(env.OPENAI_BASE_URL),
+        baseURL: normalizeBaseUrl(env[platformBaseUrlEnv[provider]]),
         source: "platform" as const
       }
     };
   }
 
-  return { ok: false, error: "请先在个人设置中配置 OpenAI API Key。" } as const;
+  return { ok: false, error: `请先在个人设置中配置 ${providerLabels[provider]} API Key。` } as const;
 }
 
 export async function listUserAiCalls(userId: string, db: AiDatabase = prisma) {
@@ -488,7 +543,7 @@ export async function generateWrongNoteAiAnalysis(
   const aiCall = await db.aiCall.create({
     data: {
       userId,
-      provider: openAiProvider,
+      provider: preset.provider,
       model: preset.model,
       taskType: wrongNoteTask,
       promptVersion: wrongNotePromptVersion,
@@ -505,7 +560,7 @@ export async function generateWrongNoteAiAnalysis(
     if (fakeText) {
       result = { text: fakeText, usage: { fake: true } };
     } else {
-      const credential = options.generateText ? null : await resolveOpenAiCredential(userId, db, env);
+      const credential = options.generateText ? null : await resolveAiCredential(userId, preset.provider, db, env);
 
       if (credential?.ok === false) {
         const error = credential.error;
@@ -530,9 +585,10 @@ export async function generateWrongNoteAiAnalysis(
         });
       }
 
-      result = await (options.generateText ?? generateOpenAiText)({
+      result = await (options.generateText ?? generateAiText)({
+        provider: preset.provider,
         apiKey: credential?.ok ? credential.data.apiKey : "test-key",
-        baseURL: credential?.ok ? credential.data.baseURL : normalizeOpenAiBaseUrl(env.OPENAI_BASE_URL),
+        baseURL: credential?.ok ? credential.data.baseURL : normalizeBaseUrl(env[platformBaseUrlEnv[preset.provider]]),
         model: preset.model,
         instructions: prompt.instructions,
         input: prompt.input,
@@ -592,11 +648,27 @@ export function buildWrongNotePrompt(context: WrongNoteAiContext) {
       `正确答案：${context.correctAnswer ?? "未配置"}`,
       `官方解析：${context.officialExplanation || "暂无"}`,
       `知识点：${context.knowledgeNodes.join(" / ") || "未绑定知识点"}`,
+      `用户标签：${context.mistakeTags?.join(" / ") || "暂无"}`,
+      `用户笔记：${context.userNotes || "暂无"}`,
       `累计错误次数：${context.errorCount}`,
       "",
       "输出 3-5 个短段落，不要使用 Markdown 表格。"
     ].join("\n")
   };
+}
+
+export async function generateAiText(request: AiTextRequest): Promise<AiTextResponse> {
+  const provider = request.provider ?? openAiProvider;
+
+  if (provider === AiProvider.anthropic) {
+    return generateAnthropicText(request);
+  }
+
+  if (provider === AiProvider.gemini) {
+    return generateGeminiText(request);
+  }
+
+  return generateOpenAiText(request);
 }
 
 export async function generateOpenAiText(request: AiTextRequest): Promise<AiTextResponse> {
@@ -607,7 +679,7 @@ export async function generateOpenAiText(request: AiTextRequest): Promise<AiText
   const response = await client.responses.create({
     model: request.model,
     instructions: request.instructions,
-    input: request.input,
+    input: toOpenAiResponseInput(request.input),
     max_output_tokens: request.maxOutputTokens ?? defaultMaxOutputTokens,
     temperature: request.temperature ?? undefined
   });
@@ -618,17 +690,90 @@ export async function generateOpenAiText(request: AiTextRequest): Promise<AiText
   };
 }
 
+export async function generateAnthropicText(request: AiTextRequest): Promise<AiTextResponse> {
+  const response = await fetch(`${request.baseURL || "https://api.anthropic.com"}/v1/messages`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-api-key": request.apiKey,
+      "anthropic-version": "2023-06-01"
+    },
+    body: JSON.stringify({
+      model: request.model,
+      max_tokens: request.maxOutputTokens ?? defaultMaxOutputTokens,
+      temperature: request.temperature ?? undefined,
+      system: request.instructions,
+      messages: [
+        {
+          role: "user",
+          content: toAnthropicContent(request.input)
+        }
+      ]
+    })
+  });
+  const body = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    throw new Error(readProviderError(body, `Anthropic 请求失败 (${response.status})。`));
+  }
+
+  return {
+    text: readAnthropicText(body),
+    usage: toJsonValue(body?.usage)
+  };
+}
+
+export async function generateGeminiText(request: AiTextRequest): Promise<AiTextResponse> {
+  const baseUrl = (request.baseURL || "https://generativelanguage.googleapis.com/v1beta").replace(/\/$/, "");
+  const model = request.model.startsWith("models/") ? request.model : `models/${request.model}`;
+  const response = await fetch(`${baseUrl}/${model}:generateContent`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-goog-api-key": request.apiKey
+    },
+    body: JSON.stringify({
+      system_instruction: {
+        parts: [{ text: request.instructions }]
+      },
+      contents: [
+        {
+          role: "user",
+          parts: toGeminiParts(request.input)
+        }
+      ],
+      generationConfig: {
+        maxOutputTokens: request.maxOutputTokens ?? defaultMaxOutputTokens,
+        temperature: request.temperature ?? undefined
+      }
+    })
+  });
+  const body = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    throw new Error(readProviderError(body, `Gemini 请求失败 (${response.status})。`));
+  }
+
+  return {
+    text: readGeminiText(body),
+    usage: toJsonValue(body?.usageMetadata)
+  };
+}
+
 async function resolveWrongNotePreset(db: AiDatabase) {
   const preset = await db.aiProviderPreset.findFirst({
     where: {
-      provider: openAiProvider,
       defaultForTask: wrongNoteTask,
-      enabled: true
+      enabled: true,
+      capabilities: {
+        has: taskCapabilityRequirements[wrongNoteTask]
+      }
     },
     orderBy: [{ updatedAt: "desc" }]
   });
 
   return {
+    provider: preset?.provider ?? openAiProvider,
     model: preset?.model ?? defaultOpenAiModel,
     maxOutputTokens: preset?.maxTokens ?? defaultMaxOutputTokens,
     temperature: preset?.temperature ?? null
@@ -676,6 +821,8 @@ function toWrongNoteAiContext(wrongNote: NonNullable<Awaited<ReturnType<typeof l
     correctAnswer: readSingleChoiceAnswerKey(answerKey),
     officialExplanation: version?.explanation ?? wrongNote.question.explanation,
     knowledgeNodes: wrongNote.question.knowledgeBindings.map((binding) => binding.knowledgeNode.title),
+    mistakeTags: wrongNote.mistakeTags,
+    userNotes: wrongNote.userNotes,
     errorCount: wrongNote.errorCount
   };
 }
@@ -722,9 +869,16 @@ export function readTotalTokens(value: Prisma.JsonValue | null | undefined) {
   }
 
   const usage = value as Record<string, unknown>;
-  const total = usage.total_tokens ?? usage.totalTokens;
+  const total = usage.total_tokens ?? usage.totalTokens ?? usage.totalTokenCount;
 
-  return typeof total === "number" && Number.isFinite(total) ? total : 0;
+  if (typeof total === "number" && Number.isFinite(total)) {
+    return total;
+  }
+
+  const input = usage.input_tokens ?? usage.inputTokens ?? usage.promptTokenCount;
+  const output = usage.output_tokens ?? usage.outputTokens ?? usage.candidatesTokenCount;
+
+  return numberValue(input) + numberValue(output);
 }
 
 function readFakeAiResponse(env: NodeJS.ProcessEnv) {
@@ -736,9 +890,49 @@ function readFakeAiResponse(env: NodeJS.ProcessEnv) {
 }
 
 function normalizeOpenAiBaseUrl(value: string | null | undefined) {
+  return normalizeBaseUrl(value);
+}
+
+function normalizeBaseUrl(value: string | null | undefined) {
   const normalized = value?.trim();
 
   return normalized || null;
+}
+
+function parseAiProvider(value: string | null | undefined) {
+  const normalized = value?.trim();
+
+  return supportedAiProviders.includes(normalized as AiProvider) ? (normalized as AiProvider) : null;
+}
+
+function parseCapabilities(value: string | string[] | null | undefined, provider: AiProvider | null): ActionResult<string[]> {
+  const rawValues = Array.isArray(value) ? value : String(value ?? "").split(",");
+  const capabilities = [...new Set(rawValues.map((item) => item.trim()).filter(Boolean))];
+
+  if (capabilities.length === 0) {
+    return { ok: true, data: defaultCapabilities(provider) };
+  }
+
+  const allowed = new Set(["text", "json", "vision", "document", "image"]);
+  const invalid = capabilities.find((capability) => !allowed.has(capability));
+
+  if (invalid) {
+    return { ok: false, error: "模型 capability 参数无效。" };
+  }
+
+  return { ok: true, data: capabilities };
+}
+
+function defaultCapabilities(provider: AiProvider | null) {
+  if (provider === AiProvider.openai) {
+    return ["text", "json", "vision", "document", "image"];
+  }
+
+  if (provider === AiProvider.anthropic || provider === AiProvider.gemini) {
+    return ["text", "json", "vision", "document"];
+  }
+
+  return ["text", "json"];
 }
 
 function parseAiProviderPresetInput(input: AiProviderPresetInput): ActionResult<{
@@ -751,18 +945,24 @@ function parseAiProviderPresetInput(input: AiProviderPresetInput): ActionResult<
   maxTokens: number | null;
   enabled: boolean;
 }> {
-  if (input.provider.trim() !== openAiProvider) {
-    return { ok: false, error: "首版仅支持 OpenAI 模型预设。" };
-  }
-
+  const provider = parseAiProvider(input.provider);
   const model = input.model.trim();
   const label = input.label.trim() || model;
   const defaultForTask = parseAiTaskType(input.defaultForTask);
   const temperature = parseOptionalNumber(input.temperature, "temperature");
   const maxTokens = parseOptionalInteger(input.maxTokens, "max tokens");
+  const capabilities = parseCapabilities(input.capabilities, provider);
+
+  if (!provider) {
+    return { ok: false, error: "请选择有效的 AI Provider。" };
+  }
 
   if (!model) {
     return { ok: false, error: "请输入模型名称。" };
+  }
+
+  if (!capabilities.ok) {
+    return capabilities;
   }
 
   if (!temperature.ok) {
@@ -781,13 +981,17 @@ function parseAiProviderPresetInput(input: AiProviderPresetInput): ActionResult<
     return { ok: false, error: "max tokens 必须大于 0。" };
   }
 
+  if (defaultForTask && !capabilities.data.includes(taskCapabilityRequirements[defaultForTask])) {
+    return { ok: false, error: "模型 capability 不满足默认任务路由要求。" };
+  }
+
   return {
     ok: true,
     data: {
-      provider: openAiProvider,
+      provider,
       model,
       label,
-      capabilities: ["text"],
+      capabilities: capabilities.data,
       defaultForTask,
       temperature: temperature.data,
       maxTokens: maxTokens.data,
@@ -874,6 +1078,141 @@ function formatAiError(error: unknown) {
 
 function redactSecret(value: string) {
   return value.replace(/sk-[A-Za-z0-9_-]+/g, "sk-***");
+}
+
+function toOpenAiResponseInput(input: AiTextRequest["input"]) {
+  if (typeof input === "string") {
+    return input;
+  }
+
+  return [
+    {
+      role: "user",
+      content: input.map((part) => {
+        if (part.type === "text") {
+          return {
+            type: "input_text",
+            text: part.text
+          };
+        }
+
+        if (part.type === "image") {
+          return {
+            type: "input_image",
+            image_url: `data:${part.mimeType};base64,${part.dataBase64}`
+          };
+        }
+
+        return {
+          type: "input_file",
+          filename: part.filename || "document",
+          file_data: `data:${part.mimeType};base64,${part.dataBase64}`
+        };
+      })
+    }
+  ] as never;
+}
+
+function toAnthropicContent(input: AiTextRequest["input"]) {
+  const parts = typeof input === "string" ? [{ type: "text" as const, text: input }] : input;
+
+  return parts.map((part) => {
+    if (part.type === "text") {
+      return {
+        type: "text",
+        text: part.text
+      };
+    }
+
+    return {
+      type: part.type,
+      source: {
+        type: "base64",
+        media_type: part.mimeType,
+        data: part.dataBase64
+      }
+    };
+  });
+}
+
+function toGeminiParts(input: AiTextRequest["input"]) {
+  const parts = typeof input === "string" ? [{ type: "text" as const, text: input }] : input;
+
+  return parts.map((part) => {
+    if (part.type === "text") {
+      return { text: part.text };
+    }
+
+    return {
+      inline_data: {
+        mime_type: part.mimeType,
+        data: part.dataBase64
+      }
+    };
+  });
+}
+
+function readAnthropicText(value: unknown) {
+  if (!value || typeof value !== "object") {
+    return "";
+  }
+
+  const content = (value as { content?: unknown }).content;
+
+  if (!Array.isArray(content)) {
+    return "";
+  }
+
+  return content
+    .map((part) => (part && typeof part === "object" && "text" in part && typeof part.text === "string" ? part.text : ""))
+    .join("")
+    .trim();
+}
+
+function readGeminiText(value: unknown) {
+  if (!value || typeof value !== "object") {
+    return "";
+  }
+
+  const candidates = (value as { candidates?: unknown }).candidates;
+
+  if (!Array.isArray(candidates)) {
+    return "";
+  }
+
+  return candidates
+    .flatMap((candidate) => {
+      if (!candidate || typeof candidate !== "object") {
+        return [];
+      }
+
+      const content = (candidate as { content?: { parts?: unknown } }).content;
+
+      return Array.isArray(content?.parts) ? content.parts : [];
+    })
+    .map((part) => (part && typeof part === "object" && "text" in part && typeof part.text === "string" ? part.text : ""))
+    .join("")
+    .trim();
+}
+
+function readProviderError(value: unknown, fallback: string) {
+  if (value && typeof value === "object") {
+    const error = (value as { error?: unknown }).error;
+
+    if (error && typeof error === "object" && "message" in error && typeof error.message === "string") {
+      return error.message;
+    }
+
+    if ("message" in value && typeof value.message === "string") {
+      return value.message;
+    }
+  }
+
+  return fallback;
+}
+
+function numberValue(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
 function toJsonValue(value: unknown): Prisma.InputJsonValue | undefined {

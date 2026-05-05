@@ -47,7 +47,7 @@ export default async function MaterialsPage({ searchParams }: MaterialsPageProps
             </SelectField>
             <label className={labelClass}>
               文件
-              <input className={inputClass} name="file" required type="file" accept=".txt,.md,.pdf,text/plain,text/markdown,application/pdf" />
+              <input className={inputClass} name="file" required type="file" accept=".txt,.md,.pdf,.docx,.png,.jpg,.jpeg,.webp,text/plain,text/markdown,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/png,image/jpeg,image/webp" />
             </label>
             <button className="pixel-button w-fit px-4 py-2" type="submit">
               上传并创建抽题任务
@@ -63,7 +63,7 @@ export default async function MaterialsPage({ searchParams }: MaterialsPageProps
           {materials.length === 0 ? (
             <section className="pixel-panel p-5">
               <h2 className="text-2xl font-black">暂无资料</h2>
-              <p className="mt-1 font-bold text-[var(--muted)]">上传 TXT、Markdown 或 PDF 后，后台可处理抽题任务并确认候选题。</p>
+              <p className="mt-1 font-bold text-[var(--muted)]">上传 TXT、Markdown、PDF、DOCX 或图片后，后台可处理抽题任务并确认候选题。</p>
             </section>
           ) : (
             materials.map((material) => (
@@ -72,11 +72,12 @@ export default async function MaterialsPage({ searchParams }: MaterialsPageProps
                   <span className="status-chip px-2 py-1">{stateLabel(material.extractionState)}</span>
                   <span className="status-chip px-2 py-1">{formatBytes(material.sizeBytes)}</span>
                   <span className="status-chip px-2 py-1">候选 {material.candidateCount}</span>
+                  {material.extractionMethod ? <span className="status-chip px-2 py-1">{methodLabel(material.extractionMethod)}</span> : null}
                   {material.latestJob ? <span className="status-chip px-2 py-1">任务 {jobStatusLabel(material.latestJob.status)}</span> : null}
                 </div>
                 <h2 className="break-words text-xl font-black">{material.title}</h2>
                 <p className="text-sm font-bold text-[var(--muted)]">{material.mimeType}</p>
-                {material.latestJob?.error ? <p className="border-2 border-black bg-red-50 p-3 text-sm font-bold text-red-700">{material.latestJob.error}</p> : null}
+                {material.extractionError || material.latestJob?.error ? <p className="border-2 border-black bg-red-50 p-3 text-sm font-bold text-red-700">{material.extractionError || material.latestJob?.error}</p> : null}
                 {material.candidateCount > material.pendingCandidateCount ? (
                   <Link href={`/practice?material=${encodeURIComponent(material.id)}` as Route} className="pixel-button w-fit bg-white px-4 py-2">
                     练习资料题
@@ -131,6 +132,10 @@ function stateLabel(value: string) {
 
 function jobStatusLabel(value: string) {
   return { queued: "排队中", running: "运行中", succeeded: "成功", failed: "失败", canceled: "已取消" }[value] ?? value;
+}
+
+function methodLabel(value: string) {
+  return { local_text: "本地文本", local_pdf: "PDF 文本", local_docx: "DOCX 文本", ai_ocr: "AI OCR" }[value] ?? value;
 }
 
 function formatBytes(value: number) {

@@ -61,6 +61,7 @@ export type PracticeQuestionOptions = {
   excludeQuestionId?: string | null;
   retryQuestionId?: string | null;
   materialId?: string | null;
+  knowledgeNodeId?: string | null;
 };
 
 export type MaterialPracticeScope = {
@@ -153,7 +154,7 @@ export async function getPracticeQuestion(userId: string, options: PracticeQuest
     };
   }
 
-  const question = await selectPracticeQuestion(userId, goal, options.excludeQuestionId, materialScope?.questionIds);
+  const question = await selectPracticeQuestion(userId, goal, options.excludeQuestionId, materialScope?.questionIds, options.knowledgeNodeId);
 
   if (!question) {
     return {
@@ -381,11 +382,34 @@ export async function listAttempts(userId: string) {
   }));
 }
 
-export async function listWrongNotes(userId: string, options: { mastered?: boolean } = {}) {
+export type WrongNoteFilters = {
+  mastered?: boolean;
+  knowledgeNodeId?: string | null;
+  questionKind?: string | null;
+  minErrorCount?: string | number | null;
+  updatedSince?: Date | null;
+};
+
+export async function listWrongNotes(userId: string, options: WrongNoteFilters = {}) {
+  const minErrorCount = parsePositiveInteger(options.minErrorCount);
   const notes = await prisma.wrongNote.findMany({
     where: {
       userId,
-      ...(typeof options.mastered === "boolean" ? { mastered: options.mastered } : {})
+      ...(typeof options.mastered === "boolean" ? { mastered: options.mastered } : {}),
+      ...(typeof minErrorCount === "number" ? { errorCount: { gte: minErrorCount } } : {}),
+      ...(options.updatedSince ? { updatedAt: { gte: options.updatedSince } } : {}),
+      question: {
+        ...(options.questionKind ? { kind: options.questionKind as never } : {}),
+        ...(options.knowledgeNodeId
+          ? {
+              knowledgeBindings: {
+                some: {
+                  knowledgeNodeId: options.knowledgeNodeId
+                }
+              }
+            }
+          : {})
+      }
     },
     orderBy: [{ updatedAt: "desc" }],
     include: {
@@ -409,6 +433,9 @@ export async function listWrongNotes(userId: string, options: { mastered?: boole
     id: note.id,
     questionId: note.questionId,
     mastered: note.mastered,
+    mistakeTags: note.mistakeTags,
+    userNotes: note.userNotes,
+    manualCollectedAt: note.manualCollectedAt,
     errorCount: note.errorCount,
     updatedAt: note.updatedAt,
     aiAnalysis: note.aiAnalysis,
@@ -481,6 +508,79 @@ export async function setWrongNoteMastered(userId: string, wrongNoteId: string, 
   });
 
   return result.count > 0 ? ({ ok: true } as const) : ({ ok: false, error: "错题不存在。" } as const);
+}
+
+export async function updateWrongNoteReflection(
+  userId: string,
+  input: {
+    wrongNoteId: string;
+    mistakeTags?: string | null;
+    userNotes?: string | null;
+  }
+) {
+  const tags = parseTags(input.mistakeTags);
+  const result = await prisma.wrongNote.updateMany({
+    where: { id: input.wrongNoteId.trim(), userId },
+    data: {
+      mistakeTags: tags,
+      userNotes: optionalText(input.userNotes)
+    }
+  });
+
+  return result.count > 0 ? ({ ok: true } as const) : ({ ok: false, error: "错题不存在。" } as const);
+}
+
+export async function collectQuestionForReview(
+  userId: string,
+  input: {
+    questionId: string;
+    attemptAnswerId?: string | null;
+  }
+) {
+  const questionId = input.questionId.trim();
+
+  if (!questionId) {
+    return { ok: false, error: "题目不存在。" } as const;
+  }
+
+  const question = await prisma.question.findFirst({
+    where: {
+      id: questionId,
+      deletedAt: null
+    },
+    select: {
+      id: true
+    }
+  });
+
+  if (!question) {
+    return { ok: false, error: "题目不存在。" } as const;
+  }
+
+  const now = new Date();
+
+  await prisma.wrongNote.upsert({
+    where: {
+      userId_questionId: {
+        userId,
+        questionId
+      }
+    },
+    update: {
+      attemptAnswerId: input.attemptAnswerId?.trim() || undefined,
+      manualCollectedAt: now,
+      mastered: false
+    },
+    create: {
+      userId,
+      questionId,
+      attemptAnswerId: input.attemptAnswerId?.trim() || null,
+      errorCount: 0,
+      manualCollectedAt: now
+    }
+  });
+
+  return { ok: true } as const;
 }
 
 export async function getDashboardPracticeSummary(userId: string) {
@@ -632,8 +732,17 @@ export async function questionBelongsToMaterialPracticeScope(
   return Boolean(candidate);
 }
 
-async function selectPracticeQuestion(userId: string, goal: NonNullable<PrimaryGoal>, excludeQuestionId?: string | null, materialQuestionIds?: string[]) {
-  const baseWhere = materialQuestionIds ? buildMaterialPracticeQuestionWhere(userId, goal, materialQuestionIds) : buildPracticeQuestionWhere(userId, goal);
+async function selectPracticeQuestion(
+  userId: string,
+  goal: NonNullable<PrimaryGoal>,
+  excludeQuestionId?: string | null,
+  materialQuestionIds?: string[],
+  knowledgeNodeId?: string | null
+) {
+  const baseWhere = buildFocusedPracticeQuestionWhere(
+    materialQuestionIds ? buildMaterialPracticeQuestionWhere(userId, goal, materialQuestionIds) : buildPracticeQuestionWhere(userId, goal),
+    knowledgeNodeId
+  );
   const attemptedIds = await listAttemptedQuestionIds(userId, goal, baseWhere);
   const recentIds = await listRecentQuestionIds(userId, goal, baseWhere);
   const excludedCurrent = compactIds([excludeQuestionId]);
@@ -709,6 +818,34 @@ function compactIds(ids: Array<string | null | undefined>) {
   return ids.map((id) => id?.trim()).filter((id): id is string => Boolean(id));
 }
 
+function parseTags(value: string | null | undefined) {
+  return [
+    ...new Set(
+      String(value ?? "")
+        .split(/[,\n，、]+/)
+        .map((tag) => tag.trim())
+        .filter(Boolean)
+        .slice(0, 12)
+    )
+  ];
+}
+
+function optionalText(value: string | null | undefined) {
+  const text = value?.trim();
+
+  return text || null;
+}
+
+function parsePositiveInteger(value: string | number | null | undefined) {
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
+
+  const parsed = typeof value === "number" ? value : Number(value);
+
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
 function toPracticeQuestion(question: PracticeQuestionRecord): PracticeQuestion | null {
   const version = question.versions.find((item) => item.version === question.currentVersion) ?? question.versions[0] ?? null;
   const options = readSingleChoiceOptions(version?.payload ?? question.payload);
@@ -758,6 +895,27 @@ export function buildMaterialPracticeQuestionWhere(userId: string, goal: NonNull
       {
         id: {
           in: [...new Set(compactIds(questionIds))]
+        }
+      }
+    ]
+  };
+}
+
+function buildFocusedPracticeQuestionWhere(baseWhere: Prisma.QuestionWhereInput, knowledgeNodeId: string | null | undefined): Prisma.QuestionWhereInput {
+  const normalized = knowledgeNodeId?.trim();
+
+  if (!normalized) {
+    return baseWhere;
+  }
+
+  return {
+    AND: [
+      baseWhere,
+      {
+        knowledgeBindings: {
+          some: {
+            knowledgeNodeId: normalized
+          }
         }
       }
     ]

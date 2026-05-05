@@ -4,11 +4,11 @@ import { AppShell } from "@/components/app-shell";
 import { requireWebSession } from "@/lib/auth";
 import { listWrongNotes, summarizeWrongNotes } from "@openexam/core/practice";
 import { listWrongNoteReviewCardViews } from "@openexam/core/wrong-note-images";
-import { generateWrongNoteAiAnalysisAction, queueWrongNoteReviewCardAction, setWrongNoteMasteredAction } from "./actions";
+import { generateWrongNoteAiAnalysisAction, queueWrongNoteReviewCardAction, setWrongNoteMasteredAction, updateWrongNoteReflectionAction } from "./actions";
 import { AiAnalysisSubmitButton, ReviewCardSubmitButton } from "./submit-button";
 
 type WrongNotesPageProps = {
-  searchParams: Promise<{ error?: string; notice?: string; filter?: string; knowledgeNodeId?: string }>;
+  searchParams: Promise<{ error?: string; notice?: string; filter?: string; knowledgeNodeId?: string; minErrorCount?: string; questionKind?: string }>;
 };
 
 type WrongNoteListItem = Awaited<ReturnType<typeof listWrongNotes>>[number];
@@ -26,8 +26,13 @@ export default async function WrongNotesPage({ searchParams }: WrongNotesPagePro
   const params = await searchParams;
   const filter = normalizeFilter(params.filter);
   const knowledgeNodeId = params.knowledgeNodeId?.trim() || "";
+  const minErrorCount = params.minErrorCount?.trim() || "";
+  const questionKind = params.questionKind?.trim() || "";
   const currentHref = wrongNoteHref(filter, knowledgeNodeId);
-  const allNotes = await listWrongNotes(session.user.id);
+  const allNotes = await listWrongNotes(session.user.id, {
+    minErrorCount,
+    questionKind
+  });
   const notes = allNotes.filter((note) => {
     if (knowledgeNodeId && !note.knowledgeNodes.some((node) => node.id === knowledgeNodeId)) {
       return false;
@@ -120,6 +125,29 @@ export default async function WrongNotesPage({ searchParams }: WrongNotesPagePro
               </div>
             </div>
           ) : null}
+          <form className="grid gap-3 md:grid-cols-[1fr_1fr_auto]">
+            <input name="filter" type="hidden" value={filter} />
+            <input name="knowledgeNodeId" type="hidden" value={knowledgeNodeId} />
+            <label className="grid gap-2 text-sm font-bold">
+              最少错误次数
+              <input className="border-3 border-black bg-white px-3 py-2" defaultValue={minErrorCount} name="minErrorCount" placeholder="例如 2" />
+            </label>
+            <label className="grid gap-2 text-sm font-bold">
+              题型
+              <select className="border-3 border-black bg-white px-3 py-2" defaultValue={questionKind} name="questionKind">
+                <option value="">全部</option>
+                <option value="single_choice">单选</option>
+                <option value="multiple_choice">多选</option>
+                <option value="true_false">判断</option>
+                <option value="blank">填空</option>
+                <option value="short_answer">简答</option>
+                <option value="case_analysis">案例</option>
+              </select>
+            </label>
+            <button className="pixel-button self-end px-4 py-2" type="submit">
+              筛选
+            </button>
+          </form>
         </section>
 
         {notes.length === 0 ? (
@@ -209,6 +237,22 @@ function WrongNoteCard({
           <p className="mt-1 whitespace-pre-line leading-7">{note.aiAnalysis}</p>
         </div>
       ) : null}
+
+      <form action={updateWrongNoteReflectionAction} className="grid gap-3 border-2 border-black bg-white p-3">
+        <input name="wrongNoteId" type="hidden" value={note.id} />
+        <input name="returnTo" type="hidden" value={currentHref} />
+        <label className="grid gap-2 text-sm font-bold">
+          错因标签
+          <input className="border-2 border-black bg-white px-3 py-2" defaultValue={note.mistakeTags.join("，")} name="mistakeTags" placeholder="概念混淆，审题失误" />
+        </label>
+        <label className="grid gap-2 text-sm font-bold">
+          我的笔记
+          <textarea className="border-2 border-black bg-white px-3 py-2" defaultValue={note.userNotes ?? ""} name="userNotes" rows={3} />
+        </label>
+        <button className="pixel-button w-fit bg-white px-4 py-2" type="submit">
+          保存标签笔记
+        </button>
+      </form>
 
       <div className="grid gap-3 border-2 border-black bg-[var(--surface-subtle)] p-3">
         <div className="flex flex-wrap items-center justify-between gap-3">

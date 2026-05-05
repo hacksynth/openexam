@@ -87,8 +87,10 @@ export default async function AdminAiPage({ searchParams }: AdminAiPageProps) {
                 <PresetActions presetId={preset.id} enabled={preset.enabled} />
                 <PresetForm
                   id={preset.id}
+                  provider={preset.provider}
                   label={preset.label}
                   model={preset.model}
+                  capabilities={preset.capabilities}
                   defaultForTask={preset.defaultForTask}
                   temperature={preset.temperature}
                   maxTokens={preset.maxTokens}
@@ -106,8 +108,10 @@ export default async function AdminAiPage({ searchParams }: AdminAiPageProps) {
 
 function PresetForm({
   id,
+  provider = AiProvider.openai,
   model = "",
   label = "",
+  capabilities = ["text", "json"],
   defaultForTask = AiTaskType.explain_question,
   temperature = null,
   maxTokens = 700,
@@ -115,8 +119,10 @@ function PresetForm({
   submitLabel
 }: {
   id?: string;
+  provider?: AiProvider;
   model?: string;
   label?: string;
+  capabilities?: string[];
   defaultForTask?: string | null;
   temperature?: number | null;
   maxTokens?: number | null;
@@ -126,8 +132,14 @@ function PresetForm({
   return (
     <form action={upsertAiProviderPresetAction} className="grid gap-4">
       {id ? <input name="id" type="hidden" value={id} /> : null}
-      <input name="provider" type="hidden" value={AiProvider.openai} />
-      <div className="grid gap-3 lg:grid-cols-[1fr_1fr_1fr_0.8fr_0.8fr]">
+      <div className="grid gap-3 lg:grid-cols-[0.8fr_1fr_1fr_1fr_0.8fr_0.8fr]">
+        <SelectField label="Provider" name="provider" defaultValue={provider}>
+          {Object.values(AiProvider).map((item) => (
+            <option key={item} value={item}>
+              {item === AiProvider.anthropic ? "Claude" : item === AiProvider.gemini ? "Gemini" : "OpenAI"}
+            </option>
+          ))}
+        </SelectField>
         <TextField label="模型" name="model" defaultValue={model} placeholder="gpt-5.5" required />
         <TextField label="名称" name="label" defaultValue={label} placeholder="OpenAI GPT-5.5" />
         <SelectField label="默认任务" name="defaultForTask" defaultValue={defaultForTask ?? ""}>
@@ -141,6 +153,17 @@ function PresetForm({
         <TextField label="Temperature" name="temperature" defaultValue={temperature === null ? "" : String(temperature)} placeholder="0.2" />
         <TextField label="Max Tokens" name="maxTokens" defaultValue={maxTokens === null ? "" : String(maxTokens)} placeholder="700" />
       </div>
+      <fieldset className="grid gap-2">
+        <legend className="text-sm font-bold">Capabilities</legend>
+        <div className="flex flex-wrap gap-3">
+          {["text", "json", "vision", "document", "image"].map((capability) => (
+            <label key={capability} className="flex items-center gap-2 border-2 border-black bg-white px-3 py-2 text-sm font-bold">
+              <input className="h-4 w-4 accent-black" defaultChecked={capabilities.includes(capability)} name="capabilities" type="checkbox" value={capability} />
+              {capability}
+            </label>
+          ))}
+        </div>
+      </fieldset>
       <label className="flex w-fit items-center gap-2 text-sm font-bold">
         <input className="h-5 w-5 accent-black" defaultChecked={enabled} name="enabled" type="checkbox" />
         启用

@@ -1,5 +1,5 @@
 import { AiProvider, AiTaskType, Prisma } from "@prisma/client";
-import { assertAiUsageAllowed, generateOpenAiText, resolveOpenAiCredential, type AiTextGenerator } from "./ai";
+import { assertAiUsageAllowed, generateAiText, resolveAiCredential, type AiTextGenerator } from "./ai";
 import {
   buildMaterialExtractionPrompt,
   createMaterialQuestionCandidates,
@@ -24,6 +24,7 @@ type JobDatabase = typeof prisma;
 
 const materialExtractionPromptVersion = "material-question-extract-v1";
 const defaultOpenAiModel = "gpt-5.5";
+const defaultExtractionProvider = AiProvider.openai;
 const defaultMaxOutputTokens = 1400;
 const defaultJobStaleMs = 15 * 60 * 1000;
 const minJobStaleMs = 60 * 1000;
@@ -333,8 +334,9 @@ async function processMaterialExtractionJob(jobId: string, payload: Prisma.JsonV
     throw new JobProcessingError(materialText.error);
   }
 
-  const { material, text } = materialText.data;
-  const credential = options.generateText ? null : await resolveOpenAiCredential(material.ownerId, db, env);
+  const { material, text, extractionMethod, ocrInput } = materialText.data;
+  const preset = await resolveExtractionPreset(db, ocrInput?.type === "document" ? "document" : ocrInput ? "vision" : "json");
+  const credential = options.generateText ? null : await resolveAiCredential(material.ownerId, preset.provider, db, env);
 
   if (credential?.ok === false) {
     await markMaterialFailed(material.id, credential.error, db);
@@ -350,38 +352,40 @@ async function processMaterialExtractionJob(jobId: string, payload: Prisma.JsonV
     }
   }
 
-  const preset = await resolveExtractionPreset(db);
   const knowledgeNodes = await listMaterialKnowledgeOptions(material.bindingScope, db);
   const prompt = buildMaterialExtractionPrompt({
     title: material.title,
-    text,
+    text: text || "资料正文来自随附图片或文档。请先读取随附内容，再按要求抽题。",
     knowledgeNodes: knowledgeNodes.map((node) => ({
       id: node.id,
       code: node.code ?? "",
       title: node.title
     }))
   });
+  const input = ocrInput ? [{ type: "text" as const, text: prompt.input }, ocrInput] : prompt.input;
   const aiCall = await db.aiCall.create({
     data: {
       userId: material.ownerId,
-      provider: AiProvider.openai,
+      provider: preset.provider,
       model: preset.model,
       taskType: AiTaskType.extract_questions,
       promptVersion: materialExtractionPromptVersion,
       inputContextSource: `material:${material.id}`,
       tokenEstimate: Math.ceil(prompt.input.length / 4),
-      credentialSource: credential?.ok ? credential.data.source : "byok",
+      imageCount: ocrInput ? 1 : null,
+      credentialSource: credential?.ok ? credential.data.source : null,
       status: "running"
     }
   });
 
   try {
-    const result = await (options.generateText ?? generateOpenAiText)({
+    const result = await (options.generateText ?? generateAiText)({
+      provider: preset.provider,
       apiKey: credential?.ok ? credential.data.apiKey : "test-key",
-      baseURL: credential?.ok ? credential.data.baseURL : env.OPENAI_BASE_URL?.trim() || null,
+      baseURL: credential?.ok ? credential.data.baseURL : null,
       model: preset.model,
       instructions: prompt.instructions,
-      input: prompt.input,
+      input,
       maxOutputTokens: preset.maxOutputTokens,
       temperature: preset.temperature
     });
@@ -404,7 +408,9 @@ async function processMaterialExtractionJob(jobId: string, payload: Prisma.JsonV
       db.material.update({
         where: { id: material.id },
         data: {
-          extractionState: "succeeded"
+          extractionState: "succeeded",
+          extractionMethod,
+          extractionError: null
         }
       })
     ]);
@@ -427,7 +433,9 @@ async function processMaterialExtractionJob(jobId: string, payload: Prisma.JsonV
       db.material.update({
         where: { id: material.id },
         data: {
-          extractionState: "failed"
+          extractionState: "failed",
+          extractionMethod,
+          extractionError: message.slice(0, 500)
         }
       })
     ]);
@@ -436,17 +444,20 @@ async function processMaterialExtractionJob(jobId: string, payload: Prisma.JsonV
   }
 }
 
-async function resolveExtractionPreset(db: JobDatabase) {
+async function resolveExtractionPreset(db: JobDatabase, requiredCapability: "json" | "vision" | "document" = "json") {
   const preset = await db.aiProviderPreset.findFirst({
     where: {
-      provider: AiProvider.openai,
       defaultForTask: AiTaskType.extract_questions,
-      enabled: true
+      enabled: true,
+      capabilities: {
+        has: requiredCapability
+      }
     },
     orderBy: [{ updatedAt: "desc" }]
   });
 
   return {
+    provider: preset?.provider ?? defaultExtractionProvider,
     model: preset?.model ?? defaultOpenAiModel,
     maxOutputTokens: preset?.maxTokens ?? defaultMaxOutputTokens,
     temperature: preset?.temperature ?? null
@@ -457,7 +468,8 @@ async function markMaterialFailed(materialId: string, error: string, db: JobData
   await db.material.update({
     where: { id: materialId },
     data: {
-      extractionState: "failed"
+      extractionState: "failed",
+      extractionError: error.slice(0, 500)
     }
   }).catch(() => undefined);
 }

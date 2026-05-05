@@ -2,8 +2,8 @@ import { AppShell } from "@/components/app-shell";
 import { PixelSelect } from "@openexam/core/pixel-select";
 import { requireAdminSession } from "@/lib/auth";
 import { listKnowledgeHierarchy } from "@openexam/core/exam-core";
-import { listAdminMaterials, listMaterialQuestionCandidates } from "@openexam/core/materials";
-import { confirmCandidateAction, uploadAdminMaterialAction } from "./actions";
+import { listAdminMaterials, listMaterialQuestionCandidates, materialQuestionKinds } from "@openexam/core/materials";
+import { confirmCandidateAction, updateCandidateAction, uploadAdminMaterialAction } from "./actions";
 
 type AdminMaterialsPageProps = {
   searchParams: Promise<{ error?: string; notice?: string }>;
@@ -19,6 +19,14 @@ export default async function AdminMaterialsPage({ searchParams }: AdminMaterial
     id: subject.id,
     label: `${subject.cycle.track.program.name} / ${subject.cycle.track.name} / ${subject.cycle.name} / ${subject.name}`
   }));
+  const knowledgeNodes = subjects.flatMap((subject) =>
+    subject.syllabi.flatMap((syllabus) =>
+      syllabus.knowledgeNodes.map((node) => ({
+        id: node.id,
+        label: `${subject.cycle.track.program.name} / ${subject.cycle.track.name} / ${subject.name} / ${node.code ? `${node.code} ` : ""}${node.title}`
+      }))
+    )
+  );
 
   return (
     <AppShell section="admin" eyebrow="资料治理" title="资料">
@@ -45,7 +53,7 @@ export default async function AdminMaterialsPage({ searchParams }: AdminMaterial
             </SelectField>
             <label className={labelClass}>
               文件
-              <input className={inputClass} name="file" required type="file" accept=".txt,.md,.pdf,text/plain,text/markdown,application/pdf" />
+              <input className={inputClass} name="file" required type="file" accept=".txt,.md,.pdf,.docx,.png,.jpg,.jpeg,.webp,text/plain,text/markdown,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/png,image/jpeg,image/webp" />
             </label>
             <button className="pixel-button w-fit px-4 py-2" type="submit">
               上传并创建抽题任务
@@ -70,12 +78,13 @@ export default async function AdminMaterialsPage({ searchParams }: AdminMaterial
                   <span className="status-chip px-2 py-1">{stateLabel(material.extractionState)}</span>
                   <span className="status-chip px-2 py-1">{formatBytes(material.sizeBytes)}</span>
                   <span className="status-chip px-2 py-1">候选 {material.candidateCount}</span>
+                  {material.extractionMethod ? <span className="status-chip px-2 py-1">{methodLabel(material.extractionMethod)}</span> : null}
                   <span className="status-chip px-2 py-1">{material.ownerEmail}</span>
                   {material.latestJob ? <span className="status-chip px-2 py-1">任务 {jobStatusLabel(material.latestJob.status)}</span> : null}
                 </div>
                 <h2 className="break-words text-xl font-black">{material.title}</h2>
                 <p className="text-sm font-bold text-[var(--muted)]">{material.mimeType}</p>
-                {material.latestJob?.error ? <p className="border-2 border-black bg-red-50 p-3 text-sm font-bold text-red-700">{material.latestJob.error}</p> : null}
+                {material.extractionError || material.latestJob?.error ? <p className="border-2 border-black bg-red-50 p-3 text-sm font-bold text-red-700">{material.extractionError || material.latestJob?.error}</p> : null}
               </article>
             ))
           )}
@@ -97,6 +106,7 @@ export default async function AdminMaterialsPage({ searchParams }: AdminMaterial
                 <div className="flex flex-wrap gap-2">
                   <span className="status-chip px-2 py-1">{candidate.status === "confirmed" ? "已确认" : "待确认"}</span>
                   <span className="status-chip px-2 py-1">{candidate.materialTitle}</span>
+                  <span className="status-chip px-2 py-1">{candidate.kind}</span>
                   <span className="status-chip px-2 py-1">答案 {candidate.answer}</span>
                   {candidate.difficulty ? <span className="status-chip px-2 py-1">难度 {candidate.difficulty}</span> : null}
                 </div>
@@ -110,12 +120,15 @@ export default async function AdminMaterialsPage({ searchParams }: AdminMaterial
                 </div>
                 {candidate.explanation ? <p className="border-2 border-black bg-[var(--surface-subtle)] p-3 text-sm font-bold">{candidate.explanation}</p> : null}
                 {candidate.status !== "confirmed" ? (
-                  <form action={confirmCandidateAction}>
-                    <input name="candidateId" type="hidden" value={candidate.id} />
-                    <button className="pixel-button w-fit px-4 py-2" type="submit">
-                      确认入题库
-                    </button>
-                  </form>
+                  <div className="grid gap-3">
+                    <CandidateEditForm candidate={candidate} knowledgeNodes={knowledgeNodes} />
+                    <form action={confirmCandidateAction}>
+                      <input name="candidateId" type="hidden" value={candidate.id} />
+                      <button className="pixel-button w-fit px-4 py-2" type="submit">
+                        确认入题库
+                      </button>
+                    </form>
+                  </div>
                 ) : null}
               </article>
             ))
@@ -138,23 +151,86 @@ function Feedback({ error, notice }: { error?: string; notice?: string }) {
   );
 }
 
-function TextField({ label, name, placeholder }: { label: string; name: string; placeholder?: string }) {
+function TextField({ label, name, placeholder, defaultValue = "" }: { label: string; name: string; placeholder?: string; defaultValue?: string }) {
   return (
     <label className={labelClass}>
       {label}
-      <input className={inputClass} name={name} placeholder={placeholder} />
+      <input className={inputClass} defaultValue={defaultValue} name={name} placeholder={placeholder} />
     </label>
   );
 }
 
-function SelectField({ label, name, children }: { label: string; name: string; children: React.ReactNode }) {
+function SelectField({ label, name, defaultValue, children }: { label: string; name: string; defaultValue?: string; children: React.ReactNode }) {
   return (
     <label className={labelClass}>
       {label}
-      <PixelSelect className={inputClass} name={name}>
+      <PixelSelect className={inputClass} defaultValue={defaultValue} name={name}>
         {children}
       </PixelSelect>
     </label>
+  );
+}
+
+function CandidateEditForm({
+  candidate,
+  knowledgeNodes
+}: {
+  candidate: Awaited<ReturnType<typeof listMaterialQuestionCandidates>>[number];
+  knowledgeNodes: { id: string; label: string }[];
+}) {
+  return (
+    <form action={updateCandidateAction} className="grid gap-3 border-2 border-black bg-[var(--surface-subtle)] p-3">
+      <input name="candidateId" type="hidden" value={candidate.id} />
+      <div className="grid gap-3 lg:grid-cols-[1fr_1fr_1fr]">
+        <SelectField label="题型" name="kind" defaultValue={candidate.kind}>
+          {materialQuestionKinds.map((kind) => (
+            <option key={kind} value={kind}>
+              {kind}
+            </option>
+          ))}
+        </SelectField>
+        <TextField label="答案" name="answer" defaultValue={candidate.answer} placeholder="A 或 A,C" />
+        <TextField label="难度" name="difficulty" defaultValue={candidate.difficulty ? String(candidate.difficulty) : ""} placeholder="1-5" />
+      </div>
+      <label className={labelClass}>
+        题干
+        <textarea className={inputClass} defaultValue={candidate.stem} name="stem" rows={2} />
+      </label>
+      <div className="grid gap-3 lg:grid-cols-4">
+        <TextField label="选项 A" name="optionA" defaultValue={candidate.options.A} />
+        <TextField label="选项 B" name="optionB" defaultValue={candidate.options.B} />
+        <TextField label="选项 C" name="optionC" defaultValue={candidate.options.C} />
+        <TextField label="选项 D" name="optionD" defaultValue={candidate.options.D} />
+      </div>
+      <div className="grid gap-3 lg:grid-cols-2">
+        <SelectField label="知识点" name="knowledgeNodeId" defaultValue={candidate.knowledgeNodeId ?? ""}>
+          <option value="">未绑定</option>
+          {knowledgeNodes.map((node) => (
+            <option key={node.id} value={node.id}>
+              {node.label}
+            </option>
+          ))}
+        </SelectField>
+        <TextField label="来源位置" name="sourceRef" defaultValue={candidate.sourceRef ?? ""} />
+      </div>
+      <label className={labelClass}>
+        解析
+        <textarea className={inputClass} defaultValue={candidate.explanation ?? ""} name="explanation" rows={2} />
+      </label>
+      <div className="grid gap-3 lg:grid-cols-2">
+        <label className={labelClass}>
+          Payload JSON
+          <textarea className={`${inputClass} font-mono`} defaultValue={JSON.stringify(candidate.payload, null, 2)} name="payloadJson" rows={4} />
+        </label>
+        <label className={labelClass}>
+          AnswerKey JSON
+          <textarea className={`${inputClass} font-mono`} defaultValue={JSON.stringify(candidate.answerKey, null, 2)} name="answerKeyJson" rows={4} />
+        </label>
+      </div>
+      <button className="pixel-button w-fit bg-white px-4 py-2" type="submit">
+        保存候选题
+      </button>
+    </form>
   );
 }
 
@@ -164,6 +240,10 @@ function stateLabel(value: string) {
 
 function jobStatusLabel(value: string) {
   return { queued: "排队中", running: "运行中", succeeded: "成功", failed: "失败", canceled: "已取消" }[value] ?? value;
+}
+
+function methodLabel(value: string) {
+  return { local_text: "本地文本", local_pdf: "PDF 文本", local_docx: "DOCX 文本", ai_ocr: "AI OCR" }[value] ?? value;
 }
 
 function formatBytes(value: number) {

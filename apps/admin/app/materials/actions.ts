@@ -3,7 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { Route } from "next";
-import { confirmMaterialQuestionCandidate, uploadMaterial } from "@openexam/core/materials";
+import { confirmMaterialQuestionCandidate, updateMaterialQuestionCandidate, uploadMaterial } from "@openexam/core/materials";
+import { writeAuditLog } from "@openexam/core/audit";
 import { requireAdminSession } from "@/lib/auth";
 
 export async function uploadAdminMaterialAction(formData: FormData) {
@@ -28,11 +29,19 @@ export async function uploadAdminMaterialAction(formData: FormData) {
     redirect(`/materials?error=${encodeURIComponent(result.error)}` as Route);
   }
 
+  await writeAuditLog({
+    actorId: session.user.id,
+    action: "material.upload",
+    entityType: "Material",
+    entityId: result.data.materialId,
+    metadata: { jobId: result.data.jobId }
+  });
+
   redirect(`/materials?notice=${encodeURIComponent("资料已上传，抽题任务已进入队列。")}` as Route);
 }
 
 export async function confirmCandidateAction(formData: FormData) {
-  await requireAdminSession();
+  const session = await requireAdminSession();
   const result = await confirmMaterialQuestionCandidate(value(formData, "candidateId"));
 
   revalidatePath("/materials" as Route);
@@ -42,7 +51,50 @@ export async function confirmCandidateAction(formData: FormData) {
     redirect(`/materials?error=${encodeURIComponent(result.error)}` as Route);
   }
 
+  await writeAuditLog({
+    actorId: session.user.id,
+    action: "material_candidate.confirm",
+    entityType: "MaterialQuestionCandidate",
+    entityId: value(formData, "candidateId"),
+    metadata: { questionId: result.data.questionId }
+  });
+
   redirect(`/materials?notice=${encodeURIComponent("候选题已确认并加入题库。")}` as Route);
+}
+
+export async function updateCandidateAction(formData: FormData) {
+  const session = await requireAdminSession();
+  const candidateId = value(formData, "candidateId");
+  const result = await updateMaterialQuestionCandidate(candidateId, {
+    kind: value(formData, "kind"),
+    stem: value(formData, "stem"),
+    optionA: value(formData, "optionA"),
+    optionB: value(formData, "optionB"),
+    optionC: value(formData, "optionC"),
+    optionD: value(formData, "optionD"),
+    answer: value(formData, "answer"),
+    payloadJson: value(formData, "payloadJson"),
+    answerKeyJson: value(formData, "answerKeyJson"),
+    explanation: value(formData, "explanation"),
+    difficulty: value(formData, "difficulty"),
+    knowledgeNodeId: value(formData, "knowledgeNodeId"),
+    sourceRef: value(formData, "sourceRef")
+  });
+
+  revalidatePath("/materials" as Route);
+
+  if (!result.ok) {
+    redirect(`/materials?error=${encodeURIComponent(result.error)}` as Route);
+  }
+
+  await writeAuditLog({
+    actorId: session.user.id,
+    action: "material_candidate.update",
+    entityType: "MaterialQuestionCandidate",
+    entityId: candidateId
+  });
+
+  redirect(`/materials?notice=${encodeURIComponent("候选题已更新。")}` as Route);
 }
 
 function value(formData: FormData, name: string) {

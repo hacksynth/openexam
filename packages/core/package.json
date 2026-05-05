@@ -5,12 +5,14 @@
   "type": "module",
   "exports": {
     "./dashboard-data": "./src/dashboard-data.ts",
+    "./admin-dashboard": "./src/admin-dashboard.ts",
     "./auth": "./src/auth.ts",
     "./env": "./src/env.ts",
     "./exam-core": "./src/exam-core.ts",
     "./assets": "./src/assets.ts",
     "./grading": "./src/grading.ts",
     "./jobs": "./src/jobs.ts",
+    "./knowledge": "./src/knowledge.ts",
     "./materials": "./src/materials.ts",
     "./password": "./src/password.ts",
     "./paper-admin": "./src/paper-admin.ts",
@@ -18,6 +20,7 @@
     "./practice": "./src/practice.ts",
     "./prisma": "./src/prisma.ts",
     "./analysis": "./src/analysis.ts",
+    "./audit": "./src/audit.ts",
     "./ai": "./src/ai.ts",
     "./pixel-select": "./src/pixel-select.tsx",
     "./question-admin": "./src/question-admin.ts",
@@ -30,7 +33,9 @@
   },
   "dependencies": {
     "@prisma/client": "^6.19.0",
+    "mammoth": "^1.12.0",
     "openai": "^6.36.0",
+    "pdf-parse": "^2.4.5",
     "zod": "^4.1.13"
   }
 }
