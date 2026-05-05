@@ -142,6 +142,12 @@ export function PaperAttemptForm({ paper, attempt }: { paper: ReadyPaper; attemp
                 </span>
               ))}
             </div>
+            {question.caseMaterial ? (
+              <div className="border-2 border-black bg-[var(--surface-subtle)] p-3">
+                <p className="text-sm font-bold text-[var(--muted)]">案例材料</p>
+                <p className="mt-1 whitespace-pre-line font-bold leading-7">{question.caseMaterial}</p>
+              </div>
+            ) : null}
             <h3 className="break-words text-xl font-black leading-8">{question.stem}</h3>
           </div>
           <QuestionAnswerInput
@@ -178,7 +184,7 @@ function QuestionAnswerInput({
   if (question.kind === "short_answer" || question.kind === "case_analysis") {
     return (
       <textarea
-        className="min-h-32 border-3 border-black bg-white p-3 font-bold leading-7"
+        className={`border-3 border-black bg-white p-3 font-bold leading-7 ${question.kind === "case_analysis" ? "min-h-56" : "min-h-32"}`}
         disabled={disabled}
         name={`control_${question.id}`}
         onChange={(event) => onChange(event.target.value)}

@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import type { Route } from "next";
 import { generateAttemptAnswerAiExplanation } from "@openexam/core/ai";
 import {
+  confirmAllAttemptAnswerScores,
   confirmAttemptAnswerScore,
   pausePaperAttempt,
   resumePaperAttempt,
@@ -113,6 +114,21 @@ export async function confirmAttemptAnswerScoreAction(formData: FormData) {
   }
 
   redirect(`/attempts/${attemptId}?notice=${encodeURIComponent("分数已确认。")}` as Route);
+}
+
+export async function confirmAllAttemptAnswerScoresAction(formData: FormData) {
+  const session = await requireWebSession();
+  const attemptId = String(formData.get("attemptId") ?? "");
+  const result = await confirmAllAttemptAnswerScores(session.user.id, attemptId);
+
+  revalidatePath(`/attempts/${attemptId}` as Route);
+  revalidatePath("/wrong-notes" as Route);
+
+  if (!result.ok) {
+    redirect(`/attempts/${attemptId}?error=${encodeURIComponent(result.error)}` as Route);
+  }
+
+  redirect(`/attempts/${attemptId}?notice=${encodeURIComponent("所有建议分已确认。")}` as Route);
 }
 
 export async function collectAttemptQuestionAction(formData: FormData) {

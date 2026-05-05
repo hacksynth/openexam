@@ -40,6 +40,7 @@ export type PracticeQuestion = {
   difficulty: number | null;
   knowledgeNodes: string[];
   sourceType: string;
+  caseMaterial?: string | null;
 };
 
 export type PracticeMaterialContext = {
@@ -94,6 +95,13 @@ export function readSingleChoiceOptions(payload: Prisma.JsonValue | null | undef
   const normalized = options.filter((option): option is SingleChoiceOption => Boolean(option));
 
   return normalized.length > 0 ? normalized : null;
+}
+
+export function readCaseMaterial(payload: Prisma.JsonValue | null | undefined): string | null {
+  if (isJsonObject(payload) && typeof payload.caseMaterial === "string" && payload.caseMaterial.trim()) {
+    return payload.caseMaterial.trim();
+  }
+  return null;
 }
 
 export function readSingleChoiceAnswerKey(answerKey: Prisma.JsonValue | null | undefined) {
@@ -983,7 +991,8 @@ function toPracticeQuestion(question: PracticeQuestionRecord): PracticeQuestion 
     options: options ?? [],
     difficulty: question.difficulty,
     knowledgeNodes: question.knowledgeBindings.map((binding) => binding.knowledgeNode.title),
-    sourceType: question.sourceType
+    sourceType: question.sourceType,
+    caseMaterial: readCaseMaterial(version?.payload ?? question.payload)
   };
 }
 

@@ -10,6 +10,8 @@ describe("learning analysis", () => {
           score: 1,
           maxScore: 1,
           userAnswer: "A",
+          kind: "single_choice",
+          difficulty: 1,
           knowledgeNodes: [{ id: "node_db", title: "事务基础" }]
         },
         {
@@ -17,6 +19,8 @@ describe("learning analysis", () => {
           score: 0,
           maxScore: 1,
           userAnswer: "B",
+          kind: "single_choice",
+          difficulty: 1,
           knowledgeNodes: [{ id: "node_db", title: "事务基础" }]
         },
         {
@@ -24,6 +28,8 @@ describe("learning analysis", () => {
           score: 0,
           maxScore: 1,
           userAnswer: "",
+          kind: "single_choice",
+          difficulty: 2,
           knowledgeNodes: [{ id: "node_uml", title: "UML 建模" }]
         }
       ],

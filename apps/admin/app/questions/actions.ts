@@ -6,6 +6,7 @@ import type { Route } from "next";
 import {
   createAdminQuestion,
   importAdminQuestions,
+  importAdminQuestionsFromCsv,
   setAdminQuestionArchived,
   updateAdminQuestionReviewStatus,
   updateAdminQuestion,
@@ -14,7 +15,7 @@ import {
 import { writeAuditLog } from "@openexam/core/audit";
 import { requireAdminSession } from "@/lib/auth";
 
-type Result = Awaited<ReturnType<typeof createAdminQuestion>> | Awaited<ReturnType<typeof importAdminQuestions>>;
+type Result = Awaited<ReturnType<typeof createAdminQuestion>> | Awaited<ReturnType<typeof importAdminQuestions>> | Awaited<ReturnType<typeof importAdminQuestionsFromCsv>>;
 
 export async function createAdminQuestionAction(formData: FormData) {
   const session = await requireAdminSession();
@@ -39,6 +40,21 @@ export async function importAdminQuestionsAction(formData: FormData) {
 
   await auditIfOk(session.user.id, result, "question.import", null, result.ok ? { count: result.data.count } : undefined);
   finish(result, result.ok ? `已导入 ${result.data.count} 道题。` : "题目导入失败。");
+}
+
+export async function importAdminQuestionsFromCsvFileAction(formData: FormData) {
+  const session = await requireAdminSession();
+  const file = formData.get("file");
+
+  if (!(file instanceof File) || file.size === 0) {
+    redirect(`/questions?error=${encodeURIComponent("请选择要上传的 CSV 文件。")}` as Route);
+  }
+
+  const csvText = await file.text();
+  const result = await importAdminQuestionsFromCsv({ csvText });
+
+  await auditIfOk(session.user.id, result, "question.import_csv", null, result.ok ? { count: result.data.count } : undefined);
+  finish(result, result.ok ? `已从 CSV 导入 ${result.data.count} 道题。` : "CSV 导入失败。");
 }
 
 export async function updateAdminQuestionReviewStatusAction(formData: FormData) {
@@ -75,6 +91,7 @@ function readQuestion(formData: FormData): AdminQuestionInput {
     optionC: value(formData, "optionC"),
     optionD: value(formData, "optionD"),
     answer: value(formData, "answerText") || value(formData, "answer"),
+    caseMaterial: value(formData, "caseMaterial"),
     payloadJson: value(formData, "payloadJson"),
     answerKeyJson: value(formData, "answerKeyJson"),
     rubricJson: value(formData, "rubricJson"),

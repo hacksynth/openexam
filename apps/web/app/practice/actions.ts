@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { Route } from "next";
-import { generateAttemptAnswerAiExplanation } from "@openexam/core/ai";
+import { generateAttemptAnswerAiExplanation, generateQuestionExplanation } from "@openexam/core/ai";
 import { confirmAttemptAnswerScore } from "@openexam/core/papers";
 import { collectQuestionForReview, submitPracticeAnswer } from "@openexam/core/practice";
 import { requireWebSession } from "@/lib/auth";
@@ -90,6 +90,21 @@ export async function generatePracticeAnswerAiExplanationAction(formData: FormDa
   }
 
   redirect(practiceRedirect({ attemptId, materialId }));
+}
+
+export async function generateQuestionExplanationAction(formData: FormData) {
+  const session = await requireWebSession();
+  const questionId = value(formData, "questionId");
+  const result = await generateQuestionExplanation(session.user.id, questionId);
+
+  revalidatePath("/practice" as Route);
+  revalidatePath("/ai/tasks" as Route);
+
+  if (!result.ok) {
+    redirect(`/practice?error=${encodeURIComponent(result.error)}` as Route);
+  }
+
+  redirect(`/practice?notice=${encodeURIComponent("题目解析已生成。")}` as Route);
 }
 
 function optionalText(value: string) {

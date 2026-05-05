@@ -58,9 +58,14 @@ export default async function KnowledgePage({ searchParams }: KnowledgePageProps
                       <h2 className="break-words text-xl font-black leading-8">{node.title}</h2>
                       {node.description ? <p className="mt-2 leading-7 text-[var(--muted)]">{node.description}</p> : null}
                     </div>
-                    <Link href={`/practice?knowledgeNodeId=${encodeURIComponent(node.id)}` as Route} className="pixel-button h-fit whitespace-nowrap px-4 py-2">
-                      练这个知识点
-                    </Link>
+                    <div className="flex flex-wrap gap-2">
+                      <Link href={`/practice?knowledgeNodeId=${encodeURIComponent(node.id)}` as Route} className="pixel-button h-fit whitespace-nowrap px-4 py-2">
+                        练这个知识点
+                      </Link>
+                      <Link href={`/knowledge/${encodeURIComponent(node.id)}` as Route} className="pixel-button h-fit whitespace-nowrap bg-white px-4 py-2">
+                        详情
+                      </Link>
+                    </div>
                   </div>
 
                   {node.examExpectation ? (

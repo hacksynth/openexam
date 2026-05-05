@@ -4,6 +4,7 @@ import { AppShell } from "@/components/app-shell";
 import { requireWebSession } from "@/lib/auth";
 import { formatGoalPath } from "@openexam/core/exam-core";
 import { getAttemptResult, getPracticeQuestion } from "@openexam/core/practice";
+import { AiExplainButton } from "@/components/ai-explain-button";
 import { collectPracticeQuestionAction, confirmPracticeAnswerScoreAction, generatePracticeAnswerAiExplanationAction, submitPracticeAnswerAction } from "./actions";
 
 type PracticePageProps = {
@@ -92,6 +93,12 @@ export default async function PracticePage({ searchParams }: PracticePageProps) 
             <div>
               <p className="text-xs font-bold uppercase text-[var(--muted)]">{formatGoalPath(state.goal)}</p>
               {state.material ? <p className="mt-1 text-sm font-black text-[var(--teal)]">资料练习：{state.material.title}</p> : null}
+              {state.question.caseMaterial ? (
+                <div className="mt-3 border-2 border-black bg-[var(--surface-subtle)] p-3">
+                  <p className="text-sm font-bold text-[var(--muted)]">案例材料</p>
+                  <p className="mt-1 whitespace-pre-line font-bold leading-7">{state.question.caseMaterial}</p>
+                </div>
+              ) : null}
               <h2 className="mt-2 text-2xl font-black">{state.question.stem}</h2>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -113,6 +120,7 @@ export default async function PracticePage({ searchParams }: PracticePageProps) 
                 <button className="pixel-button px-4 py-2" type="submit">
                   提交答案
                 </button>
+                <AiExplainButton questionId={state.question.id} />
                 <Link href={"/wrong-notes" as Route} className="pixel-button bg-white px-4 py-2">
                   查看错题本
                 </Link>
@@ -151,7 +159,10 @@ function AttemptResultCard({
         </p>
         {result.aiSuggestedScore !== null ? (
           <p className="mt-2 font-bold text-[var(--muted)]">
-            AI 建议分 {result.aiSuggestedScore} / {result.maxScore}，评分状态 {result.userConfirmed ? "已确认" : "待确认"}
+            AI 建议分 {result.aiSuggestedScore} / {result.maxScore}
+            <span className={`ml-2 inline-block status-chip px-2 py-1 text-xs ${result.userConfirmed ? "bg-[var(--teal)]" : "bg-[var(--warning)]"}`}>
+              {result.userConfirmed ? "已确认" : "待确认"}
+            </span>
           </p>
         ) : null}
       </div>
@@ -177,6 +188,28 @@ function AttemptResultCard({
           <button className="pixel-button self-end bg-white px-3 py-2 text-sm" type="submit">
             确认分数
           </button>
+        </form>
+      ) : null}
+      {result.aiSuggestedScore !== null && result.userConfirmed ? (
+        <form action={confirmPracticeAnswerScoreAction} className="grid gap-3 border-2 border-[var(--teal)] bg-[var(--teal)]/10 p-3">
+          <input name="attemptId" type="hidden" value={result.id} />
+          <input name="attemptAnswerId" type="hidden" value={result.attemptAnswerId} />
+          <input name="materialId" type="hidden" value={materialId ?? ""} />
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-sm font-bold text-[var(--muted)]">
+              已确认得分 <span className="text-lg font-black text-black">{result.score}</span>
+            </p>
+            <span className="status-chip bg-[var(--teal)] px-2 py-1 text-xs">已确认</span>
+          </div>
+          <div className="flex flex-wrap items-end gap-2">
+            <label className="grid gap-1 text-sm font-bold">
+              调整分
+              <input className="w-32 border-2 border-black bg-white px-2 py-1" defaultValue={String(result.score ?? result.aiSuggestedScore)} max={result.maxScore} min="0" name="score" step="0.5" type="number" />
+            </label>
+            <button className="pixel-button self-end bg-white px-3 py-2 text-sm" type="submit">
+              重新确认
+            </button>
+          </div>
         </form>
       ) : null}
       {result.aiExplanation ? (
@@ -228,7 +261,7 @@ function PracticeAnswerFields({
     return (
       <label className="grid gap-2 text-sm font-bold">
         作答内容
-        <textarea className="min-h-36 border-3 border-black bg-white p-3 text-base font-bold leading-7" name="answer" placeholder="输入作答内容" required />
+        <textarea className={`border-3 border-black bg-white p-3 text-base font-bold leading-7 ${question.kind === "case_analysis" ? "min-h-56" : "min-h-36"}`} name="answer" placeholder="输入作答内容" required />
       </label>
     );
   }

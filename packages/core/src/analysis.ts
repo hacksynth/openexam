@@ -10,7 +10,32 @@ export type AnalysisAnswerInput = {
   score: number;
   maxScore: number;
   userAnswer: string;
+  kind: string;
+  difficulty: number | null;
   knowledgeNodes: { id: string; title: string }[];
+};
+
+export type KindPerformance = {
+  kind: string;
+  label: string;
+  total: number;
+  correct: number;
+  wrong: number;
+  accuracy: number;
+  score: number;
+  maxScore: number;
+  scoreRate: number;
+};
+
+export type DifficultyPerformance = {
+  difficulty: number;
+  total: number;
+  correct: number;
+  wrong: number;
+  accuracy: number;
+  score: number;
+  maxScore: number;
+  scoreRate: number;
 };
 
 export type AnalysisWrongNoteInput = {
@@ -44,6 +69,8 @@ export type LearningAnalysisSummary = {
   pendingWrongNotes: number;
   masteredWrongNotes: number;
   weakKnowledgeNodes: KnowledgePerformance[];
+  byKind: KindPerformance[];
+  byDifficulty: DifficultyPerformance[];
 };
 
 export type LearningAnalysisState =
@@ -129,6 +156,8 @@ export async function getLearningAnalysis(userId: string, db: AnalysisDatabase =
       score: answer.score ?? 0,
       maxScore: answer.maxScore ?? 0,
       userAnswer: readSubmittedAnswer(answer.userAnswer),
+      kind: answer.question.kind,
+      difficulty: answer.question.difficulty ?? null,
       knowledgeNodes: answer.question.knowledgeBindings.map((binding) => ({
         id: binding.knowledgeNodeId,
         title: binding.knowledgeNode.title
@@ -205,6 +234,9 @@ export function summarizeLearningAnalysis(answers: AnalysisAnswerInput[], wrongN
     .sort((left, right) => right.pendingWrongNotes - left.pendingWrongNotes || left.accuracy - right.accuracy || right.wrong - left.wrong || left.title.localeCompare(right.title, "zh-CN"))
     .slice(0, 8);
 
+  const byKind = computeKindPerformance(answers);
+  const byDifficulty = computeDifficultyPerformance(answers);
+
   return {
     totalQuestions,
     correctCount,
@@ -216,7 +248,9 @@ export function summarizeLearningAnalysis(answers: AnalysisAnswerInput[], wrongN
     scoreRate: maxScore > 0 ? Math.round((totalScore / maxScore) * 100) : 0,
     pendingWrongNotes,
     masteredWrongNotes,
-    weakKnowledgeNodes
+    weakKnowledgeNodes,
+    byKind,
+    byDifficulty
   };
 }
 
@@ -259,4 +293,69 @@ function readSubmittedAnswer(value: Prisma.JsonValue | null | undefined) {
   }
 
   return "";
+}
+
+const kindLabelMap: Record<string, string> = {
+  single_choice: "单选",
+  multiple_choice: "多选",
+  true_false: "判断",
+  blank: "填空",
+  short_answer: "简答",
+  case_analysis: "案例"
+};
+
+function computeKindPerformance(answers: AnalysisAnswerInput[]): KindPerformance[] {
+  const groups = new Map<string, { label: string; total: number; correct: number; wrong: number; score: number; maxScore: number }>();
+
+  for (const answer of answers) {
+    const kind = answer.kind || "unknown";
+    const current = groups.get(kind) ?? { label: kindLabelMap[kind] ?? kind, total: 0, correct: 0, wrong: 0, score: 0, maxScore: 0 };
+    current.total += 1;
+    current.correct += answer.isCorrect ? 1 : 0;
+    current.wrong += answer.isCorrect ? 0 : 1;
+    current.score += answer.score;
+    current.maxScore += answer.maxScore;
+    groups.set(kind, current);
+  }
+
+  return [...groups.entries()].map(([kind, data]) => ({
+    kind,
+    label: data.label,
+    total: data.total,
+    correct: data.correct,
+    wrong: data.wrong,
+    accuracy: data.total > 0 ? Math.round((data.correct / data.total) * 100) : 0,
+    score: data.score,
+    maxScore: data.maxScore,
+    scoreRate: data.maxScore > 0 ? Math.round((data.score / data.maxScore) * 100) : 0
+  }));
+}
+
+function computeDifficultyPerformance(answers: AnalysisAnswerInput[]): DifficultyPerformance[] {
+  const groups = new Map<number, { total: number; correct: number; wrong: number; score: number; maxScore: number }>();
+
+  for (const answer of answers) {
+    const difficulty = answer.difficulty ?? 0;
+    if (difficulty === 0) continue;
+    const current = groups.get(difficulty) ?? { total: 0, correct: 0, wrong: 0, score: 0, maxScore: 0 };
+    current.total += 1;
+    current.correct += answer.isCorrect ? 1 : 0;
+    current.wrong += answer.isCorrect ? 0 : 1;
+    current.score += answer.score;
+    current.maxScore += answer.maxScore;
+    groups.set(difficulty, current);
+  }
+
+  return [...groups.entries()]
+    .map(([difficulty, data]) => ({
+      difficulty,
+      total: data.total,
+      correct: data.correct,
+      wrong: data.wrong,
+      accuracy: data.total > 0 ? Math.round((data.correct / data.total) * 100) : 0,
+      score: data.score,
+      maxScore: data.maxScore,
+      scoreRate: data.maxScore > 0 ? Math.round((data.score / data.maxScore) * 100) : 0
+    }))
+    .sort((a, b) => a.difficulty - b.difficulty);
 }

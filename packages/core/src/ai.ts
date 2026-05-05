@@ -755,6 +755,137 @@ export async function generateAttemptAnswerAiExplanation(
   }
 }
 
+export async function generateQuestionExplanation(
+  userId: string,
+  questionId: string,
+  options: {
+    db?: AiDatabase;
+    env?: NodeJS.ProcessEnv;
+    generateText?: AiTextGenerator;
+  } = {}
+): Promise<ActionResult<{ analysis: string; aiCallId: string }>> {
+  const db = options.db ?? prisma;
+  const env = options.env ?? process.env;
+  const preset = await resolveWrongNotePreset(db);
+  const question = await db.question.findFirst({
+    where: { id: questionId.trim() },
+    include: {
+      knowledgeBindings: {
+        include: { knowledgeNode: true }
+      },
+      versions: {
+        orderBy: { version: "desc" },
+        take: 1
+      }
+    }
+  });
+
+  if (!question) {
+    return { ok: false, error: "题目不存在。" };
+  }
+
+  const version = question.versions[0] ?? null;
+  const payload = version?.payload ?? question.payload;
+  const answerKey = version?.answerKey ?? question.answerKey;
+  const stem = version?.stem ?? question.stem;
+  const optionsList = readSingleChoiceOptions(payload) ?? [];
+  const correctAnswer = formatAnswerValue(readObjectiveAnswerKey(answerKey));
+  const knowledgeNodes = question.knowledgeBindings.map((b) => b.knowledgeNode.title);
+  const explanation = version?.explanation ?? question.explanation;
+
+  const promptText = [
+    "请为这道题生成一段独立学习解析，包含：",
+    "1. 题目考查点。",
+    "2. 推荐解题步骤。",
+    "3. 易错避坑提醒。",
+    "",
+    `题型：${question.kind}`,
+    `题干：${stem}`,
+    `选项：${optionsList.map((o) => `${o.key}. ${o.text}`).join("\n") || "无选项"}`,
+    `参考答案：${correctAnswer ?? "未配置"}`,
+    `官方解析：${explanation || "暂无"}`,
+    `知识点：${knowledgeNodes.join(" / ") || "未绑定知识点"}`,
+    "",
+    "输出 3-5 个短段落，不要使用 Markdown 表格。"
+  ].join("\n");
+
+  const aiCall = await db.aiCall.create({
+    data: {
+      userId,
+      provider: preset.provider,
+      model: preset.model,
+      taskType: wrongNoteTask,
+      promptVersion: questionPromptVersion,
+      inputContextSource: `question:${question.id}`,
+      tokenEstimate: estimateTokens(promptText),
+      status: "running"
+    }
+  });
+
+  try {
+    const fakeText = readFakeAiResponse(env);
+    let result: AiTextResponse;
+
+    if (fakeText) {
+      result = { text: fakeText, usage: { fake: true } };
+    } else {
+      const credential = options.generateText ? null : await resolveAiCredential(userId, preset.provider, db, env);
+
+      if (credential?.ok === false) {
+        const error = credential.error;
+        await markAiCallFailed(aiCall.id, error, db);
+        return { ok: false, error };
+      }
+
+      if (credential?.ok) {
+        const usageAllowed = await assertAiUsageAllowed(userId, credential.data.source, db, env);
+
+        if (!usageAllowed.ok) {
+          await markAiCallFailed(aiCall.id, usageAllowed.error, db);
+          return usageAllowed;
+        }
+
+        await db.aiCall.update({
+          where: { id: aiCall.id },
+          data: { credentialSource: credential.data.source }
+        });
+      }
+
+      result = await (options.generateText ?? generateAiText)({
+        provider: preset.provider,
+        apiKey: credential?.ok ? credential.data.apiKey : "test-key",
+        baseURL: credential?.ok ? credential.data.baseURL : normalizeBaseUrl(env[platformBaseUrlEnv[preset.provider]]),
+        model: preset.model,
+        instructions: "你是 OpenExam 的题目讲解助手。只根据给定题目上下文作答，不要编造题目以外的信息。用简体中文，直接解释解题思路和关键知识点。",
+        input: promptText,
+        maxOutputTokens: preset.maxOutputTokens,
+        temperature: preset.temperature
+      });
+    }
+
+    const analysis = result.text.trim();
+
+    if (!analysis) {
+      throw new Error("AI 没有返回解析内容。");
+    }
+
+    await db.aiCall.update({
+      where: { id: aiCall.id },
+      data: {
+        status: "succeeded",
+        usage: result.usage ?? undefined,
+        errorSummary: null
+      }
+    });
+
+    return { ok: true, data: { analysis, aiCallId: aiCall.id } };
+  } catch (error) {
+    const message = formatAiError(error);
+    await markAiCallFailed(aiCall.id, message, db);
+    return { ok: false, error: message };
+  }
+}
+
 export function buildWrongNotePrompt(context: WrongNoteAiContext) {
   const options = context.options.map((option) => `${option.key}. ${option.text}`).join("\n") || "无选项";
 

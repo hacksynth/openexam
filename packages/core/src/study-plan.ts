@@ -54,6 +54,18 @@ export async function getCurrentStudyPlan(userId: string, db: StudyPlanDatabase 
   return plan ? toStudyPlanView(plan) : null;
 }
 
+export async function getStudyPlan(userId: string, planId: string, db: StudyPlanDatabase = prisma) {
+  const plan = await db.studyPlan.findFirst({
+    where: {
+      id: planId,
+      userId
+    },
+    include: studyPlanInclude
+  });
+
+  return plan ? toStudyPlanView(plan) : null;
+}
+
 export async function listStudyPlanHistory(userId: string, db: StudyPlanDatabase = prisma) {
   const plans = await db.studyPlan.findMany({
     where: {
@@ -246,6 +258,10 @@ function toStudyPlanView(plan: StudyPlanRecord) {
       title: task.title,
       kind: task.kind,
       minutes: task.minutes,
+      knowledgeNodeIds: task.knowledgeNodeIds,
+      paperId: task.paperId ?? null,
+      materialId: task.materialId ?? null,
+      subjectId: task.subjectId ?? null,
       completedAt: task.completedAt,
       href: taskHrefByKind[task.kind as keyof typeof taskHrefByKind] ?? "/practice"
     }))

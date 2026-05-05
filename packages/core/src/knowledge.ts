@@ -7,6 +7,159 @@ type ActionResult<T = undefined> = T extends undefined
   ? { ok: true } | { ok: false; error: string }
   : { ok: true; data: T } | { ok: false; error: string };
 
+export type KnowledgeNodeDetail = {
+  id: string;
+  parentId: string | null;
+  code: string | null;
+  title: string;
+  description: string | null;
+  examExpectation: string | null;
+  subjectPath: string;
+  accuracy: number;
+  recentTotal: number;
+  recentCorrect: number;
+  pendingWrongNotes: number;
+  commonErrors: string[];
+  note: {
+    note: string;
+    aiExplanation: string | null;
+    updatedAt: Date;
+  } | null;
+  relatedQuestions: {
+    id: string;
+    kind: string;
+    stem: string;
+    difficulty: number | null;
+    recentAnswerCorrect: boolean | null;
+  }[];
+};
+
+export async function getKnowledgeNode(userId: string, nodeId: string, db = prisma): Promise<KnowledgeNodeDetail | null> {
+  const node = await db.knowledgeNode.findFirst({
+    where: { id: nodeId.trim() },
+    include: {
+      syllabus: {
+        include: {
+          subject: {
+            include: {
+              cycle: {
+                include: {
+                  track: {
+                    include: { program: true }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      questionBindings: {
+        include: {
+          question: true
+        },
+        take: 20
+      },
+      userNotes: {
+        where: { userId },
+        take: 1
+      }
+    }
+  });
+
+  if (!node) return null;
+
+  const questionIds = node.questionBindings.map((b) => b.questionId);
+  const recentAnswers = questionIds.length > 0
+    ? await db.attemptAnswer.findMany({
+        where: {
+          attempt: { userId },
+          questionId: { in: questionIds }
+        },
+        orderBy: { updatedAt: "desc" },
+        take: 100
+      })
+    : [];
+
+  const answerByQuestion = new Map<string, typeof recentAnswers[0]>();
+  for (const answer of recentAnswers) {
+    if (!answerByQuestion.has(answer.questionId)) {
+      answerByQuestion.set(answer.questionId, answer);
+    }
+  }
+
+  const stats = recentAnswers.reduce(
+    (acc, answer) => {
+      acc.total += 1;
+      acc.correct += answer.isCorrect ? 1 : 0;
+      return acc;
+    },
+    { total: 0, correct: 0 }
+  );
+
+  const pendingWrong = await db.wrongNote.count({
+    where: {
+      userId,
+      mastered: false,
+      questionId: { in: questionIds }
+    }
+  });
+
+  const wrongNoteQuestions = pendingWrong > 0
+    ? await db.wrongNote.findMany({
+        where: {
+          userId,
+          mastered: false,
+          questionId: { in: questionIds }
+        },
+        include: {
+          question: {
+            include: {
+              versions: {
+                orderBy: { version: "desc" },
+                take: 1
+              }
+            }
+          }
+        },
+        take: 3
+      })
+    : [];
+
+  const noteRecord = node.userNotes[0] ?? null;
+
+  return {
+    id: node.id,
+    parentId: node.parentId,
+    code: node.code,
+    title: node.title,
+    description: node.description,
+    examExpectation: node.examExpectation,
+    subjectPath: formatSubjectPath(node.syllabus.subject),
+    accuracy: stats.total > 0 ? Math.round((stats.correct / stats.total) * 100) : 0,
+    recentTotal: stats.total,
+    recentCorrect: stats.correct,
+    pendingWrongNotes: pendingWrong,
+    commonErrors: wrongNoteQuestions.map((wn) => wn.question.versions[0]?.stem ?? wn.question.stem),
+    note: noteRecord
+      ? {
+          note: noteRecord.note,
+          aiExplanation: noteRecord.aiExplanation,
+          updatedAt: noteRecord.updatedAt
+        }
+      : null,
+    relatedQuestions: node.questionBindings.map((binding) => {
+      const lastAnswer = answerByQuestion.get(binding.questionId);
+      return {
+        id: binding.question.id,
+        kind: binding.question.kind,
+        stem: binding.question.stem.length > 80 ? binding.question.stem.slice(0, 80) + "..." : binding.question.stem,
+        difficulty: binding.question.difficulty ?? null,
+        recentAnswerCorrect: lastAnswer ? (lastAnswer.isCorrect ?? null) : null
+      };
+    })
+  };
+}
+
 export type KnowledgeDashboardState =
   | { status: "no_goal" }
   | {

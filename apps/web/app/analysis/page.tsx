@@ -99,6 +99,42 @@ export default async function AnalysisPage({ searchParams }: AnalysisPageProps) 
                   )}
                 </section>
 
+                {state.summary.byKind.length > 0 ? (
+                  <section className="pixel-panel grid gap-4 p-5">
+                    <div>
+                      <p className="text-xs font-bold uppercase text-[var(--muted)]">By Type</p>
+                      <h2 className="mt-1 text-xl font-black">按题型统计</h2>
+                    </div>
+                    <div className="grid gap-3 md:grid-cols-2">
+                      {state.summary.byKind.map((item) => (
+                        <article key={item.kind} className="border-2 border-black bg-[var(--surface-subtle)] p-3">
+                          <h3 className="text-lg font-black">{item.label}</h3>
+                          <p className="mt-1 text-sm font-bold text-[var(--muted)]">
+                            正确 {item.correct} / {item.total}，正确率 {item.accuracy}%，得分率 {item.scoreRate}%
+                          </p>
+                        </article>
+                      ))}
+                    </div>
+                  </section>
+                ) : null}
+                {state.summary.byDifficulty.length > 0 ? (
+                  <section className="pixel-panel grid gap-4 p-5">
+                    <div>
+                      <p className="text-xs font-bold uppercase text-[var(--muted)]">By Difficulty</p>
+                      <h2 className="mt-1 text-xl font-black">按难度统计</h2>
+                    </div>
+                    <div className="grid gap-3 md:grid-cols-2">
+                      {state.summary.byDifficulty.map((item) => (
+                        <article key={item.difficulty} className="border-2 border-black bg-[var(--surface-subtle)] p-3">
+                          <h3 className="text-lg font-black">难度 {item.difficulty}</h3>
+                          <p className="mt-1 text-sm font-bold text-[var(--muted)]">
+                            正确 {item.correct} / {item.total}，正确率 {item.accuracy}%，得分率 {item.scoreRate}%
+                          </p>
+                        </article>
+                      ))}
+                    </div>
+                  </section>
+                ) : null}
                 <section className="pixel-panel grid gap-4 p-5">
                   <div>
                     <p className="text-xs font-bold uppercase text-[var(--muted)]">Recent</p>

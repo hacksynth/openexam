@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { Route } from "next";
 import { AppShell } from "@/components/app-shell";
+import { ConfirmForm } from "@/components/confirm-form";
 import { requireWebSession } from "@/lib/auth";
 import { getLearningAnalysis } from "@openexam/core/analysis";
 import { getCurrentStudyPlan, listStudyPlanHistory } from "@openexam/core/study-plan";
@@ -51,17 +52,9 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
                 </p>
               </div>
               <div className="flex flex-wrap gap-3">
-                <form action={generateStudyPlanAction}>
-                  <button className="pixel-button px-4 py-2" type="submit">
-                    {plan ? "重新生成计划" : "生成 14 天计划"}
-                  </button>
-                </form>
+                <ConfirmForm action={generateStudyPlanAction} buttonLabel={plan ? "重新生成计划" : "生成 14 天计划"} confirmMessage={plan ? "重新生成将归档当前计划并创建新计划，确定继续？" : "将基于当前学习数据生成 14 天计划，确定继续？"} buttonClassName="pixel-button px-4 py-2" />
                 {plan ? (
-                  <form action={abandonCurrentStudyPlanAction}>
-                    <button className="pixel-button bg-white px-4 py-2" type="submit">
-                      放弃当前计划
-                    </button>
-                  </form>
+                  <ConfirmForm action={abandonCurrentStudyPlanAction} buttonLabel="放弃当前计划" confirmMessage="放弃后计划将标记为已放弃且无法恢复，确定继续？" />
                 ) : null}
                 <Link href={"/analysis" as Route} className="pixel-button bg-white px-4 py-2">
                   查看分析
@@ -78,6 +71,12 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
                   <Metric label="生成日期" value={formatDate(plan.generatedAt)} />
                   <Metric label="计划状态" value={planStatusLabels[plan.status] ?? plan.status} />
                 </section>
+                <div className="h-4 w-full overflow-hidden border-2 border-black bg-[var(--surface-subtle)]">
+                  <div
+                    className="h-full bg-[var(--teal)] transition-all"
+                    style={{ width: `${plan.taskCount > 0 ? Math.round((plan.completedCount / plan.taskCount) * 100) : 0}%` }}
+                  />
+                </div>
 
                 <section className="grid gap-4">
                   {groupTasksByDay(plan.tasks).map((day) => (
@@ -96,6 +95,22 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
                                 {task.completedAt ? <span className="status-chip bg-[var(--teal)] px-2 py-1">已完成</span> : null}
                               </div>
                               <h3 className="break-words text-lg font-black">{task.title}</h3>
+                              {(task.knowledgeNodeIds.length > 0 || task.paperId || task.materialId) ? (
+                                <div className="mt-1 flex flex-wrap gap-1">
+                                  {task.knowledgeNodeIds.slice(0, 3).map((id) => (
+                                    <span key={id} className="status-chip bg-[var(--surface-subtle)] px-1.5 py-0.5 text-xs font-bold text-[var(--muted)]">
+                                      {id.length > 12 ? `${id.slice(0, 12)}...` : id}
+                                    </span>
+                                  ))}
+                                  {task.knowledgeNodeIds.length > 3 ? (
+                                    <span className="status-chip bg-[var(--surface-subtle)] px-1.5 py-0.5 text-xs font-bold text-[var(--muted)]">
+                                      +{task.knowledgeNodeIds.length - 3}
+                                    </span>
+                                  ) : null}
+                                  {task.paperId ? <span className="status-chip bg-[var(--surface-subtle)] px-1.5 py-0.5 text-xs font-bold text-[var(--muted)]">试卷</span> : null}
+                                  {task.materialId ? <span className="status-chip bg-[var(--surface-subtle)] px-1.5 py-0.5 text-xs font-bold text-[var(--muted)]">资料</span> : null}
+                                </div>
+                              ) : null}
                             </div>
                             <div className="flex flex-wrap items-start gap-2">
                               <Link href={task.href as Route} className="pixel-button bg-white px-3 py-2 text-sm">
@@ -126,7 +141,7 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
                 </div>
                 <div className="grid gap-3">
                   {planHistory.map((item) => (
-                    <article key={item.id} className="grid gap-3 border-2 border-black bg-white p-3 md:grid-cols-[1fr_auto]">
+                    <Link key={item.id} href={`/plan/${item.id}` as Route} className="grid gap-3 border-2 border-black bg-white p-3 transition hover:bg-[var(--surface-subtle)] md:grid-cols-[1fr_auto]">
                       <div>
                         <div className="mb-2 flex flex-wrap gap-2">
                           <span className="status-chip px-2 py-1">{planStatusLabels[item.status] ?? item.status}</span>
@@ -139,8 +154,10 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
                       </div>
                       {item.status === "active" ? (
                         <span className="status-chip self-start bg-[var(--teal)] px-2 py-1">当前</span>
-                      ) : null}
-                    </article>
+                      ) : (
+                        <span className="self-center text-sm font-bold text-[var(--muted)]">查看 &rarr;</span>
+                      )}
+                    </Link>
                   ))}
                 </div>
               </section>

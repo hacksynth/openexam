@@ -75,6 +75,14 @@ export const learnerRoutes: RouteItem[] = [
     status: "foundation"
   },
   {
+    id: "knowledge-detail",
+    href: "/knowledge/[nodeId]",
+    label: "知识点详情",
+    description: "单个知识点的描述、考纲要求、关联题目、常见错误和笔记。",
+    section: "learner",
+    status: "foundation"
+  },
+  {
     id: "materials",
     href: "/materials",
     label: "资料",
@@ -86,7 +94,15 @@ export const learnerRoutes: RouteItem[] = [
     id: "plan",
     href: "/plan",
     label: "学习计划",
-    description: "基于目标和练习数据生成的结构化 14 天计划。",
+    description: "基于目标和练习数据生成的结构化 14 天计划。支持历史查看和放弃。",
+    section: "learner",
+    status: "foundation"
+  },
+  {
+    id: "plan-detail",
+    href: "/plan/[planId]",
+    label: "计划详情",
+    description: "查看历史学习计划的任务明细。",
     section: "learner",
     status: "foundation"
   },

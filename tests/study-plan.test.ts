@@ -281,6 +281,8 @@ function analysisState() {
       scoreRate: 50,
       pendingWrongNotes: 3,
       masteredWrongNotes: 1,
+      byKind: [],
+      byDifficulty: [],
       weakKnowledgeNodes: [
         {
           id: "node_db",

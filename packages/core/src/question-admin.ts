@@ -5,6 +5,7 @@ import {
   type SourceType,
   type Visibility
 } from "@prisma/client";
+import Papa from "papaparse";
 import {
   evaluateQuestionPublication,
   type QuestionReviewStatus,
@@ -47,6 +48,7 @@ export type AdminQuestionInput = {
   optionC?: string | null;
   optionD?: string | null;
   answer?: string | null;
+  caseMaterial?: string | null;
   payloadJson?: string | null;
   answerKeyJson?: string | null;
   rubricJson?: string | null;
@@ -65,6 +67,10 @@ export type SingleChoiceQuestionInput = AdminQuestionInput;
 
 export type AdminQuestionImportInput = {
   jsonPayload: string;
+};
+
+export type AdminQuestionCsvImportInput = {
+  csvText: string;
 };
 
 export type SingleChoiceQuestionImportInput = AdminQuestionImportInput;
@@ -289,6 +295,102 @@ export async function importAdminQuestions(input: AdminQuestionImportInput): Pro
 
 export async function importSingleChoiceQuestions(input: SingleChoiceQuestionImportInput): Promise<ActionResult<{ count: number }>> {
   return importAdminQuestions(input);
+}
+
+export async function importAdminQuestionsFromCsv(input: AdminQuestionCsvImportInput): Promise<ActionResult<{ count: number }>> {
+  const csvText = input.csvText.trim();
+
+  if (!csvText) {
+    return { ok: false, error: "请上传包含题目数据的 CSV 文件。" };
+  }
+
+  const parseResult = Papa.parse<Record<string, string>>(csvText, {
+    header: true,
+    skipEmptyLines: true,
+    dynamicTyping: false
+  });
+
+  if (parseResult.errors.length > 0 && parseResult.data.length === 0) {
+    return { ok: false, error: `CSV 解析失败：${parseResult.errors[0].message}` };
+  }
+
+  const rows = parseResult.data.filter((row) => Object.values(row).some((value) => value.trim() !== ""));
+
+  if (rows.length === 0) {
+    return { ok: false, error: "CSV 文件无有效数据行。" };
+  }
+
+  if (rows.length > 100) {
+    return { ok: false, error: "单次最多导入 100 道题。" };
+  }
+
+  const questions: ParsedAdminQuestion[] = [];
+  const errors: string[] = [];
+
+  rows.forEach((row, index) => {
+    const result = parseAdminQuestionInputSync(toImportQuestionCsvRow(row));
+
+    if (!result.ok) {
+      errors.push(`第 ${index + 1} 题：${result.error}`);
+      return;
+    }
+
+    questions.push(result.data);
+  });
+
+  if (errors.length > 0) {
+    return { ok: false, error: errors.slice(0, 5).join("；") };
+  }
+
+  const knowledgeNodeIds = [...new Set(questions.map((question) => question.knowledgeNodeId))];
+  const knowledgeNodes = await prisma.knowledgeNode.findMany({
+    where: { id: { in: knowledgeNodeIds } },
+    select: { id: true }
+  });
+  const existingKnowledgeNodeIds = new Set(knowledgeNodes.map((node) => node.id));
+  const invalidKnowledgeIndex = questions.findIndex((question) => !existingKnowledgeNodeIds.has(question.knowledgeNodeId));
+
+  if (invalidKnowledgeIndex >= 0) {
+    return { ok: false, error: `第 ${invalidKnowledgeIndex + 1} 题：请选择有效的知识点。` };
+  }
+
+  try {
+    await prisma.$transaction(
+      questions.map((question) =>
+        prisma.question.create({
+          data: {
+            kind: question.kind,
+            currentVersion: 1,
+            ...questionData(question),
+            knowledgeBindings: {
+              create: {
+                knowledgeNodeId: question.knowledgeNodeId,
+                weight: 1,
+                isPrimary: true
+              }
+            },
+            versions: {
+              create: {
+                version: 1,
+                stem: question.stem,
+                payload: question.payload,
+                answerKey: question.answerKey,
+                rubric: question.rubric ?? Prisma.DbNull,
+                explanation: question.explanation,
+                sourceType: question.sourceType,
+                visibility: question.visibility,
+                reviewStatus: question.reviewStatus
+              }
+            }
+          }
+        })
+      )
+    );
+
+    return { ok: true, data: { count: questions.length } };
+  } catch (error) {
+    return databaseError(error, "CSV 题目导入失败。");
+  }
 }
 
 export async function updateAdminQuestion(id: string, input: AdminQuestionInput): Promise<ActionResult> {
@@ -652,6 +754,7 @@ function parseAdminQuestionInputSync(input: AdminQuestionInput) {
     optionC: input.optionC,
     optionD: input.optionD,
     answer: input.answer,
+    caseMaterial: input.caseMaterial,
     payloadOverride: payloadOverride.data,
     answerKeyOverride: answerKeyOverride.data,
     rubricOverride: rubricOverride.data
@@ -689,6 +792,7 @@ function buildQuestionStorage(input: {
   optionC?: string | null;
   optionD?: string | null;
   answer?: string | null;
+  caseMaterial?: string | null;
   payloadOverride: Prisma.InputJsonValue | null;
   answerKeyOverride: Prisma.InputJsonValue | null;
   rubricOverride: Prisma.InputJsonValue | null;
@@ -779,6 +883,19 @@ function buildQuestionStorage(input: {
     };
   }
 
+  if (input.kind === QuestionKind.case_analysis) {
+    const caseMaterial = input.caseMaterial ?? null;
+
+    return {
+      ok: true,
+      data: {
+        payload: input.payloadOverride ?? (caseMaterial ? { caseMaterial } : {}),
+        answerKey: input.answerKeyOverride ?? (answer ? { value: answer } : {}),
+        rubric: input.rubricOverride ?? (answer ? { referenceAnswer: answer } : null)
+      }
+    };
+  }
+
   return {
     ok: true,
     data: {
@@ -786,6 +903,27 @@ function buildQuestionStorage(input: {
       answerKey: input.answerKeyOverride ?? (answer ? { value: answer } : {}),
       rubric: input.rubricOverride ?? (answer ? { referenceAnswer: answer } : null)
     }
+  };
+}
+
+function toImportQuestionCsvRow(row: Record<string, string>): AdminQuestionInput {
+  return {
+    kind: row.kind ?? "",
+    stem: row.stem ?? "",
+    optionA: row.optionA ?? "",
+    optionB: row.optionB ?? "",
+    optionC: row.optionC ?? "",
+    optionD: row.optionD ?? "",
+    answer: row.answer ?? "",
+    explanation: row.explanation ?? "",
+    difficulty: row.difficulty ?? "",
+    knowledgeNodeId: row.knowledgeNodeId ?? "",
+    visibility: row.visibility ?? "",
+    sourceType: row.sourceType ?? "",
+    sourceTitle: row.sourceTitle ?? "",
+    sourceUrl: row.sourceUrl ?? "",
+    sourceLicense: row.sourceLicense ?? "",
+    reviewStatus: row.reviewStatus ?? ""
   };
 }
 

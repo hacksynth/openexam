@@ -3,7 +3,7 @@ import type { Route } from "next";
 import { AppShell } from "@/components/app-shell";
 import { requireWebSession } from "@/lib/auth";
 import { getAttemptReport } from "@openexam/core/papers";
-import { collectAttemptQuestionAction, confirmAttemptAnswerScoreAction, generateAttemptAnswerAiExplanationAction } from "../../papers/actions";
+import { collectAttemptQuestionAction, confirmAllAttemptAnswerScoresAction, confirmAttemptAnswerScoreAction, generateAttemptAnswerAiExplanationAction } from "../../papers/actions";
 
 type AttemptReportPageProps = {
   params: Promise<{ attemptId: string }>;
@@ -82,11 +82,19 @@ export default async function AttemptReportPage({ params, searchParams }: Attemp
               </div>
             </section>
 
+            {report.answers.some((a) => a.aiSuggestedScore !== null && !a.userConfirmed) ? (
+              <form action={confirmAllAttemptAnswerScoresAction} className="flex justify-end">
+                <input name="attemptId" type="hidden" value={report.id} />
+                <button className="pixel-button bg-[var(--teal)] px-4 py-2 text-sm text-white" type="submit">
+                  确认全部 AI 建议分
+                </button>
+              </form>
+            ) : null}
             <section className="grid gap-4">
               {report.answers.map((answer) => (
                 <article key={answer.id} className="pixel-panel grid gap-4 p-5">
                   <div className="flex flex-wrap gap-2">
-                    <span className={`status-chip px-2 py-1 ${answer.isCorrect === true ? "bg-[var(--teal)]" : answer.isCorrect === false ? "bg-[var(--danger)] text-white" : ""}`}>
+                    <span className={`status-chip px-2 py-1 ${answer.isCorrect === true ? "bg-[var(--teal)]" : answer.isCorrect === false ? "bg-[var(--danger)] text-white" : "bg-[var(--warning)] text-black"}`}>
                       {answer.isCorrect === null ? "待确认" : answer.isCorrect ? "正确" : "错误"}
                     </span>
                     <span className="status-chip px-2 py-1">
@@ -110,21 +118,43 @@ export default async function AttemptReportPage({ params, searchParams }: Attemp
                     你的答案 {answer.userAnswer || "未作答"} / 正确答案 {answer.correctAnswer ?? "未配置"}
                   </p>
                   {answer.aiSuggestedScore !== null || answer.kind === "short_answer" || answer.kind === "case_analysis" ? (
-                    <div className="grid gap-3 border-2 border-black bg-[var(--surface-subtle)] p-3">
-                      <p className="text-sm font-bold text-[var(--muted)]">
-                        AI 建议分 {answer.aiSuggestedScore ?? "暂无"} / 用户确认 {answer.userConfirmed ? "已确认" : "未确认"}
-                      </p>
-                      <form action={confirmAttemptAnswerScoreAction} className="flex flex-wrap items-end gap-2">
-                        <input name="attemptId" type="hidden" value={report.id} />
-                        <input name="attemptAnswerId" type="hidden" value={answer.id} />
-                        <label className="grid gap-1 text-sm font-bold">
-                          确认分
-                          <input className="w-28 border-2 border-black bg-white px-2 py-1" defaultValue={String(answer.aiSuggestedScore ?? answer.score ?? "")} max={answer.maxScore} min="0" name="score" step="0.5" type="number" />
-                        </label>
-                        <button className="pixel-button bg-white px-3 py-2 text-sm" type="submit">
-                          确认分数
-                        </button>
-                      </form>
+                    <div className={`grid gap-3 border-2 border-black p-3 ${answer.userConfirmed ? "bg-[var(--teal)]/10 border-[var(--teal)]" : "bg-[var(--warning)]/10 border-[var(--warning)]"}`}>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-sm font-bold text-[var(--muted)]">
+                          AI 建议分 {answer.aiSuggestedScore ?? "暂无"}
+                        </p>
+                        <span className={`status-chip px-2 py-1 text-xs ${answer.userConfirmed ? "bg-[var(--teal)]" : "bg-[var(--warning)]"}`}>
+                          {answer.userConfirmed ? "已确认" : "待确认"}
+                        </span>
+                      </div>
+                      {answer.userConfirmed ? (
+                        <div className="flex flex-wrap items-end gap-2">
+                          <span className="text-lg font-black">{answer.score}</span>
+                          <form action={confirmAttemptAnswerScoreAction} className="contents">
+                            <input name="attemptId" type="hidden" value={report.id} />
+                            <input name="attemptAnswerId" type="hidden" value={answer.id} />
+                            <label className="grid gap-1 text-sm font-bold">
+                              调整分
+                              <input className="w-28 border-2 border-black bg-white px-2 py-1" defaultValue={String(answer.score ?? "")} max={answer.maxScore} min="0" name="score" step="0.5" type="number" />
+                            </label>
+                            <button className="pixel-button bg-white px-3 py-2 text-sm" type="submit">
+                              重新确认
+                            </button>
+                          </form>
+                        </div>
+                      ) : (
+                        <form action={confirmAttemptAnswerScoreAction} className="flex flex-wrap items-end gap-2">
+                          <input name="attemptId" type="hidden" value={report.id} />
+                          <input name="attemptAnswerId" type="hidden" value={answer.id} />
+                          <label className="grid gap-1 text-sm font-bold">
+                            确认分
+                            <input className="w-28 border-2 border-black bg-white px-2 py-1" defaultValue={String(answer.aiSuggestedScore ?? answer.score ?? "")} max={answer.maxScore} min="0" name="score" step="0.5" type="number" />
+                          </label>
+                          <button className="pixel-button bg-white px-3 py-2 text-sm" type="submit">
+                            确认分数
+                          </button>
+                        </form>
+                      )}
                     </div>
                   ) : null}
                   {answer.explanation ? <p className="border-2 border-black bg-white p-3 leading-7">{answer.explanation}</p> : null}

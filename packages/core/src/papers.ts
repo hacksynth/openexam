@@ -4,6 +4,7 @@ import { gradeObjectiveAnswer, type ObjectiveQuestionKind } from "./grading";
 import { type AiTextGenerator } from "./ai";
 import {
   formatAnswerValue,
+  readCaseMaterial,
   readSingleChoiceOptions,
   syncWrongNoteForObjectiveAnswer,
   type SingleChoiceOption
@@ -75,6 +76,7 @@ export type PaperQuestionForAttempt = {
   stem: string;
   options: SingleChoiceOption[];
   knowledgeNodes: string[];
+  caseMaterial?: string | null;
 };
 
 export type PaperAttemptState =
@@ -453,6 +455,7 @@ export async function submitPaperAttempt(
           questionId: answer.questionId,
           attemptAnswerId: attemptAnswer.id,
           isCorrect: answer.isCorrect,
+          masteredOnCorrect: true,
           reviewedAt: now
         });
       }
@@ -756,7 +759,71 @@ export async function confirmAttemptAnswerScore(
       questionId: answer.questionId,
       attemptAnswerId: answer.id,
       isCorrect: score.value >= maxScore && maxScore > 0,
+      masteredOnCorrect: true,
       reviewedAt: new Date()
+    });
+  });
+
+  return { ok: true };
+}
+
+export async function confirmAllAttemptAnswerScores(userId: string, attemptId: string): Promise<ActionResult> {
+  const answers = await prisma.attemptAnswer.findMany({
+    where: {
+      attemptId,
+      attempt: { userId },
+      userConfirmed: false,
+      aiSuggestedScore: { not: null }
+    },
+    include: { attempt: true }
+  });
+
+  if (answers.length === 0) {
+    return { ok: false, error: "没有待确认的主观题。" };
+  }
+
+  await prisma.$transaction(async (tx) => {
+    for (const answer of answers) {
+      const maxScore = answer.maxScore ?? 0;
+      const score = answer.aiSuggestedScore ?? 0;
+
+      await tx.attemptAnswer.update({
+        where: { id: answer.id },
+        data: {
+          score,
+          isCorrect: score >= maxScore && maxScore > 0,
+          userConfirmed: true
+        }
+      });
+
+      await syncWrongNoteForObjectiveAnswer(tx, {
+        userId,
+        questionId: answer.questionId,
+        attemptAnswerId: answer.id,
+        isCorrect: score >= maxScore && maxScore > 0,
+        masteredOnCorrect: true,
+        reviewedAt: new Date()
+      });
+    }
+
+    const allAnswers = await tx.attemptAnswer.findMany({
+      where: { attemptId },
+      select: { score: true, maxScore: true }
+    });
+    const totalScore = allAnswers.reduce((sum, item) => sum + (item.score ?? 0), 0);
+    const totalMaxScore = allAnswers.reduce((sum, item) => sum + (item.maxScore ?? 0), 0);
+
+    const remaining = await tx.attemptAnswer.findFirst({
+      where: { attemptId, userConfirmed: false, aiSuggestedScore: { not: null } }
+    });
+
+    await tx.attempt.update({
+      where: { id: attemptId },
+      data: {
+        status: remaining ? "submitted" : "graded",
+        totalScore,
+        maxScore: totalMaxScore
+      }
     });
   });
 
@@ -917,7 +984,8 @@ function toPaperQuestionForAttempt(paperQuestion: PaperQuestionRecord): PaperQue
     score: paperQuestion.score,
     stem: currentVersion?.stem ?? question.stem,
     options: options ?? [],
-    knowledgeNodes: question.knowledgeBindings.map((binding) => binding.knowledgeNode.title)
+    knowledgeNodes: question.knowledgeBindings.map((binding) => binding.knowledgeNode.title),
+    caseMaterial: readCaseMaterial(currentVersion?.payload ?? question.payload)
   };
 }
 
