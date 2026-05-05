@@ -1,10 +1,14 @@
 import Link from "next/link";
 import type { Route } from "next";
 import { AppShell } from "@/components/app-shell";
+import { requireAdminSession } from "@/lib/auth";
 import { getAdminDashboardMetrics } from "@openexam/core/admin-dashboard";
 import { adminRoutes } from "@openexam/core/routes";
 
+export const dynamic = "force-dynamic";
+
 export default async function AdminPage() {
+  await requireAdminSession();
   const metrics = await getAdminDashboardMetrics();
   const metricItems = [
     { label: "待审核题", value: metrics.pendingQuestions },
