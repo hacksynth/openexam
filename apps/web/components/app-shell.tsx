@@ -15,6 +15,7 @@ export async function AppShell({ section, title, eyebrow, children }: AppShellPr
   const session = await requireWebSession();
   const accountLabel = session.user.name?.trim() || session.user.email;
   const accountTitle = session.user.name ? `${session.user.name} <${session.user.email}>` : session.user.email;
+  const navigationRoutes = learnerRoutes.filter((route) => !route.href.includes("["));
 
   return (
     <main className="mx-auto grid min-h-screen w-full max-w-7xl gap-6 px-4 py-5 md:grid-cols-[240px_1fr] md:px-6">
@@ -24,7 +25,7 @@ export async function AppShell({ section, title, eyebrow, children }: AppShellPr
           <span className="block text-xl font-black">学习端</span>
         </Link>
         <nav aria-label={`${sectionLabels[section]}导航`} className="grid gap-2">
-          {learnerRoutes.map((route) => (
+          {navigationRoutes.map((route) => (
             <Link
               key={route.id}
               href={route.href as Route}
