@@ -446,23 +446,25 @@ async function waitForExtractedMaterialQuestion(page: Page) {
 
 async function practiceConfirmedMaterialQuestion(page: Page) {
   await page.goto(`${webUrl}/materials`);
-  await expect(page.locator("article").filter({ hasText: materialTitle }).first()).toContainText("练习资料题");
+  const materialCard = page.locator("article").filter({ hasText: materialTitle }).first();
 
-  const importedQuestion = await prisma.question.findFirst({
-    where: {
-      stem: importedQuestionStem
-    },
-    select: {
-      id: true
-    }
-  });
-  const skipQuery = importedQuestion ? `?skip=${encodeURIComponent(importedQuestion.id)}` : "";
+  await expect(materialCard).toContainText("练习资料题");
+  await materialCard.getByRole("link", { name: "练习资料题" }).click();
+  await expect(page).toHaveURL(/\/practice\?material=/);
+  const materialId = new URL(page.url()).searchParams.get("material");
 
-  await page.goto(`${webUrl}/practice${skipQuery}`);
+  if (!materialId) {
+    throw new Error("Material practice URL did not include material id.");
+  }
+
   await expect(page.locator("body")).toContainText(extractedQuestionStem);
   await page.locator('input[name="answer"][value="A"]').check();
   await page.getByRole("button", { name: "提交答案" }).click();
   await expect(page.getByText("回答正确")).toBeVisible();
+  await expect(page).toHaveURL(new RegExp(`/practice\\?material=${materialId}&attempt=`));
+  await page.getByRole("link", { name: "再练一题" }).click();
+  await expect(page).toHaveURL(new RegExp(`/practice\\?material=${materialId}&skip=`));
+  await expect(page.locator("body")).toContainText(extractedQuestionStem);
 }
 
 async function reviewAnalysisAndGeneratePlan(page: Page) {

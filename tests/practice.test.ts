@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { PrimaryGoal } from "@openexam/core/exam-core";
 import {
+  buildMaterialPracticeQuestionWhere,
   buildPracticeQuestionWhere,
+  getMaterialPracticeScope,
   gradeSingleChoiceQuestion,
+  questionBelongsToMaterialPracticeScope,
   readSingleChoiceAnswerKey,
   readSingleChoiceOptions,
   summarizeWrongNotes
@@ -109,6 +112,137 @@ describe("practice question access", () => {
     });
 
     expect(JSON.stringify(buildPracticeQuestionWhere("user_1", goal()))).not.toContain("user_2");
+  });
+
+  it("adds a confirmed material question id filter on top of the normal practice scope", () => {
+    expect(buildMaterialPracticeQuestionWhere("user_1", goal({ subjectId: "subject_1" }), ["q_1", "q_2", "q_1"])).toMatchObject({
+      AND: [
+        {
+          kind: "single_choice",
+          reviewStatus: "approved",
+          deletedAt: null,
+          AND: [
+            {
+              OR: [
+                { visibility: "public" },
+                { ownerId: "user_1", visibility: "private" }
+              ]
+            },
+            {
+              OR: [
+                {
+                  knowledgeBindings: {
+                    some: {
+                      knowledgeNode: {
+                        syllabus: {
+                          subjectId: "subject_1"
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  paperLinks: {
+                    some: {
+                      paper: {
+                        subjectId: "subject_1"
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          id: {
+            in: ["q_1", "q_2"]
+          }
+        }
+      ]
+    });
+  });
+
+  it("loads only confirmed question ids from the current user's material", async () => {
+    const calls: { method: string; args?: unknown }[] = [];
+    const db = {
+      material: {
+        findFirst: async (args: unknown) => {
+          calls.push({ method: "material.findFirst", args });
+          return {
+            id: "material_1",
+            title: "事务资料",
+            candidates: [{ confirmedQuestionId: "q_1" }, { confirmedQuestionId: " q_2 " }, { confirmedQuestionId: "q_1" }]
+          };
+        }
+      }
+    };
+
+    await expect(getMaterialPracticeScope("user_1", " material_1 ", db as never)).resolves.toEqual({
+      material: {
+        id: "material_1",
+        title: "事务资料"
+      },
+      questionIds: ["q_1", "q_2"]
+    });
+    expect(calls[0]).toEqual({
+      method: "material.findFirst",
+      args: {
+        where: {
+          id: "material_1",
+          ownerId: "user_1"
+        },
+        select: {
+          id: true,
+          title: true,
+          candidates: {
+            where: {
+              status: "confirmed",
+              confirmedQuestionId: {
+                not: null
+              }
+            },
+            select: {
+              confirmedQuestionId: true
+            },
+            orderBy: [{ updatedAt: "asc" }]
+          }
+        }
+      }
+    });
+  });
+
+  it("checks material ownership and confirmed candidate linkage before material submissions", async () => {
+    const calls: { method: string; args?: unknown }[] = [];
+    const db = {
+      materialQuestionCandidate: {
+        findFirst: async (args: unknown) => {
+          calls.push({ method: "materialQuestionCandidate.findFirst", args });
+          const where = args && typeof args === "object" && "where" in args ? args.where : null;
+
+          return where && typeof where === "object" && "confirmedQuestionId" in where && where.confirmedQuestionId === "q_1" ? { id: "candidate_1" } : null;
+        }
+      }
+    };
+
+    await expect(questionBelongsToMaterialPracticeScope("user_1", " material_1 ", " q_1 ", db as never)).resolves.toBe(true);
+    await expect(questionBelongsToMaterialPracticeScope("user_1", "material_1", "q_other", db as never)).resolves.toBe(false);
+    expect(calls[0]).toEqual({
+      method: "materialQuestionCandidate.findFirst",
+      args: {
+        where: {
+          materialId: "material_1",
+          status: "confirmed",
+          confirmedQuestionId: "q_1",
+          material: {
+            ownerId: "user_1"
+          }
+        },
+        select: {
+          id: true
+        }
+      }
+    });
   });
 });
 

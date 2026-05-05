@@ -7,7 +7,7 @@ import { getAttemptResult, getPracticeQuestion } from "@openexam/core/practice";
 import { submitSingleChoiceAnswerAction } from "./actions";
 
 type PracticePageProps = {
-  searchParams: Promise<{ attempt?: string; error?: string; retry?: string; skip?: string }>;
+  searchParams: Promise<{ attempt?: string; error?: string; material?: string; retry?: string; skip?: string }>;
 };
 
 const sourceTypeLabels: Record<string, string> = {
@@ -22,9 +22,11 @@ const sourceTypeLabels: Record<string, string> = {
 export default async function PracticePage({ searchParams }: PracticePageProps) {
   const session = await requireWebSession();
   const params = await searchParams;
+  const materialId = params.retry ? null : params.material;
   const [state, attemptResult] = await Promise.all([
     getPracticeQuestion(session.user.id, {
       excludeQuestionId: params.skip,
+      materialId,
       retryQuestionId: params.retry
     }),
     params.attempt ? getAttemptResult(session.user.id, params.attempt) : Promise.resolve(null)
@@ -34,7 +36,7 @@ export default async function PracticePage({ searchParams }: PracticePageProps) 
     <AppShell section="learner" eyebrow="练习闭环" title="练习">
       <section className="grid gap-5">
         {params.error ? <Feedback error={params.error} /> : null}
-        {attemptResult ? <AttemptResultCard result={attemptResult} /> : null}
+        {attemptResult ? <AttemptResultCard materialId={state.status !== "no_goal" ? state.material?.id ?? materialId : materialId} result={attemptResult} /> : null}
 
         {state.status === "no_goal" ? (
           <EmptyState title="尚未选择考试目标" description="先设置主目标，练习题会按目标范围筛选。" actionHref="/goals" actionLabel="选择目标" />
@@ -45,18 +47,41 @@ export default async function PracticePage({ searchParams }: PracticePageProps) 
         ) : null}
 
         {state.status === "empty" ? (
-          <EmptyState
-            title="当前目标暂无可练习单选题"
-            description={`${formatGoalPath(state.goal)} 还没有公开且审核通过的单选题。`}
-            actionHref="/goals"
-            actionLabel="调整目标"
-          />
+          state.emptyReason === "material_unavailable" ? (
+            <EmptyState
+              title="资料练习暂无题目"
+              description={
+                state.material
+                  ? `${state.material.title} 还没有已确认入库的单选题。`
+                  : "该资料不存在、不可访问，或还没有已确认入库的单选题。"
+              }
+              actionHref="/materials"
+              actionLabel="返回资料"
+            />
+          ) : state.emptyReason === "material_goal_mismatch" ? (
+            <EmptyState
+              title="当前目标暂无该资料可练习题"
+              description={`${state.material?.title ?? "该资料"} 的确认题不在 ${formatGoalPath(state.goal)} 范围内。`}
+              actionHref="/goals"
+              actionLabel="调整目标"
+              secondaryHref="/materials"
+              secondaryLabel="返回资料"
+            />
+          ) : (
+            <EmptyState
+              title="当前目标暂无可练习单选题"
+              description={`${formatGoalPath(state.goal)} 还没有公开且审核通过的单选题。`}
+              actionHref="/goals"
+              actionLabel="调整目标"
+            />
+          )
         ) : null}
 
         {state.status === "ready" ? (
           <section className="pixel-panel grid gap-5 p-5">
             <div>
               <p className="text-xs font-bold uppercase text-[var(--muted)]">{formatGoalPath(state.goal)}</p>
+              {state.material ? <p className="mt-1 text-sm font-black text-[var(--teal)]">资料练习：{state.material.title}</p> : null}
               <h2 className="mt-2 text-2xl font-black">{state.question.stem}</h2>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -70,6 +95,7 @@ export default async function PracticePage({ searchParams }: PracticePageProps) 
             </div>
             <form action={submitSingleChoiceAnswerAction} className="grid gap-4">
               <input name="questionId" type="hidden" value={state.question.id} />
+              <input name="materialId" type="hidden" value={state.material?.id ?? ""} />
               <input name="retry" type="hidden" value={params.retry ? "true" : "false"} />
               <fieldset className="grid gap-3">
                 <legend className="sr-only">选择答案</legend>
@@ -100,10 +126,16 @@ export default async function PracticePage({ searchParams }: PracticePageProps) 
 }
 
 function AttemptResultCard({
+  materialId,
   result
 }: {
+  materialId?: string | null;
   result: NonNullable<Awaited<ReturnType<typeof getAttemptResult>>>;
 }) {
+  const nextHref = materialId
+    ? (`/practice?material=${encodeURIComponent(materialId)}&skip=${encodeURIComponent(result.question.id)}` as Route)
+    : (`/practice?skip=${encodeURIComponent(result.question.id)}` as Route);
+
   return (
     <section className="pixel-panel grid gap-4 p-5">
       <div>
@@ -126,7 +158,7 @@ function AttemptResultCard({
         </div>
       ) : null}
       <div className="flex flex-wrap gap-3">
-        <Link href={`/practice?skip=${result.question.id}` as Route} className="pixel-button px-4 py-2">
+        <Link href={nextHref} className="pixel-button px-4 py-2">
           再练一题
         </Link>
         <Link href={"/attempts" as Route} className="pixel-button bg-white px-4 py-2">
@@ -144,12 +176,16 @@ function EmptyState({
   title,
   description,
   actionHref,
-  actionLabel
+  actionLabel,
+  secondaryHref,
+  secondaryLabel
 }: {
   title: string;
   description: string;
   actionHref: Route;
   actionLabel: string;
+  secondaryHref?: Route;
+  secondaryLabel?: string;
 }) {
   return (
     <section className="pixel-panel grid gap-4 p-5">
@@ -158,9 +194,16 @@ function EmptyState({
         <h2 className="mt-2 text-2xl font-black">{title}</h2>
         <p className="mt-1 font-bold text-[var(--muted)]">{description}</p>
       </div>
-      <Link href={actionHref} className="pixel-button w-fit px-4 py-2">
-        {actionLabel}
-      </Link>
+      <div className="flex flex-wrap gap-3">
+        <Link href={actionHref} className="pixel-button w-fit px-4 py-2">
+          {actionLabel}
+        </Link>
+        {secondaryHref && secondaryLabel ? (
+          <Link href={secondaryHref} className="pixel-button w-fit bg-white px-4 py-2">
+            {secondaryLabel}
+          </Link>
+        ) : null}
+      </div>
     </section>
   );
 }

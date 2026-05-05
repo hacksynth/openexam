@@ -78,7 +78,7 @@ export default async function MaterialsPage({ searchParams }: MaterialsPageProps
                 <p className="text-sm font-bold text-[var(--muted)]">{material.mimeType}</p>
                 {material.latestJob?.error ? <p className="border-2 border-black bg-red-50 p-3 text-sm font-bold text-red-700">{material.latestJob.error}</p> : null}
                 {material.candidateCount > material.pendingCandidateCount ? (
-                  <Link href={"/practice" as Route} className="pixel-button w-fit bg-white px-4 py-2">
+                  <Link href={`/practice?material=${encodeURIComponent(material.id)}` as Route} className="pixel-button w-fit bg-white px-4 py-2">
                     练习资料题
                   </Link>
                 ) : material.candidateCount > 0 ? (

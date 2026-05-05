@@ -24,6 +24,7 @@ const practiceQuestionInclude = {
 } satisfies Prisma.QuestionInclude;
 
 type PracticeQuestionRecord = Prisma.QuestionGetPayload<{ include: typeof practiceQuestionInclude }>;
+type PracticeDatabase = typeof prisma;
 
 export type SingleChoiceOption = {
   key: string;
@@ -39,11 +40,18 @@ export type PracticeQuestion = {
   sourceType: string;
 };
 
+export type PracticeMaterialContext = {
+  id: string;
+  title: string;
+};
+
+export type MaterialPracticeEmptyReason = "general" | "material_unavailable" | "material_goal_mismatch";
+
 export type PracticeQuestionState =
-  | { status: "no_goal" }
-  | { status: "error"; goal: NonNullable<PrimaryGoal>; error: string }
-  | { status: "empty"; goal: NonNullable<PrimaryGoal> }
-  | { status: "ready"; goal: NonNullable<PrimaryGoal>; question: PracticeQuestion };
+  | { status: "no_goal"; material?: PracticeMaterialContext }
+  | { status: "error"; goal: NonNullable<PrimaryGoal>; error: string; material?: PracticeMaterialContext }
+  | { status: "empty"; goal: NonNullable<PrimaryGoal>; material?: PracticeMaterialContext; emptyReason?: MaterialPracticeEmptyReason }
+  | { status: "ready"; goal: NonNullable<PrimaryGoal>; question: PracticeQuestion; material?: PracticeMaterialContext };
 
 export type PracticeSubmitResult =
   | { ok: true; attemptId: string; isCorrect: boolean }
@@ -52,6 +60,12 @@ export type PracticeSubmitResult =
 export type PracticeQuestionOptions = {
   excludeQuestionId?: string | null;
   retryQuestionId?: string | null;
+  materialId?: string | null;
+};
+
+export type MaterialPracticeScope = {
+  material: PracticeMaterialContext;
+  questionIds: string[];
 };
 
 export function readSingleChoiceOptions(payload: Prisma.JsonValue | null | undefined) {
@@ -128,23 +142,48 @@ export async function getPracticeQuestion(userId: string, options: PracticeQuest
     return { status: "ready", goal, question: normalizedRetry };
   }
 
-  const question = await selectPracticeQuestion(userId, goal, options.excludeQuestionId);
+  const materialScope = await getMaterialPracticeScope(userId, options.materialId);
+
+  if (options.materialId && (!materialScope || materialScope.questionIds.length === 0)) {
+    return {
+      status: "empty",
+      goal,
+      material: materialScope?.material,
+      emptyReason: "material_unavailable"
+    };
+  }
+
+  const question = await selectPracticeQuestion(userId, goal, options.excludeQuestionId, materialScope?.questionIds);
 
   if (!question) {
-    return { status: "empty", goal };
+    return {
+      status: "empty",
+      goal,
+      material: materialScope?.material,
+      emptyReason: materialScope ? "material_goal_mismatch" : "general"
+    };
   }
 
   const normalized = toPracticeQuestion(question);
 
   if (!normalized) {
-    return { status: "empty", goal };
+    return {
+      status: "empty",
+      goal,
+      material: materialScope?.material,
+      emptyReason: materialScope ? "material_goal_mismatch" : "general"
+    };
   }
 
-  return { status: "ready", goal, question: normalized };
+  return { status: "ready", goal, question: normalized, material: materialScope?.material };
 }
 
-export async function submitSingleChoiceAnswer(userId: string, input: { questionId: string; answer: string; retry?: boolean }): Promise<PracticeSubmitResult> {
+export async function submitSingleChoiceAnswer(
+  userId: string,
+  input: { questionId: string; answer: string; retry?: boolean; materialId?: string | null }
+): Promise<PracticeSubmitResult> {
   const answer = input.answer.trim();
+  const questionId = input.questionId.trim();
 
   if (!answer) {
     return { ok: false, error: "请选择一个答案。" };
@@ -156,9 +195,13 @@ export async function submitSingleChoiceAnswer(userId: string, input: { question
     return { ok: false, error: "请先设置考试目标。" };
   }
 
+  if (input.materialId && !(await questionBelongsToMaterialPracticeScope(userId, input.materialId, questionId))) {
+    return { ok: false, error: "题目不存在或不在当前资料范围内。" };
+  }
+
   const question = await prisma.question.findFirst({
     where: {
-      id: input.questionId,
+      id: questionId,
       ...buildPracticeQuestionWhere(userId, goal)
     },
     include: practiceQuestionInclude
@@ -516,10 +559,83 @@ async function getRetryQuestion(userId: string, goal: NonNullable<PrimaryGoal>, 
   });
 }
 
-async function selectPracticeQuestion(userId: string, goal: NonNullable<PrimaryGoal>, excludeQuestionId?: string | null) {
-  const baseWhere = buildPracticeQuestionWhere(userId, goal);
-  const attemptedIds = await listAttemptedQuestionIds(userId, goal);
-  const recentIds = await listRecentQuestionIds(userId, goal);
+export async function getMaterialPracticeScope(userId: string, materialId: string | null | undefined, db: PracticeDatabase = prisma): Promise<MaterialPracticeScope | null> {
+  const id = materialId?.trim();
+
+  if (!id) {
+    return null;
+  }
+
+  const material = await db.material.findFirst({
+    where: {
+      id,
+      ownerId: userId
+    },
+    select: {
+      id: true,
+      title: true,
+      candidates: {
+        where: {
+          status: "confirmed",
+          confirmedQuestionId: {
+            not: null
+          }
+        },
+        select: {
+          confirmedQuestionId: true
+        },
+        orderBy: [{ updatedAt: "asc" }]
+      }
+    }
+  });
+
+  if (!material) {
+    return null;
+  }
+
+  return {
+    material: {
+      id: material.id,
+      title: material.title
+    },
+    questionIds: [...new Set(compactIds(material.candidates.map((candidate) => candidate.confirmedQuestionId)))]
+  };
+}
+
+export async function questionBelongsToMaterialPracticeScope(
+  userId: string,
+  materialId: string | null | undefined,
+  questionId: string | null | undefined,
+  db: PracticeDatabase = prisma
+) {
+  const normalizedMaterialId = materialId?.trim();
+  const normalizedQuestionId = questionId?.trim();
+
+  if (!normalizedMaterialId || !normalizedQuestionId) {
+    return false;
+  }
+
+  const candidate = await db.materialQuestionCandidate.findFirst({
+    where: {
+      materialId: normalizedMaterialId,
+      status: "confirmed",
+      confirmedQuestionId: normalizedQuestionId,
+      material: {
+        ownerId: userId
+      }
+    },
+    select: {
+      id: true
+    }
+  });
+
+  return Boolean(candidate);
+}
+
+async function selectPracticeQuestion(userId: string, goal: NonNullable<PrimaryGoal>, excludeQuestionId?: string | null, materialQuestionIds?: string[]) {
+  const baseWhere = materialQuestionIds ? buildMaterialPracticeQuestionWhere(userId, goal, materialQuestionIds) : buildPracticeQuestionWhere(userId, goal);
+  const attemptedIds = await listAttemptedQuestionIds(userId, goal, baseWhere);
+  const recentIds = await listRecentQuestionIds(userId, goal, baseWhere);
   const excludedCurrent = compactIds([excludeQuestionId]);
 
   return (
@@ -530,14 +646,14 @@ async function selectPracticeQuestion(userId: string, goal: NonNullable<PrimaryG
   );
 }
 
-async function listAttemptedQuestionIds(userId: string, goal: NonNullable<PrimaryGoal>) {
+async function listAttemptedQuestionIds(userId: string, goal: NonNullable<PrimaryGoal>, questionWhere = buildPracticeQuestionWhere(userId, goal)) {
   const answers = await prisma.attemptAnswer.findMany({
     where: {
       attempt: {
         userId,
         goalId: goal.id
       },
-      question: buildPracticeQuestionWhere(userId, goal)
+      question: questionWhere
     },
     distinct: ["questionId"],
     select: {
@@ -548,14 +664,14 @@ async function listAttemptedQuestionIds(userId: string, goal: NonNullable<Primar
   return answers.map((answer) => answer.questionId);
 }
 
-async function listRecentQuestionIds(userId: string, goal: NonNullable<PrimaryGoal>) {
+async function listRecentQuestionIds(userId: string, goal: NonNullable<PrimaryGoal>, questionWhere = buildPracticeQuestionWhere(userId, goal)) {
   const answers = await prisma.attemptAnswer.findMany({
     where: {
       attempt: {
         userId,
         goalId: goal.id
       },
-      question: buildPracticeQuestionWhere(userId, goal)
+      question: questionWhere
     },
     orderBy: [{ createdAt: "desc" }],
     take: 10,
@@ -630,6 +746,19 @@ export function buildPracticeQuestionWhere(userId: string, goal: NonNullable<Pri
       },
       {
         OR: buildGoalScopeWhere(goal)
+      }
+    ]
+  };
+}
+
+export function buildMaterialPracticeQuestionWhere(userId: string, goal: NonNullable<PrimaryGoal>, questionIds: string[]): Prisma.QuestionWhereInput {
+  return {
+    AND: [
+      buildPracticeQuestionWhere(userId, goal),
+      {
+        id: {
+          in: [...new Set(compactIds(questionIds))]
+        }
       }
     ]
   };
