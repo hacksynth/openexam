@@ -273,8 +273,17 @@ function createWrongNoteImageDb(calls: { method: string; args?: unknown }[]) {
     wrongNote: {
       findFirst: async () => wrongNoteRecord()
     },
-    aiProviderPreset: {
-      findFirst: async () => null
+    aiProviderPresetTask: {
+      findUnique: async () => ({
+        preset: {
+          provider: "openai",
+          model: "gpt-image-1.5",
+          capabilities: ["image"],
+          enabled: true,
+          maxTokens: null,
+          temperature: null
+        }
+      })
     },
     aiCall: {
       create: async (args: unknown) => {

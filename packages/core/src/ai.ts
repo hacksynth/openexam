@@ -9,6 +9,7 @@ type ActionResult<T = undefined> = T extends undefined
   : { ok: true; data: T } | { ok: false; error: string };
 
 type AiDatabase = typeof prisma;
+type AiPresetTaskBindingDatabase = Pick<AiDatabase, "aiProviderPresetTask">;
 
 export type AiTextRequest = {
   provider?: AiProvider;
@@ -19,6 +20,8 @@ export type AiTextRequest = {
   input: string | AiTextInputPart[];
   maxOutputTokens?: number | null;
   temperature?: number | null;
+  timeoutMs?: number | null;
+  maxRetries?: number | null;
 };
 
 export type AiTextInputPart =
@@ -81,10 +84,19 @@ export type AiProviderPresetInput = {
   model: string;
   label: string;
   capabilities?: string | string[] | null;
+  defaultForTasks?: string | string[] | null;
+  /** @deprecated Use defaultForTasks. Kept for old callers during migration. */
   defaultForTask?: string | null;
   temperature?: string | number | null;
   maxTokens?: string | number | null;
   enabled?: string | boolean | null;
+};
+
+export type ResolvedAiTaskPreset = {
+  provider: AiProvider;
+  model: string;
+  maxOutputTokens: number;
+  temperature: number | null;
 };
 
 const openAiProvider = AiProvider.openai;
@@ -92,9 +104,6 @@ const supportedAiProviders = [AiProvider.openai, AiProvider.anthropic, AiProvide
 const wrongNoteTask = AiTaskType.explain_question;
 const wrongNotePromptVersion = "wrong-note-explain-v1";
 const questionPromptVersion = "question-explain-v1";
-const defaultOpenAiModel = "gpt-5.5";
-const defaultAnthropicModel = "claude-sonnet-4-5-20250929";
-const defaultGeminiModel = "gemini-2.5-flash";
 const defaultMaxOutputTokens = 700;
 const defaultDailyAiCallLimit = 50;
 const defaultDailyPlatformTokenLimit = 100000;
@@ -123,6 +132,17 @@ const taskCapabilityRequirements: Record<AiTaskType, string> = {
   [AiTaskType.generate_wrong_note_image_prompt]: "text",
   [AiTaskType.generate_image]: "image",
   [AiTaskType.chat_with_context]: "text"
+};
+const taskLabels: Record<AiTaskType, string> = {
+  [AiTaskType.explain_question]: "题目解析",
+  [AiTaskType.grade_subjective]: "主观题评分",
+  [AiTaskType.generate_plan]: "学习计划",
+  [AiTaskType.extract_questions]: "题目抽取",
+  [AiTaskType.generate_practice_questions]: "AI 练习题生成",
+  [AiTaskType.diagnose_learning]: "学习诊断",
+  [AiTaskType.generate_wrong_note_image_prompt]: "错题卡提示词",
+  [AiTaskType.generate_image]: "图片生成",
+  [AiTaskType.chat_with_context]: "上下文对话"
 };
 
 export function providerKeyHint(apiKey: string) {
@@ -433,6 +453,13 @@ export async function getAiUsageOverview(db: AiDatabase = prisma) {
 
 export async function listAdminAiProviderPresets(db: AiDatabase = prisma) {
   return db.aiProviderPreset.findMany({
+    include: {
+      tasks: {
+        orderBy: {
+          taskType: "asc"
+        }
+      }
+    },
     orderBy: [{ provider: "asc" }, { enabled: "desc" }, { updatedAt: "desc" }]
   });
 }
@@ -445,28 +472,73 @@ export async function upsertAiProviderPreset(input: AiProviderPresetInput, db: A
   }
 
   try {
-    if (input.id?.trim()) {
-      await db.aiProviderPreset.update({
-        where: { id: input.id.trim() },
-        data: parsed.data
-      });
-    } else {
-      await db.aiProviderPreset.upsert({
-        where: {
-          provider_model: {
-            provider: parsed.data.provider,
-            model: parsed.data.model
-          }
-        },
-        update: parsed.data,
-        create: parsed.data
-      });
-    }
+    await db.$transaction(async (tx) => {
+      const preset = input.id?.trim()
+        ? await tx.aiProviderPreset.update({
+            where: { id: input.id.trim() },
+            data: parsed.data.preset
+          })
+        : await tx.aiProviderPreset.upsert({
+            where: {
+              provider_model: {
+                provider: parsed.data.preset.provider,
+                model: parsed.data.preset.model
+              }
+            },
+            update: parsed.data.preset,
+            create: parsed.data.preset
+          });
+
+      await replacePresetTaskBindings(tx, preset.id, parsed.data.defaultForTasks);
+    });
 
     return { ok: true };
   } catch (error) {
     return { ok: false, error: formatPresetWriteError(error) };
   }
+}
+
+export async function resolveTaskAiPreset(
+  db: AiDatabase,
+  taskType: AiTaskType,
+  requiredCapability: string = taskCapabilityRequirements[taskType],
+  options: {
+    defaultMaxOutputTokens?: number;
+    minMaxOutputTokens?: number;
+    defaultTemperature?: number | null;
+  } = {}
+): Promise<ActionResult<ResolvedAiTaskPreset>> {
+  const route = await db.aiProviderPresetTask.findUnique({
+    where: { taskType },
+    include: {
+      preset: true
+    }
+  });
+  const label = taskLabels[taskType] ?? taskType;
+
+  if (!route) {
+    return { ok: false, error: `${label} 未配置默认模型预设。` };
+  }
+
+  if (!route.preset.enabled) {
+    return { ok: false, error: `${label} 绑定的默认模型预设已停用。` };
+  }
+
+  if (!route.preset.capabilities.includes(requiredCapability)) {
+    return { ok: false, error: `${label} 绑定的默认模型缺少 ${requiredCapability} capability。` };
+  }
+
+  const configuredMaxTokens = route.preset.maxTokens ?? options.defaultMaxOutputTokens ?? defaultMaxOutputTokens;
+
+  return {
+    ok: true,
+    data: {
+      provider: route.preset.provider,
+      model: route.preset.model,
+      maxOutputTokens: options.minMaxOutputTokens ? Math.max(configuredMaxTokens, options.minMaxOutputTokens) : configuredMaxTokens,
+      temperature: route.preset.temperature ?? options.defaultTemperature ?? null
+    }
+  };
 }
 
 export async function setAiProviderPresetEnabled(id: string, enabled: boolean, db: AiDatabase = prisma): Promise<ActionResult> {
@@ -546,7 +618,13 @@ export async function generateWrongNoteAiAnalysis(
 ): Promise<ActionResult<{ analysis: string; aiCallId: string }>> {
   const db = options.db ?? prisma;
   const env = options.env ?? process.env;
-  const preset = await resolveWrongNotePreset(db);
+  const presetResult = await resolveWrongNotePreset(db);
+
+  if (!presetResult.ok) {
+    return presetResult;
+  }
+
+  const preset = presetResult.data;
   const wrongNote = await loadWrongNoteContext(userId, wrongNoteId, db);
 
   if (!wrongNote) {
@@ -656,7 +734,13 @@ export async function generateAttemptAnswerAiExplanation(
 ): Promise<ActionResult<{ analysis: string; aiCallId: string }>> {
   const db = options.db ?? prisma;
   const env = options.env ?? process.env;
-  const preset = await resolveWrongNotePreset(db);
+  const presetResult = await resolveWrongNotePreset(db);
+
+  if (!presetResult.ok) {
+    return presetResult;
+  }
+
+  const preset = presetResult.data;
   const answer = await loadAttemptAnswerContext(userId, attemptAnswerId, db);
 
   if (!answer) {
@@ -766,7 +850,13 @@ export async function generateQuestionExplanation(
 ): Promise<ActionResult<{ analysis: string; aiCallId: string }>> {
   const db = options.db ?? prisma;
   const env = options.env ?? process.env;
-  const preset = await resolveWrongNotePreset(db);
+  const presetResult = await resolveWrongNotePreset(db);
+
+  if (!presetResult.ok) {
+    return presetResult;
+  }
+
+  const preset = presetResult.data;
   const question = await db.question.findFirst({
     where: { id: questionId.trim() },
     include: {
@@ -953,9 +1043,19 @@ export async function generateAiText(request: AiTextRequest): Promise<AiTextResp
 }
 
 export async function generateOpenAiText(request: AiTextRequest): Promise<AiTextResponse> {
+  if (shouldUseOpenAiChatCompletions(request)) {
+    return generateOpenAiChatCompletionsText(request);
+  }
+
+  return generateOpenAiResponsesText(request);
+}
+
+async function generateOpenAiResponsesText(request: AiTextRequest): Promise<AiTextResponse> {
   const client = new OpenAI({
     apiKey: request.apiKey,
-    baseURL: request.baseURL || undefined
+    baseURL: request.baseURL || undefined,
+    timeout: request.timeoutMs ?? undefined,
+    maxRetries: request.maxRetries ?? undefined
   });
   const response = await client.responses.create({
     model: request.model,
@@ -971,8 +1071,37 @@ export async function generateOpenAiText(request: AiTextRequest): Promise<AiText
   };
 }
 
+async function generateOpenAiChatCompletionsText(request: AiTextRequest): Promise<AiTextResponse> {
+  const client = new OpenAI({
+    apiKey: request.apiKey,
+    baseURL: request.baseURL || undefined,
+    timeout: request.timeoutMs ?? undefined,
+    maxRetries: request.maxRetries ?? undefined
+  });
+  const response = await client.chat.completions.create({
+    model: request.model,
+    messages: [
+      {
+        role: "system",
+        content: request.instructions
+      },
+      {
+        role: "user",
+        content: toOpenAiChatContent(request.input)
+      }
+    ],
+    max_tokens: request.maxOutputTokens ?? defaultMaxOutputTokens,
+    temperature: request.temperature ?? undefined
+  });
+
+  return {
+    text: response.choices[0]?.message?.content ?? "",
+    usage: toJsonValue(response.usage)
+  };
+}
+
 export async function generateAnthropicText(request: AiTextRequest): Promise<AiTextResponse> {
-  const response = await fetch(`${request.baseURL || "https://api.anthropic.com"}/v1/messages`, {
+  const { response, body } = await fetchJsonWithAiRequestOptions(`${request.baseURL || "https://api.anthropic.com"}/v1/messages`, request, {
     method: "POST",
     headers: {
       "content-type": "application/json",
@@ -992,7 +1121,6 @@ export async function generateAnthropicText(request: AiTextRequest): Promise<AiT
       ]
     })
   });
-  const body = await response.json().catch(() => null);
 
   if (!response.ok) {
     throw new Error(readProviderError(body, `Anthropic 请求失败 (${response.status})。`));
@@ -1000,14 +1128,14 @@ export async function generateAnthropicText(request: AiTextRequest): Promise<AiT
 
   return {
     text: readAnthropicText(body),
-    usage: toJsonValue(body?.usage)
+    usage: toJsonValue((body as { usage?: unknown } | null)?.usage)
   };
 }
 
 export async function generateGeminiText(request: AiTextRequest): Promise<AiTextResponse> {
   const baseUrl = (request.baseURL || "https://generativelanguage.googleapis.com/v1beta").replace(/\/$/, "");
   const model = request.model.startsWith("models/") ? request.model : `models/${request.model}`;
-  const response = await fetch(`${baseUrl}/${model}:generateContent`, {
+  const { response, body } = await fetchJsonWithAiRequestOptions(`${baseUrl}/${model}:generateContent`, request, {
     method: "POST",
     headers: {
       "content-type": "application/json",
@@ -1029,7 +1157,6 @@ export async function generateGeminiText(request: AiTextRequest): Promise<AiText
       }
     })
   });
-  const body = await response.json().catch(() => null);
 
   if (!response.ok) {
     throw new Error(readProviderError(body, `Gemini 请求失败 (${response.status})。`));
@@ -1037,28 +1164,14 @@ export async function generateGeminiText(request: AiTextRequest): Promise<AiText
 
   return {
     text: readGeminiText(body),
-    usage: toJsonValue(body?.usageMetadata)
+    usage: toJsonValue((body as { usageMetadata?: unknown } | null)?.usageMetadata)
   };
 }
 
 async function resolveWrongNotePreset(db: AiDatabase) {
-  const preset = await db.aiProviderPreset.findFirst({
-    where: {
-      defaultForTask: wrongNoteTask,
-      enabled: true,
-      capabilities: {
-        has: taskCapabilityRequirements[wrongNoteTask]
-      }
-    },
-    orderBy: [{ updatedAt: "desc" }]
+  return resolveTaskAiPreset(db, wrongNoteTask, taskCapabilityRequirements[wrongNoteTask], {
+    defaultMaxOutputTokens
   });
-
-  return {
-    provider: preset?.provider ?? openAiProvider,
-    model: preset?.model ?? defaultOpenAiModel,
-    maxOutputTokens: preset?.maxTokens ?? defaultMaxOutputTokens,
-    temperature: preset?.temperature ?? null
-  };
 }
 
 async function loadWrongNoteContext(userId: string, wrongNoteId: string, db: AiDatabase) {
@@ -1259,20 +1372,54 @@ function defaultCapabilities(provider: AiProvider | null) {
   return ["text", "json"];
 }
 
+async function replacePresetTaskBindings(db: AiPresetTaskBindingDatabase, presetId: string, defaultForTasks: AiTaskType[]) {
+  if (defaultForTasks.length === 0) {
+    await db.aiProviderPresetTask.deleteMany({
+      where: { presetId }
+    });
+    return;
+  }
+
+  await db.aiProviderPresetTask.deleteMany({
+    where: {
+      presetId,
+      taskType: {
+        notIn: defaultForTasks
+      }
+    }
+  });
+  await db.aiProviderPresetTask.deleteMany({
+    where: {
+      taskType: {
+        in: defaultForTasks
+      }
+    }
+  });
+  await db.aiProviderPresetTask.createMany({
+    data: defaultForTasks.map((taskType) => ({
+      presetId,
+      taskType
+    })),
+    skipDuplicates: true
+  });
+}
+
 function parseAiProviderPresetInput(input: AiProviderPresetInput): ActionResult<{
-  provider: AiProvider;
-  model: string;
-  label: string;
-  capabilities: string[];
-  defaultForTask: AiTaskType | null;
-  temperature: number | null;
-  maxTokens: number | null;
-  enabled: boolean;
+  preset: {
+    provider: AiProvider;
+    model: string;
+    label: string;
+    capabilities: string[];
+    temperature: number | null;
+    maxTokens: number | null;
+    enabled: boolean;
+  };
+  defaultForTasks: AiTaskType[];
 }> {
   const provider = parseAiProvider(input.provider);
   const model = input.model.trim();
   const label = input.label.trim() || model;
-  const defaultForTask = parseAiTaskType(input.defaultForTask);
+  const defaultForTasks = parseAiTaskTypes(input.defaultForTasks ?? input.defaultForTask);
   const temperature = parseOptionalNumber(input.temperature, "temperature");
   const maxTokens = parseOptionalInteger(input.maxTokens, "max tokens");
   const capabilities = parseCapabilities(input.capabilities, provider);
@@ -1287,6 +1434,10 @@ function parseAiProviderPresetInput(input: AiProviderPresetInput): ActionResult<
 
   if (!capabilities.ok) {
     return capabilities;
+  }
+
+  if (!defaultForTasks.ok) {
+    return defaultForTasks;
   }
 
   if (!temperature.ok) {
@@ -1305,33 +1456,40 @@ function parseAiProviderPresetInput(input: AiProviderPresetInput): ActionResult<
     return { ok: false, error: "max tokens 必须大于 0。" };
   }
 
-  if (defaultForTask && !capabilities.data.includes(taskCapabilityRequirements[defaultForTask])) {
-    return { ok: false, error: "模型 capability 不满足默认任务路由要求。" };
+  const unsupportedTask = defaultForTasks.data.find((taskType) => !capabilities.data.includes(taskCapabilityRequirements[taskType]));
+
+  if (unsupportedTask) {
+    return { ok: false, error: `模型 capability 不满足 ${taskLabels[unsupportedTask]} 默认任务路由要求。` };
   }
 
   return {
     ok: true,
     data: {
-      provider,
-      model,
-      label,
-      capabilities: capabilities.data,
-      defaultForTask,
-      temperature: temperature.data,
-      maxTokens: maxTokens.data,
-      enabled: parseBoolean(input.enabled)
+      preset: {
+        provider,
+        model,
+        label,
+        capabilities: capabilities.data,
+        temperature: temperature.data,
+        maxTokens: maxTokens.data,
+        enabled: parseBoolean(input.enabled)
+      },
+      defaultForTasks: defaultForTasks.data
     }
   };
 }
 
-function parseAiTaskType(value: string | null | undefined) {
-  const normalized = value?.trim();
+function parseAiTaskTypes(value: string | string[] | null | undefined): ActionResult<AiTaskType[]> {
+  const rawValues = Array.isArray(value) ? value : String(value ?? "").split(",");
+  const defaultForTasks = [...new Set(rawValues.map((item) => item.trim()).filter(Boolean))];
 
-  if (!normalized) {
-    return null;
+  for (const taskType of defaultForTasks) {
+    if (!Object.values(AiTaskType).includes(taskType as AiTaskType)) {
+      return { ok: false, error: "默认任务参数无效。" };
+    }
   }
 
-  return Object.values(AiTaskType).includes(normalized as AiTaskType) ? (normalized as AiTaskType) : null;
+  return { ok: true, data: defaultForTasks as AiTaskType[] };
 }
 
 function parseOptionalNumber(value: string | number | null | undefined, label: string): ActionResult<number | null> {
@@ -1414,6 +1572,73 @@ function redactSecret(value: string) {
   return value.replace(/sk-[A-Za-z0-9_-]+/g, "sk-***");
 }
 
+async function fetchJsonWithAiRequestOptions(url: string, request: AiTextRequest, init: RequestInit): Promise<{ response: Response; body: unknown }> {
+  const maxAttempts = Math.max(1, Math.floor(request.maxRetries ?? 0) + 1);
+  let lastError: unknown = null;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    const controller = new AbortController();
+    const timeoutMs = request.timeoutMs && request.timeoutMs > 0 ? Math.floor(request.timeoutMs) : null;
+    let timedOut = false;
+    const timeout = timeoutMs
+      ? setTimeout(() => {
+          timedOut = true;
+          controller.abort();
+        }, timeoutMs)
+      : null;
+
+    try {
+      const response = await fetch(url, {
+        ...init,
+        signal: controller.signal
+      });
+      const body = await response.json().catch(() => null);
+
+      if (response.ok || !shouldRetryAiHttpStatus(response.status) || attempt === maxAttempts - 1) {
+        return { response, body };
+      }
+
+      lastError = new Error(readProviderError(body, `AI 请求失败 (${response.status})。`));
+    } catch (error) {
+      lastError = timedOut ? new Error("Request timed out.") : error;
+
+      if (attempt === maxAttempts - 1) {
+        throw lastError;
+      }
+    } finally {
+      if (timeout) {
+        clearTimeout(timeout);
+      }
+    }
+
+    await sleepAiRetry(calculateAiRetryDelayMs(attempt));
+  }
+
+  throw lastError instanceof Error ? lastError : new Error("AI 请求失败。");
+}
+
+function shouldRetryAiHttpStatus(status: number) {
+  return status === 408 || status === 409 || status === 429 || status >= 500;
+}
+
+function calculateAiRetryDelayMs(attempt: number) {
+  return Math.min(2000, 500 * 2 ** attempt);
+}
+
+function sleepAiRetry(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function shouldUseOpenAiChatCompletions(request: AiTextRequest) {
+  const baseUrl = request.baseURL?.trim().toLowerCase();
+
+  if (!baseUrl) {
+    return false;
+  }
+
+  return !baseUrl.includes("api.openai.com");
+}
+
 function toOpenAiResponseInput(input: AiTextRequest["input"]) {
   if (typeof input === "string") {
     return input;
@@ -1445,6 +1670,35 @@ function toOpenAiResponseInput(input: AiTextRequest["input"]) {
       })
     }
   ] as never;
+}
+
+function toOpenAiChatContent(input: AiTextRequest["input"]) {
+  if (typeof input === "string") {
+    return input;
+  }
+
+  return input.map((part) => {
+    if (part.type === "text") {
+      return {
+        type: "text",
+        text: part.text
+      };
+    }
+
+    if (part.type === "image") {
+      return {
+        type: "image_url",
+        image_url: {
+          url: `data:${part.mimeType};base64,${part.dataBase64}`
+        }
+      };
+    }
+
+    return {
+      type: "text",
+      text: `随附文档 ${part.filename || "document"} (${part.mimeType}) 需要支持 Responses API 的模型读取；当前 Chat Completions 兼容接口不会内联文档二进制。`
+    };
+  }) as never;
 }
 
 function toAnthropicContent(input: AiTextRequest["input"]) {

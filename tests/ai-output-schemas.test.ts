@@ -27,6 +27,14 @@ describe("AI output schemas", () => {
       }).success
     ).toBe(true);
     expect(materialQuestionExtractionSchema.safeParse({ questions: [] }).success).toBe(false);
+    expect(
+      materialQuestionExtractionSchema.safeParse({
+        questions: Array.from({ length: 25 }, (_, index) => ({
+          stem: `题干 ${index + 1}`,
+          answer: "参考答案"
+        }))
+      }).success
+    ).toBe(true);
   });
 
   it("rejects subjective grading scores above max score", () => {

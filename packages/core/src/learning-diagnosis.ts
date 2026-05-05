@@ -1,5 +1,5 @@
-import { AiProvider, AiTaskType, Prisma } from "@prisma/client";
-import { assertAiUsageAllowed, generateAiText, resolveAiCredential, type AiTextGenerator } from "./ai";
+import { AiTaskType, Prisma } from "@prisma/client";
+import { assertAiUsageAllowed, generateAiText, resolveAiCredential, resolveTaskAiPreset, type AiTextGenerator } from "./ai";
 import { parseLearningDiagnosisOutput } from "./ai-output-schemas";
 import { getLearningAnalysis, toStudyPlanSourceStats, type LearningAnalysisState } from "./analysis";
 import { prisma } from "./prisma";
@@ -11,8 +11,6 @@ type ActionResult<T = undefined> = T extends undefined
 type DiagnosisDatabase = typeof prisma;
 
 const promptVersion = "learning-diagnosis-v1";
-const defaultProvider = AiProvider.openai;
-const defaultModel = "gpt-5.5";
 const defaultMaxOutputTokens = 1200;
 
 export async function getLatestLearningDiagnosis(userId: string, db: DiagnosisDatabase = prisma) {
@@ -60,7 +58,13 @@ export async function generateLearningDiagnosis(
     return { ok: false, error: "请先设置考试目标。" };
   }
 
-  const preset = await resolveDiagnosisPreset(db);
+  const presetResult = await resolveDiagnosisPreset(db);
+
+  if (!presetResult.ok) {
+    return presetResult;
+  }
+
+  const preset = presetResult.data;
   const prompt = buildLearningDiagnosisPrompt(analysis);
   const credential = options.generateText ? null : await resolveAiCredential(userId, preset.provider, db, env);
 
@@ -179,21 +183,7 @@ export function buildLearningDiagnosisPrompt(analysis: Extract<LearningAnalysisS
 }
 
 async function resolveDiagnosisPreset(db: DiagnosisDatabase) {
-  const preset = await db.aiProviderPreset.findFirst({
-    where: {
-      defaultForTask: AiTaskType.diagnose_learning,
-      enabled: true,
-      capabilities: {
-        has: "json"
-      }
-    },
-    orderBy: [{ updatedAt: "desc" }]
+  return resolveTaskAiPreset(db, AiTaskType.diagnose_learning, "json", {
+    defaultMaxOutputTokens
   });
-
-  return {
-    provider: preset?.provider ?? defaultProvider,
-    model: preset?.model ?? defaultModel,
-    maxOutputTokens: preset?.maxTokens ?? defaultMaxOutputTokens,
-    temperature: preset?.temperature ?? null
-  };
 }

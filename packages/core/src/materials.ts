@@ -4,7 +4,7 @@ import path from "node:path";
 import { Prisma, QuestionKind, ReviewStatus, SourceType, Visibility } from "@prisma/client";
 import mammoth from "mammoth";
 import { PDFParse } from "pdf-parse";
-import { materialQuestionExtractionSchema } from "./ai-output-schemas";
+import { extractJsonObject, materialQuestionExtractionSchema } from "./ai-output-schemas";
 import type { AiTextInputPart } from "./ai";
 import { readEnv } from "./env";
 import { prisma } from "./prisma";
@@ -345,7 +345,8 @@ export async function confirmMaterialQuestionCandidate(candidateId: string, db: 
 
 export async function readMaterialText(
   materialId: string,
-  db: MaterialDatabase = prisma
+  db: MaterialDatabase = prisma,
+  source: NodeJS.ProcessEnv = process.env
 ): Promise<ActionResult<{ text: string; extractionMethod: string; ocrInput?: AiTextInputPart; material: NonNullable<Awaited<ReturnType<typeof findMaterialForProcessing>>> }>> {
   const material = await findMaterialForProcessing(materialId, db);
 
@@ -353,8 +354,20 @@ export async function readMaterialText(
     return { ok: false, error: "资料不存在。" };
   }
 
-  const filePath = resolveLocalStoragePath(material.storageKey);
-  const buffer = await readFile(filePath);
+  const filePath = resolveLocalStoragePath(material.storageKey, source);
+  const buffer = await readFile(filePath).catch((error) => {
+    if (isMissingStorageFileError(error)) {
+      return null;
+    }
+
+    throw error;
+  });
+
+  if (!buffer) {
+    return { ok: false, error: "资料文件不存在或存储卷未挂载，请重新上传资料。" };
+  }
+
+  const maxTextChars = resolveMaterialExtractionContextChars(source);
 
   if (material.mimeType === "text/plain" || material.mimeType === "text/markdown") {
     const text = buffer.toString("utf8").trim();
@@ -363,7 +376,7 @@ export async function readMaterialText(
       return { ok: false, error: "资料文本为空，无法抽题。" };
     }
 
-    return { ok: true, data: { text: text.slice(0, 16000), extractionMethod: "local_text", material } };
+    return { ok: true, data: { text: text.slice(0, maxTextChars), extractionMethod: "local_text", material } };
   }
 
   if (material.mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
@@ -374,7 +387,7 @@ export async function readMaterialText(
       return { ok: false, error: "DOCX 未抽取到有效文本。" };
     }
 
-    return { ok: true, data: { text: text.slice(0, 16000), extractionMethod: "local_docx", material } };
+    return { ok: true, data: { text: text.slice(0, maxTextChars), extractionMethod: "local_docx", material } };
   }
 
   if (material.mimeType === "application/pdf") {
@@ -384,7 +397,7 @@ export async function readMaterialText(
     const text = result.text.trim();
 
     if (text) {
-      return { ok: true, data: { text: text.slice(0, 16000), extractionMethod: "local_pdf", material } };
+      return { ok: true, data: { text: text.slice(0, maxTextChars), extractionMethod: "local_pdf", material } };
     }
 
     return {
@@ -452,8 +465,14 @@ export async function createMaterialQuestionCandidates(materialId: string, jobId
 }
 
 export function validateExtractedQuestionsJson(value: string): ActionResult<{ questions: ExtractedMaterialQuestion[] }> {
+  const json = extractJsonObject(value);
+
+  if (!json) {
+    return { ok: false, error: "AI 抽题结果不是有效 JSON。" };
+  }
+
   try {
-    const parsed = materialQuestionExtractionSchema.safeParse(JSON.parse(value));
+    const parsed = materialQuestionExtractionSchema.safeParse(JSON.parse(json));
 
     if (!parsed.success) {
       return { ok: false, error: "AI 抽题结果格式无效。" };
@@ -508,7 +527,7 @@ export function buildMaterialExtractionPrompt(input: { title: string; text: stri
     instructions:
       "你是 OpenExam 的资料抽题助手。只根据给定资料抽取题目候选。必须输出严格 JSON，不要输出 Markdown。",
     input: [
-      "请从资料中抽取 1-8 道候选题，题型可为 single_choice、multiple_choice、true_false、blank、short_answer、case_analysis。",
+      "请从资料中尽可能完整抽取所有可识别的候选题，不要人为限制题量。题型可为 single_choice、multiple_choice、true_false、blank、short_answer、case_analysis。",
       "输出 JSON：",
       '{"questions":[{"kind":"single_choice","stem":"题干","options":{"A":"选项A","B":"选项B","C":"选项C","D":"选项D"},"answer":"A","explanation":"解析","difficulty":2,"knowledgeNodeId":"知识点ID","sourceRef":"页码或段落"}]}',
       "单选 answer 为 A/B/C/D；多选 answer 为数组；判断 answer 为 true/false；填空 answer 可为字符串或字符串数组；主观题可给 answerKey/rubric。",
@@ -582,6 +601,19 @@ function parseExtractedQuestion(value: unknown): ActionResult<ExtractedMaterialQ
       sourceRef: optionalText(textValue(value.sourceRef))
     }
   };
+}
+
+function isMissingStorageFileError(error: unknown) {
+  return error instanceof Error && "code" in error && (error as { code?: unknown }).code === "ENOENT";
+}
+
+function resolveMaterialExtractionContextChars(source: NodeJS.ProcessEnv) {
+  const env = readEnv({
+    ...source,
+    DATABASE_URL: source.DATABASE_URL ?? "postgresql://openexam:openexam@localhost:5432/openexam?schema=public"
+  });
+
+  return env.OPENEXAM_MATERIAL_EXTRACT_CONTEXT_CHARS;
 }
 
 function parseCandidateUpdateInput(input: MaterialQuestionCandidateUpdateInput): ActionResult<Prisma.MaterialQuestionCandidateUpdateInput> {

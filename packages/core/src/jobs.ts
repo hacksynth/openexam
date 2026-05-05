@@ -1,5 +1,5 @@
-import { AiProvider, AiTaskType, Prisma } from "@prisma/client";
-import { assertAiUsageAllowed, generateAiText, resolveAiCredential, type AiTextGenerator } from "./ai";
+import { AiTaskType, Prisma } from "@prisma/client";
+import { assertAiUsageAllowed, generateAiText, resolveAiCredential, resolveTaskAiPreset, type AiTextGenerator } from "./ai";
 import {
   buildMaterialExtractionPrompt,
   createMaterialQuestionCandidates,
@@ -23,9 +23,9 @@ type ActionResult<T = undefined> = T extends undefined
 type JobDatabase = typeof prisma;
 
 const materialExtractionPromptVersion = "material-question-extract-v1";
-const defaultOpenAiModel = "gpt-5.5";
-const defaultExtractionProvider = AiProvider.openai;
-const defaultMaxOutputTokens = 1400;
+const defaultMaxOutputTokens = 8192;
+const defaultMaterialExtractionTimeoutMs = 20 * 60 * 1000;
+const defaultMaterialExtractionJobStaleMs = 25 * 60 * 1000;
 const defaultJobStaleMs = 15 * 60 * 1000;
 const minJobStaleMs = 60 * 1000;
 const noQueuedJobError = "暂无可处理任务。";
@@ -161,25 +161,41 @@ export async function recoverStaleJobs(options: JobMaintenanceOptions = {}): Pro
   const env = options.env ?? process.env;
   const now = options.now ?? new Date();
   const staleMs = resolveJobStaleMs(env);
-  const cutoff = new Date(now.getTime() - staleMs);
-  const result = await db.job.updateMany({
+  const materialStaleMs = resolveMaterialExtractionJobStaleMs(env);
+  const regularCutoff = new Date(now.getTime() - staleMs);
+  const materialCutoff = new Date(now.getTime() - materialStaleMs);
+  const staleData = {
+    status: "queued" as const,
+    error: staleJobError,
+    progress: 0,
+    runAt: now,
+    startedAt: null,
+    finishedAt: null
+  };
+  const regularResult = await db.job.updateMany({
     where: {
       status: "running",
+      type: {
+        not: materialJobType
+      },
       startedAt: {
-        lte: cutoff
+        lte: regularCutoff
       }
     },
-    data: {
-      status: "queued",
-      error: staleJobError,
-      progress: 0,
-      runAt: now,
-      startedAt: null,
-      finishedAt: null
-    }
+    data: staleData
+  });
+  const materialResult = await db.job.updateMany({
+    where: {
+      status: "running",
+      type: materialJobType,
+      startedAt: {
+        lte: materialCutoff
+      }
+    },
+    data: staleData
   });
 
-  return { ok: true, data: { count: result.count } };
+  return { ok: true, data: { count: regularResult.count + materialResult.count } };
 }
 
 async function processClaimedJob(job: Prisma.JobGetPayload<object>, options: JobProcessorOptions): Promise<ActionResult<{ jobId: string }>> {
@@ -327,7 +343,7 @@ async function processMaterialExtractionJob(jobId: string, payload: Prisma.JsonV
     throw new JobProcessingError("任务缺少资料 ID。");
   }
 
-  const materialText = await readMaterialText(materialId, db);
+  const materialText = await readMaterialText(materialId, db, env);
 
   if (!materialText.ok) {
     await markMaterialFailed(materialId, materialText.error, db);
@@ -335,7 +351,14 @@ async function processMaterialExtractionJob(jobId: string, payload: Prisma.JsonV
   }
 
   const { material, text, extractionMethod, ocrInput } = materialText.data;
-  const preset = await resolveExtractionPreset(db, ocrInput?.type === "document" ? "document" : ocrInput ? "vision" : "json");
+  const presetResult = await resolveExtractionPreset(db, ocrInput?.type === "document" ? "document" : ocrInput ? "vision" : "json");
+
+  if (!presetResult.ok) {
+    await markMaterialFailed(material.id, presetResult.error, db);
+    throw new JobProcessingError(presetResult.error);
+  }
+
+  const preset = presetResult.data;
   const credential = options.generateText ? null : await resolveAiCredential(material.ownerId, preset.provider, db, env);
 
   if (credential?.ok === false) {
@@ -363,6 +386,7 @@ async function processMaterialExtractionJob(jobId: string, payload: Prisma.JsonV
     }))
   });
   const input = ocrInput ? [{ type: "text" as const, text: prompt.input }, ocrInput] : prompt.input;
+  const timeoutMs = resolveMaterialExtractionTimeoutMs(env);
   const aiCall = await db.aiCall.create({
     data: {
       userId: material.ownerId,
@@ -387,7 +411,9 @@ async function processMaterialExtractionJob(jobId: string, payload: Prisma.JsonV
       instructions: prompt.instructions,
       input,
       maxOutputTokens: preset.maxOutputTokens,
-      temperature: preset.temperature
+      temperature: preset.temperature,
+      timeoutMs,
+      maxRetries: 0
     });
     const parsed = validateExtractedQuestionsJson(result.text);
 
@@ -420,7 +446,7 @@ async function processMaterialExtractionJob(jobId: string, payload: Prisma.JsonV
       candidateCount: parsed.data.questions.length
     };
   } catch (error) {
-    const message = error instanceof Error ? error.message : "AI 抽题失败。";
+    const message = formatMaterialExtractionError(error, preset.model, timeoutMs);
 
     await db.$transaction([
       db.aiCall.update({
@@ -445,23 +471,10 @@ async function processMaterialExtractionJob(jobId: string, payload: Prisma.JsonV
 }
 
 async function resolveExtractionPreset(db: JobDatabase, requiredCapability: "json" | "vision" | "document" = "json") {
-  const preset = await db.aiProviderPreset.findFirst({
-    where: {
-      defaultForTask: AiTaskType.extract_questions,
-      enabled: true,
-      capabilities: {
-        has: requiredCapability
-      }
-    },
-    orderBy: [{ updatedAt: "desc" }]
+  return resolveTaskAiPreset(db, AiTaskType.extract_questions, requiredCapability, {
+    defaultMaxOutputTokens,
+    minMaxOutputTokens: defaultMaxOutputTokens
   });
-
-  return {
-    provider: preset?.provider ?? defaultExtractionProvider,
-    model: preset?.model ?? defaultOpenAiModel,
-    maxOutputTokens: preset?.maxTokens ?? defaultMaxOutputTokens,
-    temperature: preset?.temperature ?? null
-  };
 }
 
 async function markMaterialFailed(materialId: string, error: string, db: JobDatabase) {
@@ -500,4 +513,40 @@ function resolveJobStaleMs(env: NodeJS.ProcessEnv) {
   const parsed = Number(env.OPENEXAM_JOB_STALE_MS);
 
   return Number.isFinite(parsed) && parsed >= minJobStaleMs ? Math.floor(parsed) : defaultJobStaleMs;
+}
+
+function resolveMaterialExtractionTimeoutMs(env: NodeJS.ProcessEnv) {
+  const parsed = Number(env.OPENEXAM_MATERIAL_EXTRACT_TIMEOUT_MS);
+
+  return Number.isFinite(parsed) && parsed >= minJobStaleMs ? Math.floor(parsed) : defaultMaterialExtractionTimeoutMs;
+}
+
+function resolveMaterialExtractionJobStaleMs(env: NodeJS.ProcessEnv) {
+  const configured = Number(env.OPENEXAM_MATERIAL_EXTRACT_JOB_STALE_MS);
+  const fallback = defaultMaterialExtractionJobStaleMs;
+  const parsed = Number.isFinite(configured) && configured >= minJobStaleMs ? Math.floor(configured) : fallback;
+
+  return Math.max(parsed, resolveMaterialExtractionTimeoutMs(env) + minJobStaleMs);
+}
+
+function formatMaterialExtractionError(error: unknown, model: string, timeoutMs: number) {
+  if (isTimeoutError(error)) {
+    return [
+      `资料抽题请求超时：${model} 在 ${Math.round(timeoutMs / 1000)} 秒内未返回。`,
+      "可调整 OPENEXAM_MATERIAL_EXTRACT_TIMEOUT_MS，或降低 OPENEXAM_MATERIAL_EXTRACT_CONTEXT_CHARS；同时确认网关 upstream/read timeout 不短于该值。"
+    ].join("");
+  }
+
+  return error instanceof Error ? error.message : "AI 抽题失败。";
+}
+
+function isTimeoutError(error: unknown) {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const message = error.message.toLowerCase();
+  const name = error.name.toLowerCase();
+
+  return name.includes("timeout") || message.includes("timed out") || message.includes("timeout");
 }

@@ -4,7 +4,7 @@ import path from "node:path";
 import { AiProvider, AiTaskType, Prisma, Visibility } from "@prisma/client";
 import OpenAI from "openai";
 import { validateReviewCardImagePrompt } from "./ai-output-schemas";
-import { assertAiUsageAllowed, resolveOpenAiCredential } from "./ai";
+import { assertAiUsageAllowed, resolveOpenAiCredential, resolveTaskAiPreset } from "./ai";
 import { readSingleChoiceAnswerKey, readSingleChoiceOptions, type SingleChoiceOption } from "./practice";
 import { prisma } from "./prisma";
 import { resolveLocalStoragePath } from "./storage";
@@ -50,7 +50,6 @@ export type WrongNoteReviewCardProcessorOptions = {
 export const wrongNoteReviewCardJobType = "generate_wrong_note_review_card";
 
 const reviewCardPromptVersion = "wrong-note-review-card-v1";
-const defaultImageModel = "gpt-image-1.5";
 
 export async function queueWrongNoteReviewCard(
   userId: string,
@@ -201,11 +200,17 @@ export async function processWrongNoteReviewCardJob(
     throw new Error(validatedPrompt.error);
   }
 
-  const preset = await resolveImagePreset(db);
+  const presetResult = await resolveImagePreset(db);
+
+  if (!presetResult.ok) {
+    throw new Error(presetResult.error);
+  }
+
+  const preset = presetResult.data;
   const aiCall = await db.aiCall.create({
     data: {
       userId,
-      provider: AiProvider.openai,
+      provider: preset.provider,
       model: preset.model,
       taskType: AiTaskType.generate_image,
       promptVersion: reviewCardPromptVersion,
@@ -366,18 +371,19 @@ function readResultAssetId(value: Prisma.JsonValue | null | undefined) {
 }
 
 async function resolveImagePreset(db: WrongNoteImageDatabase) {
-  const preset = await db.aiProviderPreset.findFirst({
-    where: {
-      provider: AiProvider.openai,
-      defaultForTask: AiTaskType.generate_image,
-      enabled: true
-    },
-    orderBy: [{ updatedAt: "desc" }]
+  const preset = await resolveTaskAiPreset(db, AiTaskType.generate_image, "image", {
+    defaultMaxOutputTokens: 1
   });
 
-  return {
-    model: preset?.model ?? defaultImageModel
-  };
+  if (!preset.ok) {
+    return preset;
+  }
+
+  if (preset.data.provider !== AiProvider.openai) {
+    return { ok: false, error: "图片生成目前仅支持 OpenAI Provider。" } as const;
+  }
+
+  return preset;
 }
 
 async function loadWrongNoteImageContext(userId: string, wrongNoteId: string, db: WrongNoteImageDatabase) {

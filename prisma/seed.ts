@@ -1,19 +1,10 @@
-import {
-  AiProvider,
-  AiTaskType,
-  PrismaClient,
-  QuestionKind,
-  ReviewStatus,
-  SourceType,
-  UserRole,
-  Visibility
-} from "@prisma/client";
-import { hashPassword } from "@openexam/core/password";
+import { AiProvider, AiTaskType, PrismaClient, QuestionKind, ReviewStatus, SourceType, Visibility } from "@prisma/client";
+import { bootstrapAdminUser } from "./admin-user";
 
 const prisma = new PrismaClient();
 
 async function main() {
-  await seedAdminUser();
+  await bootstrapAdminUser(prisma);
   await seedAiPresets();
 
   const program = await prisma.examProgram.upsert({
@@ -244,7 +235,7 @@ async function main() {
 }
 
 async function seedAiPresets() {
-  await prisma.aiProviderPreset.upsert({
+  const preset = await prisma.aiProviderPreset.upsert({
     where: {
       provider_model: {
         provider: AiProvider.openai,
@@ -253,21 +244,32 @@ async function seedAiPresets() {
     },
     update: {
       label: "OpenAI GPT-5.5",
-      capabilities: ["text"],
-      defaultForTask: AiTaskType.explain_question,
-      maxTokens: 700,
+      capabilities: ["text", "json", "vision", "document"],
+      maxTokens: 8192,
       enabled: true
     },
     create: {
       provider: AiProvider.openai,
       model: "gpt-5.5",
       label: "OpenAI GPT-5.5",
-      capabilities: ["text"],
-      defaultForTask: AiTaskType.explain_question,
-      maxTokens: 700,
+      capabilities: ["text", "json", "vision", "document"],
+      maxTokens: 8192,
       enabled: true
     }
   });
+
+  const defaultTasks = Object.values(AiTaskType).filter((taskType) => taskType !== AiTaskType.generate_image);
+
+  for (const taskType of defaultTasks) {
+    await prisma.aiProviderPresetTask.upsert({
+      where: { taskType },
+      update: {},
+      create: {
+        presetId: preset.id,
+        taskType
+      }
+    });
+  }
 }
 
 async function upsertKnowledgeNode(input: {
@@ -398,39 +400,6 @@ async function seedSingleChoiceQuestion(input: {
   });
 
   return question;
-}
-
-async function seedAdminUser() {
-  const email = process.env.ADMIN_EMAIL?.trim().toLowerCase();
-  const password = process.env.ADMIN_PASSWORD;
-  const name = process.env.ADMIN_NAME?.trim() || "管理员";
-
-  if (!email && !password) {
-    return;
-  }
-
-  if (!email || !password) {
-    throw new Error("ADMIN_EMAIL and ADMIN_PASSWORD must be provided together.");
-  }
-
-  if (password.length < 8) {
-    throw new Error("ADMIN_PASSWORD must be at least 8 characters.");
-  }
-
-  await prisma.user.upsert({
-    where: { email },
-    update: {
-      name,
-      role: UserRole.admin,
-      passwordHash: await hashPassword(password)
-    },
-    create: {
-      email,
-      name,
-      role: UserRole.admin,
-      passwordHash: await hashPassword(password)
-    }
-  });
 }
 
 main()

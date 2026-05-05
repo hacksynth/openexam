@@ -1,5 +1,5 @@
-import { AiProvider, AiTaskType, Prisma } from "@prisma/client";
-import { assertAiUsageAllowed, generateAiText, resolveAiCredential, type AiTextGenerator } from "./ai";
+import { AiTaskType, Prisma } from "@prisma/client";
+import { assertAiUsageAllowed, generateAiText, resolveAiCredential, resolveTaskAiPreset, type AiTextGenerator } from "./ai";
 import { formatGoalPath, getPrimaryExamGoal, type PrimaryGoal } from "./exam-core";
 import { prisma } from "./prisma";
 
@@ -414,7 +414,13 @@ export async function generateKnowledgeExplanation(
     return { ok: false, error: "知识点不存在。" };
   }
 
-  const preset = await resolveKnowledgePreset(db);
+  const presetResult = await resolveKnowledgePreset(db);
+
+  if (!presetResult.ok) {
+    return presetResult;
+  }
+
+  const preset = presetResult.data;
   const prompt = {
     instructions: "你是 OpenExam 的知识点讲解助手。只根据给定知识点、大纲要求和用户笔记解释，用简体中文，输出短段落。",
     input: [
@@ -519,23 +525,9 @@ export async function generateKnowledgeExplanation(
 }
 
 async function resolveKnowledgePreset(db: typeof prisma) {
-  const preset = await db.aiProviderPreset.findFirst({
-    where: {
-      defaultForTask: AiTaskType.chat_with_context,
-      enabled: true,
-      capabilities: {
-        has: "text"
-      }
-    },
-    orderBy: [{ updatedAt: "desc" }]
+  return resolveTaskAiPreset(db, AiTaskType.chat_with_context, "text", {
+    defaultMaxOutputTokens: 700
   });
-
-  return {
-    provider: preset?.provider ?? AiProvider.openai,
-    model: preset?.model ?? "gpt-5.5",
-    maxOutputTokens: preset?.maxTokens ?? 700,
-    temperature: preset?.temperature ?? null
-  };
 }
 
 function buildKnowledgeNodeWhere(goal: NonNullable<PrimaryGoal>): Prisma.KnowledgeNodeWhereInput {

@@ -25,6 +25,7 @@
     "prisma:generate": "prisma generate",
     "prisma:validate": "DATABASE_URL=${DATABASE_URL:-postgresql://openexam:openexam@localhost:5432/openexam?schema=public} prisma validate",
     "db:migrate": "prisma migrate dev",
+    "db:bootstrap-admin": "DATABASE_URL=${DATABASE_URL:-postgresql://openexam:openexam@localhost:5432/openexam?schema=public} tsx prisma/bootstrap-admin.ts",
     "db:seed": "DATABASE_URL=${DATABASE_URL:-postgresql://openexam:openexam@localhost:5432/openexam?schema=public} tsx prisma/seed.ts"
   },
   "dependencies": {

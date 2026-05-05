@@ -1,5 +1,5 @@
-import { AiProvider, AiTaskType, Prisma } from "@prisma/client";
-import { assertAiUsageAllowed, generateAiText, resolveAiCredential, type AiTextGenerator, type AiTextInputPart } from "./ai";
+import { AiTaskType, Prisma } from "@prisma/client";
+import { assertAiUsageAllowed, generateAiText, resolveAiCredential, resolveTaskAiPreset, type AiTextGenerator, type AiTextInputPart } from "./ai";
 import { formatGoalPath } from "./exam-core";
 import { readMaterialText } from "./materials";
 import { formatAnswerValue, readObjectiveAnswerKey, readSingleChoiceOptions, readSubmittedAnswer } from "./practice";
@@ -15,8 +15,6 @@ export const contextChatContextTypes = ["question", "wrong_note", "knowledge_nod
 export type ContextChatContextType = (typeof contextChatContextTypes)[number];
 
 const promptVersion = "context-chat-v1";
-const defaultProvider = AiProvider.openai;
-const defaultModel = "gpt-5.5";
 const defaultMaxOutputTokens = 1000;
 
 export async function listContextChatThreads(userId: string, db: ChatDatabase = prisma) {
@@ -106,7 +104,13 @@ export async function sendContextChatMessage(
   }
 
   const { thread, context } = threadResult.data;
-  const preset = await resolveChatPreset(db, requiredContextCapability(context.aiInputParts));
+  const presetResult = await resolveChatPreset(db, requiredContextCapability(context.aiInputParts));
+
+  if (!presetResult.ok) {
+    return presetResult;
+  }
+
+  const preset = presetResult.data;
   const credential = options.generateText ? null : await resolveAiCredential(userId, preset.provider, db, env);
 
   if (credential?.ok === false) {
@@ -623,23 +627,9 @@ function requiredContextCapability(parts: AiTextInputPart[]): "text" | "vision" 
 }
 
 async function resolveChatPreset(db: ChatDatabase, requiredCapability: "text" | "vision" | "document") {
-  const preset = await db.aiProviderPreset.findFirst({
-    where: {
-      defaultForTask: AiTaskType.chat_with_context,
-      enabled: true,
-      capabilities: {
-        has: requiredCapability
-      }
-    },
-    orderBy: [{ updatedAt: "desc" }]
+  return resolveTaskAiPreset(db, AiTaskType.chat_with_context, requiredCapability, {
+    defaultMaxOutputTokens
   });
-
-  return {
-    provider: preset?.provider ?? defaultProvider,
-    model: preset?.model ?? defaultModel,
-    maxOutputTokens: preset?.maxTokens ?? defaultMaxOutputTokens,
-    temperature: preset?.temperature ?? null
-  };
 }
 
 function formatOptions(options: { key: string; text: string }[]) {

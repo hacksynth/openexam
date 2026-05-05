@@ -18,7 +18,7 @@ export async function upsertAiProviderPresetAction(formData: FormData) {
       model: value(formData, "model"),
       label: value(formData, "label"),
       capabilities: formData.getAll("capabilities").map((item) => String(item)),
-      defaultForTask: value(formData, "defaultForTask"),
+      defaultForTasks: formData.getAll("defaultForTasks").map((item) => String(item)),
       temperature: value(formData, "temperature"),
       maxTokens: value(formData, "maxTokens"),
       enabled: formData.has("enabled")

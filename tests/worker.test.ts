@@ -86,6 +86,39 @@ describe("worker health", () => {
     expect(isWorkerHealthHealthy(stale, { now })).toBe(false);
     expect(isWorkerHealthHealthy(stopped, { now })).toBe(false);
   });
+
+  it("keeps health fresh while a long job is running", async () => {
+    const healthPath = path.join(await makeTempDir(), "worker-health.json");
+    const controller = new AbortController();
+    const logger = {
+      info: () => undefined,
+      warn: () => undefined,
+      error: () => undefined
+    };
+    const job = deferred<{ ok: true; data: { jobId: string } }>();
+    const loop = runWorkerLoop({
+      pollMs: 250,
+      healthPath,
+      healthMaxAgeMs: 500,
+      signal: controller.signal,
+      logger,
+      jobProcessor: async () => job.promise
+    });
+
+    await waitFor(async () => (await readJson(healthPath)).event === "worker.job_processing");
+    await sleep(350);
+    const health = await readJson(healthPath);
+
+    expect(health).toMatchObject({
+      status: "processing",
+      event: "worker.job_processing"
+    });
+    expect(isWorkerHealthHealthy(health, { maxAgeMs: 500 })).toBe(true);
+
+    controller.abort();
+    job.resolve({ ok: true, data: { jobId: "job_1" } });
+    await loop;
+  });
 });
 
 describe("worker structured logs", () => {
@@ -194,4 +227,31 @@ async function makeTempDir() {
 
 async function readJson(filePath: string) {
   return JSON.parse(await readFile(filePath, "utf8"));
+}
+
+async function waitFor(predicate: () => Promise<boolean>) {
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < 2000) {
+    if (await predicate().catch(() => false)) {
+      return;
+    }
+
+    await sleep(25);
+  }
+
+  throw new Error("Timed out waiting for condition.");
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolver) => {
+    resolve = resolver;
+  });
+
+  return { promise, resolve };
 }

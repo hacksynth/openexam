@@ -1,15 +1,22 @@
 import { z } from "zod";
 
+const emptyStringToUndefined = (value: unknown) => (value === "" ? undefined : value);
+const optionalNonEmptyString = z.preprocess(emptyStringToUndefined, z.string().min(1).optional());
+const optionalUrl = z.preprocess(emptyStringToUndefined, z.string().url().optional());
+
 const envSchema = z.object({
   DATABASE_URL: z.string().min(1),
-  AUTH_SECRET: z.string().min(1).optional(),
-  AUTH_URL: z.string().url().optional(),
-  AI_KEY_ENCRYPTION_SECRET: z.string().min(1).optional(),
+  AUTH_SECRET: optionalNonEmptyString,
+  AUTH_URL: optionalUrl,
+  AI_KEY_ENCRYPTION_SECRET: optionalNonEmptyString,
   OPENAI_API_KEY: z.string().optional(),
-  OPENAI_BASE_URL: z.string().url().optional(),
+  OPENAI_BASE_URL: optionalUrl,
   OPENEXAM_DAILY_AI_CALL_LIMIT: z.coerce.number().int().positive().default(50),
   OPENEXAM_DAILY_PLATFORM_TOKEN_LIMIT: z.coerce.number().int().positive().default(100000),
   OPENEXAM_UPLOAD_MAX_BYTES: z.coerce.number().int().positive().default(10485760),
+  OPENEXAM_MATERIAL_EXTRACT_CONTEXT_CHARS: z.coerce.number().int().positive().default(1048576),
+  OPENEXAM_MATERIAL_EXTRACT_TIMEOUT_MS: z.coerce.number().int().positive().default(1200000),
+  OPENEXAM_MATERIAL_EXTRACT_JOB_STALE_MS: z.coerce.number().int().positive().default(1500000),
   OPENEXAM_WORKER_POLL_MS: z.coerce.number().int().positive().default(3000),
   OPENEXAM_JOB_STALE_MS: z.coerce.number().int().positive().default(900000),
   OPENEXAM_WORKER_HEALTH_PATH: z.string().default("/tmp/openexam-worker-health.json"),
@@ -22,7 +29,7 @@ const envSchema = z.object({
   S3_ACCESS_KEY_ID: z.string().default(""),
   S3_SECRET_ACCESS_KEY: z.string().default(""),
   S3_FORCE_PATH_STYLE: z.coerce.boolean().default(false),
-  AWS_PROFILE: z.string().optional(),
+  AWS_PROFILE: z.preprocess(emptyStringToUndefined, z.string().optional()),
   NEXT_PUBLIC_APP_NAME: z.string().default("OpenExam")
 });
 

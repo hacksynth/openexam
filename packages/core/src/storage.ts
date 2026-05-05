@@ -44,12 +44,34 @@ export function resolveLocalStorageRoot(value: string) {
   }
 
   const cwd = /*turbopackIgnore: true*/ process.cwd();
+  const standaloneWorkspaceRoot = resolveNextStandaloneWorkspaceRoot(cwd);
+
+  if (standaloneWorkspaceRoot) {
+    return path.resolve(/*turbopackIgnore: true*/ standaloneWorkspaceRoot, value);
+  }
 
   if (path.basename(path.dirname(cwd)) === "apps") {
     return path.resolve(/*turbopackIgnore: true*/ cwd, "../..", value);
   }
 
   return path.resolve(/*turbopackIgnore: true*/ cwd, value);
+}
+
+function resolveNextStandaloneWorkspaceRoot(cwd: string) {
+  const segments = cwd.split(path.sep);
+  const nextIndex = segments.lastIndexOf(".next");
+
+  if (nextIndex < 2 || segments[nextIndex + 1] !== "standalone" || segments[nextIndex + 2] !== "apps") {
+    return null;
+  }
+
+  const sourceAppDir = segments.slice(0, nextIndex).join(path.sep) || path.parse(cwd).root;
+
+  if (path.basename(path.dirname(sourceAppDir)) !== "apps") {
+    return null;
+  }
+
+  return path.resolve(/*turbopackIgnore: true*/ sourceAppDir, "../..");
 }
 
 export async function readStorageBytes(storageKey: string, source: NodeJS.ProcessEnv = process.env): Promise<StorageBytes> {

@@ -31,6 +31,8 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
+ENV STORAGE_DRIVER="local"
+ENV LOCAL_STORAGE_DIR="/app/storage"
 COPY --from=builder /app ./
 RUN mkdir -p apps/web/.next/standalone/apps/web/.next \
   && cp -R apps/web/.next/static apps/web/.next/standalone/apps/web/.next/static

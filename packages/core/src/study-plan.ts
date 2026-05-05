@@ -1,5 +1,5 @@
-import { AiProvider, AiTaskType, Prisma } from "@prisma/client";
-import { assertAiUsageAllowed, generateOpenAiText, resolveOpenAiCredential, type AiTextGenerator } from "./ai";
+import { AiTaskType, Prisma } from "@prisma/client";
+import { assertAiUsageAllowed, generateAiText, resolveAiCredential, resolveTaskAiPreset, type AiTextGenerator } from "./ai";
 import { getLearningAnalysis, toStudyPlanSourceStats, type LearningAnalysisState } from "./analysis";
 import { formatGoalPath } from "./exam-core";
 import { prisma } from "./prisma";
@@ -12,7 +12,6 @@ type ActionResult<T = undefined> = T extends undefined
 type StudyPlanDatabase = typeof prisma;
 
 const studyPlanPromptVersion = "study-plan-generate-v1";
-const defaultOpenAiModel = "gpt-5.5";
 const defaultMaxOutputTokens = 1800;
 
 const taskHrefByKind: Record<StudyPlan["tasks"][number]["kind"], string> = {
@@ -95,9 +94,15 @@ export async function generateStudyPlan(
     return { ok: false, error: "请先设置考试目标。" };
   }
 
-  const preset = await resolveStudyPlanPreset(db);
+  const presetResult = await resolveStudyPlanPreset(db);
+
+  if (!presetResult.ok) {
+    return presetResult;
+  }
+
+  const preset = presetResult.data;
   const prompt = buildStudyPlanPrompt(analysis);
-  const credential = options.generateText ? null : await resolveOpenAiCredential(userId, db, env);
+  const credential = options.generateText ? null : await resolveAiCredential(userId, preset.provider, db, env);
 
   if (credential?.ok === false) {
     return credential;
@@ -114,7 +119,7 @@ export async function generateStudyPlan(
   const aiCall = await db.aiCall.create({
     data: {
       userId,
-      provider: AiProvider.openai,
+      provider: preset.provider,
       model: preset.model,
       taskType: AiTaskType.generate_plan,
       promptVersion: studyPlanPromptVersion,
@@ -126,9 +131,10 @@ export async function generateStudyPlan(
   });
 
   try {
-    const result = await (options.generateText ?? generateOpenAiText)({
+    const result = await (options.generateText ?? generateAiText)({
+      provider: preset.provider,
       apiKey: credential?.ok ? credential.data.apiKey : "test-key",
-      baseURL: credential?.ok ? credential.data.baseURL : env.OPENAI_BASE_URL?.trim() || null,
+      baseURL: credential?.ok ? credential.data.baseURL : null,
       model: preset.model,
       instructions: prompt.instructions,
       input: prompt.input,
@@ -322,20 +328,9 @@ export function parseStudyPlanAiOutput(value: string): ActionResult<StudyPlan> {
 }
 
 async function resolveStudyPlanPreset(db: StudyPlanDatabase) {
-  const preset = await db.aiProviderPreset.findFirst({
-    where: {
-      provider: AiProvider.openai,
-      defaultForTask: AiTaskType.generate_plan,
-      enabled: true
-    },
-    orderBy: [{ updatedAt: "desc" }]
+  return resolveTaskAiPreset(db, AiTaskType.generate_plan, "json", {
+    defaultMaxOutputTokens
   });
-
-  return {
-    model: preset?.model ?? defaultOpenAiModel,
-    maxOutputTokens: preset?.maxTokens ?? defaultMaxOutputTokens,
-    temperature: preset?.temperature ?? null
-  };
 }
 
 function extractJsonObject(value: string) {

@@ -8,8 +8,9 @@ type WorkerLogger = Pick<Console, "error" | "info" | "warn">;
 type WorkerLogLevel = "error" | "info" | "warn";
 type WorkerJobResult = Awaited<ReturnType<typeof processNextJob>>;
 type WorkerJobProcessor = (options: JobProcessorOptions) => Promise<WorkerJobResult>;
+type WorkerHealthState = Omit<Parameters<typeof createWorkerHealth>[0], "now" | "pid">;
 
-export type WorkerHealthStatus = "starting" | "polling" | "stopped";
+export type WorkerHealthStatus = "starting" | "polling" | "processing" | "stopped";
 
 export type WorkerHealth = {
   status: WorkerHealthStatus;
@@ -53,7 +54,18 @@ export async function runWorkerLoop(options: WorkerOptions = {}) {
   const pollMs = normalizePollMs(options.pollMs ?? Number(env.OPENEXAM_WORKER_POLL_MS));
   const healthPath = resolveWorkerHealthPath(options.healthPath ?? env.OPENEXAM_WORKER_HEALTH_PATH);
   const healthMaxAgeMs = resolveWorkerHealthMaxAgeMs(options.healthMaxAgeMs ?? env.OPENEXAM_WORKER_HEALTH_MAX_AGE_MS);
+  const healthHeartbeatMs = resolveWorkerHealthHeartbeatMs(healthMaxAgeMs, pollMs);
   const jobProcessor = options.jobProcessor ?? processNextJob;
+  let currentHealthState: WorkerHealthState = {
+    status: "starting",
+    event: "worker.started",
+    pollMs,
+    maxAgeMs: healthMaxAgeMs
+  };
+  const writeHealth = async (state: WorkerHealthState) => {
+    currentHealthState = state;
+    await safeWriteWorkerHealth(healthPath, createWorkerHealth(state), logger);
+  };
 
   writeWorkerLog(logger, "info", {
     event: "worker.started",
@@ -61,19 +73,22 @@ export async function runWorkerLoop(options: WorkerOptions = {}) {
     pollMs,
     healthPath
   });
-  await safeWriteWorkerHealth(
+  await writeHealth(currentHealthState);
+  const stopHealthHeartbeat = startWorkerHealthHeartbeat({
     healthPath,
-    createWorkerHealth({
-      status: "starting",
-      event: "worker.started",
-      pollMs,
-      maxAgeMs: healthMaxAgeMs
-    }),
+    heartbeatMs: healthHeartbeatMs,
+    getHealthState: () => currentHealthState,
     logger
-  );
+  });
 
   try {
     while (!options.signal?.aborted) {
+      await writeHealth({
+        status: "processing",
+        event: "worker.job_processing",
+        pollMs,
+        maxAgeMs: healthMaxAgeMs
+      });
       const result = await jobProcessor(options);
 
       if (result.ok) {
@@ -82,17 +97,13 @@ export async function runWorkerLoop(options: WorkerOptions = {}) {
           message: `Processed job ${result.data.jobId}.`,
           jobId: result.data.jobId
         });
-        await safeWriteWorkerHealth(
-          healthPath,
-          createWorkerHealth({
-            status: "polling",
-            event: "worker.job_processed",
-            pollMs,
-            maxAgeMs: healthMaxAgeMs,
-            lastJobId: result.data.jobId
-          }),
-          logger
-        );
+        await writeHealth({
+          status: "polling",
+          event: "worker.job_processed",
+          pollMs,
+          maxAgeMs: healthMaxAgeMs,
+          lastJobId: result.data.jobId
+        });
         continue;
       }
 
@@ -102,48 +113,37 @@ export async function runWorkerLoop(options: WorkerOptions = {}) {
           message: "No queued job available.",
           pollMs
         });
-        await safeWriteWorkerHealth(
-          healthPath,
-          createWorkerHealth({
-            status: "polling",
-            event: "worker.poll_idle",
-            pollMs,
-            maxAgeMs: healthMaxAgeMs
-          }),
-          logger
-        );
+        await writeHealth({
+          status: "polling",
+          event: "worker.poll_idle",
+          pollMs,
+          maxAgeMs: healthMaxAgeMs
+        });
       } else {
         writeWorkerLog(logger, "warn", {
           event: "worker.job_failed",
           message: `Job processing skipped or failed: ${result.error}`,
           error: result.error
         });
-        await safeWriteWorkerHealth(
-          healthPath,
-          createWorkerHealth({
-            status: "polling",
-            event: "worker.job_failed",
-            pollMs,
-            maxAgeMs: healthMaxAgeMs,
-            lastError: result.error
-          }),
-          logger
-        );
+        await writeHealth({
+          status: "polling",
+          event: "worker.job_failed",
+          pollMs,
+          maxAgeMs: healthMaxAgeMs,
+          lastError: result.error
+        });
       }
 
       await sleep(pollMs, options.signal);
     }
   } finally {
-    await safeWriteWorkerHealth(
-      healthPath,
-      createWorkerHealth({
-        status: "stopped",
-        event: "worker.stopped",
-        pollMs,
-        maxAgeMs: healthMaxAgeMs
-      }),
-      logger
-    );
+    stopHealthHeartbeat();
+    await writeHealth({
+      status: "stopped",
+      event: "worker.stopped",
+      pollMs,
+      maxAgeMs: healthMaxAgeMs
+    });
     writeWorkerLog(logger, "info", {
       event: "worker.stopped",
       message: "OpenExam worker stopped.",
@@ -236,6 +236,31 @@ export function resolveWorkerHealthMaxAgeMs(value: number | string | null | unde
   return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : defaultWorkerHealthMaxAgeMs;
 }
 
+function resolveWorkerHealthHeartbeatMs(maxAgeMs: number, pollMs: number) {
+  return Math.max(250, Math.min(pollMs, Math.floor(maxAgeMs / 2)));
+}
+
+function startWorkerHealthHeartbeat(input: {
+  healthPath: string;
+  heartbeatMs: number;
+  getHealthState: () => WorkerHealthState;
+  logger: WorkerLogger;
+}) {
+  let writing = false;
+  const heartbeat = setInterval(() => {
+    if (writing) {
+      return;
+    }
+
+    writing = true;
+    safeWriteWorkerHealth(input.healthPath, createWorkerHealth(input.getHealthState()), input.logger).finally(() => {
+      writing = false;
+    });
+  }, input.heartbeatMs);
+
+  return () => clearInterval(heartbeat);
+}
+
 async function safeWriteWorkerHealth(filePath: string, health: WorkerHealth, logger: WorkerLogger) {
   try {
     await writeWorkerHealth(filePath, health);
@@ -257,7 +282,7 @@ function isWorkerHealth(value: unknown): value is WorkerHealth {
   const health = value as Partial<WorkerHealth>;
 
   return (
-    (health.status === "starting" || health.status === "polling" || health.status === "stopped") &&
+    (health.status === "starting" || health.status === "polling" || health.status === "processing" || health.status === "stopped") &&
     typeof health.event === "string" &&
     typeof health.updatedAt === "string" &&
     typeof health.pid === "number" &&

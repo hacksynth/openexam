@@ -181,11 +181,16 @@ function createStudyPlanDb(calls: { method: string; args?: unknown }[]) {
         }
       ]
     },
-    aiProviderPreset: {
-      findFirst: async () => ({
-        model: "gpt-5.5",
-        maxTokens: 1800,
-        temperature: null
+    aiProviderPresetTask: {
+      findUnique: async () => ({
+        preset: {
+          provider: "openai",
+          model: "gpt-5.5",
+          capabilities: ["json"],
+          enabled: true,
+          maxTokens: 1800,
+          temperature: null
+        }
       })
     },
     aiCall: {

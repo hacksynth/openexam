@@ -1,5 +1,5 @@
-import { AiProvider, AiTaskType, Prisma, QuestionKind, ReviewStatus, SourceType, Visibility } from "@prisma/client";
-import { assertAiUsageAllowed, generateAiText, resolveAiCredential, type AiTextGenerator } from "./ai";
+import { AiTaskType, Prisma, QuestionKind, ReviewStatus, SourceType, Visibility } from "@prisma/client";
+import { assertAiUsageAllowed, generateAiText, resolveAiCredential, resolveTaskAiPreset, type AiTextGenerator } from "./ai";
 import { getLearningAnalysis } from "./analysis";
 import { validateExtractedQuestionsJson, type ExtractedMaterialQuestion, materialQuestionKinds } from "./materials";
 import { singleChoiceAnswerKeys } from "./question-admin";
@@ -12,8 +12,6 @@ type ActionResult<T = undefined> = T extends undefined
 type GeneratedQuestionDatabase = typeof prisma;
 
 const promptVersion = "practice-question-generate-v1";
-const defaultProvider = AiProvider.openai;
-const defaultModel = "gpt-5.5";
 const defaultMaxOutputTokens = 1600;
 
 export type GeneratePracticeQuestionsInput = {
@@ -89,7 +87,13 @@ export async function generatePracticeQuestionCandidates(
     return { ok: false, error: "请选择当前目标范围内的知识点。" };
   }
 
-  const preset = await resolveGeneratedQuestionPreset(db);
+  const presetResult = await resolveGeneratedQuestionPreset(db);
+
+  if (!presetResult.ok) {
+    return presetResult;
+  }
+
+  const preset = presetResult.data;
   const prompt = buildPracticeQuestionGenerationPrompt({
     goalPath: analysis.goalPath,
     prompt: promptText,
@@ -353,23 +357,9 @@ export function buildPracticeQuestionGenerationPrompt(input: {
 }
 
 async function resolveGeneratedQuestionPreset(db: GeneratedQuestionDatabase) {
-  const preset = await db.aiProviderPreset.findFirst({
-    where: {
-      defaultForTask: AiTaskType.generate_practice_questions,
-      enabled: true,
-      capabilities: {
-        has: "json"
-      }
-    },
-    orderBy: [{ updatedAt: "desc" }]
+  return resolveTaskAiPreset(db, AiTaskType.generate_practice_questions, "json", {
+    defaultMaxOutputTokens
   });
-
-  return {
-    provider: preset?.provider ?? defaultProvider,
-    model: preset?.model ?? defaultModel,
-    maxOutputTokens: preset?.maxTokens ?? defaultMaxOutputTokens,
-    temperature: preset?.temperature ?? null
-  };
 }
 
 async function listGoalKnowledgeOptions(goal: Extract<Awaited<ReturnType<typeof getLearningAnalysis>>, { status: "ready" }>["goal"], db: GeneratedQuestionDatabase) {

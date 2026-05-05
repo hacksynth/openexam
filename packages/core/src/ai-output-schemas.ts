@@ -32,7 +32,7 @@ export const materialQuestionExtractionItemSchema = z.object({
 });
 
 export const materialQuestionExtractionSchema = z.object({
-  questions: z.array(materialQuestionExtractionItemSchema).min(1).max(20)
+  questions: z.array(materialQuestionExtractionItemSchema).min(1)
 });
 
 export const subjectiveGradingOutputSchema = z.object({
@@ -103,7 +103,7 @@ export function parseLearningDiagnosisOutput(value: string): ActionResult<z.infe
   }
 }
 
-function extractJsonObject(value: string) {
+export function extractJsonObject(value: string) {
   const trimmed = value.trim();
 
   if (trimmed.startsWith("{") && trimmed.endsWith("}")) {

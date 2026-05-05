@@ -9,6 +9,8 @@ COPY apps/admin/package.json apps/admin/package.json
 COPY packages/core/package.json packages/core/package.json
 RUN --mount=type=cache,target=/root/.npm npm ci --prefer-offline --no-audit --fund=false
 ENV NODE_ENV=production
+ENV STORAGE_DRIVER="local"
+ENV LOCAL_STORAGE_DIR="/app/storage"
 COPY tsconfig.json tsconfig.base.json ./
 COPY prisma prisma
 COPY packages/core packages/core

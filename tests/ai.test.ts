@@ -268,12 +268,28 @@ describe("wrong-note AI analysis", () => {
 describe("AI provider presets", () => {
   it("saves OpenAI model presets for task routing", async () => {
     const calls: { method: string; args?: unknown }[] = [];
-    const db = {
+    const tx = {
       aiProviderPreset: {
         upsert: async (args: unknown) => {
           calls.push({ method: "aiProviderPreset.upsert", args });
-          return args;
+          return { id: "preset_1" };
         }
+      },
+      aiProviderPresetTask: {
+        deleteMany: async (args: unknown) => {
+          calls.push({ method: "aiProviderPresetTask.deleteMany", args });
+          return { count: 1 };
+        },
+        createMany: async (args: unknown) => {
+          calls.push({ method: "aiProviderPresetTask.createMany", args });
+          return { count: 2 };
+        }
+      }
+    };
+    const db = {
+      $transaction: async (callback: (transaction: typeof tx) => Promise<unknown>) => {
+        calls.push({ method: "$transaction" });
+        return callback(tx);
       }
     };
 
@@ -283,7 +299,8 @@ describe("AI provider presets", () => {
           provider: "openai",
           model: "gpt-5.4-e2e",
           label: "",
-          defaultForTask: "explain_question",
+          capabilities: ["text", "json"],
+          defaultForTasks: ["explain_question", "extract_questions"],
           temperature: "0.2",
           maxTokens: "640",
           enabled: true
@@ -299,7 +316,7 @@ describe("AI provider presets", () => {
             provider: "openai",
             model: "gpt-5.4-e2e",
             label: "gpt-5.4-e2e",
-            defaultForTask: "explain_question",
+            capabilities: ["text", "json"],
             temperature: 0.2,
             maxTokens: 640,
             enabled: true
@@ -307,6 +324,46 @@ describe("AI provider presets", () => {
         })
       })
     );
+    expect(calls).toContainEqual(
+      expect.objectContaining({
+        method: "aiProviderPresetTask.deleteMany",
+        args: {
+          where: {
+            taskType: {
+              in: ["explain_question", "extract_questions"]
+            }
+          }
+        }
+      })
+    );
+    expect(calls).toContainEqual(
+      expect.objectContaining({
+        method: "aiProviderPresetTask.createMany",
+        args: {
+          data: [
+            { presetId: "preset_1", taskType: "explain_question" },
+            { presetId: "preset_1", taskType: "extract_questions" }
+          ],
+          skipDuplicates: true
+        }
+      })
+    );
+  });
+
+  it("rejects default tasks that are missing required capabilities", async () => {
+    await expect(
+      upsertAiProviderPreset({
+        provider: "openai",
+        model: "gpt-5.4-e2e",
+        label: "E2E",
+        capabilities: ["text"],
+        defaultForTasks: ["extract_questions"],
+        enabled: true
+      })
+    ).resolves.toEqual({
+      ok: false,
+      error: "模型 capability 不满足 题目抽取 默认任务路由要求。"
+    });
   });
 
   it("validates preset token limits", async () => {
@@ -315,7 +372,7 @@ describe("AI provider presets", () => {
         provider: "openai",
         model: "gpt-5.4-e2e",
         label: "E2E",
-        defaultForTask: "explain_question",
+        defaultForTasks: ["explain_question"],
         maxTokens: "0",
         enabled: true
       })
@@ -373,11 +430,16 @@ describe("AI usage limits", () => {
 
 function createAiDb(calls: { method: string; args?: unknown }[]) {
   return {
-    aiProviderPreset: {
-      findFirst: async () => ({
-        model: "gpt-5.5",
-        maxTokens: 700,
-        temperature: null
+    aiProviderPresetTask: {
+      findUnique: async () => ({
+        preset: {
+          provider: "openai",
+          model: "gpt-5.5",
+          capabilities: ["text"],
+          enabled: true,
+          maxTokens: 700,
+          temperature: null
+        }
       })
     },
     wrongNote: {

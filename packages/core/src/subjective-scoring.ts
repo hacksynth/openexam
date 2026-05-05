@@ -1,6 +1,6 @@
-import { AiProvider, AiTaskType, Prisma } from "@prisma/client";
+import { AiTaskType, Prisma } from "@prisma/client";
 import { parseSubjectiveGradingOutput } from "./ai-output-schemas";
-import { assertAiUsageAllowed, generateAiText, resolveAiCredential, type AiTextGenerator } from "./ai";
+import { assertAiUsageAllowed, generateAiText, resolveAiCredential, resolveTaskAiPreset, type AiTextGenerator } from "./ai";
 import { prisma } from "./prisma";
 
 type SubjectiveScoringDatabase = typeof prisma;
@@ -23,7 +23,13 @@ export async function generateSubjectiveScoreSuggestion(
   options: SubjectiveScoringOptions
 ): Promise<number | null> {
   const { db, env = process.env } = options;
-  const preset = await resolveSubjectiveGradingPreset(db);
+  const presetResult = await resolveSubjectiveGradingPreset(db);
+
+  if (!presetResult.ok) {
+    return null;
+  }
+
+  const preset = presetResult.data;
   const prompt = buildSubjectiveGradingPrompt(input);
 
   const aiCall = await db.aiCall.create({
@@ -97,23 +103,10 @@ export async function generateSubjectiveScoreSuggestion(
 }
 
 async function resolveSubjectiveGradingPreset(db: SubjectiveScoringDatabase) {
-  const preset = await db.aiProviderPreset.findFirst({
-    where: {
-      defaultForTask: AiTaskType.grade_subjective,
-      enabled: true,
-      capabilities: {
-        has: "text"
-      }
-    },
-    orderBy: [{ updatedAt: "desc" }]
+  return resolveTaskAiPreset(db, AiTaskType.grade_subjective, "text", {
+    defaultMaxOutputTokens: 300,
+    defaultTemperature: 0
   });
-
-  return {
-    provider: preset?.provider ?? AiProvider.openai,
-    model: preset?.model ?? "gpt-5.5",
-    maxOutputTokens: preset?.maxTokens ?? 300,
-    temperature: preset?.temperature ?? 0
-  };
 }
 
 function buildSubjectiveGradingPrompt(input: { stem: string; answer: string; maxScore: number; rubric: Prisma.JsonValue | null | undefined }) {

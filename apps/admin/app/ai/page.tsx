@@ -78,7 +78,15 @@ export default async function AdminAiPage({ searchParams }: AdminAiPageProps) {
                   <div className="mb-3 flex flex-wrap gap-2">
                     <span className="status-chip px-2 py-1">{preset.provider.toUpperCase()}</span>
                     <span className="status-chip px-2 py-1">{preset.enabled ? "启用" : "停用"}</span>
-                    <span className="status-chip px-2 py-1">{preset.defaultForTask ? taskLabels[preset.defaultForTask] ?? preset.defaultForTask : "非默认"}</span>
+                    {preset.tasks.length > 0 ? (
+                      preset.tasks.map((task) => (
+                        <span key={task.taskType} className="status-chip px-2 py-1">
+                          {taskLabels[task.taskType] ?? task.taskType}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="status-chip px-2 py-1">非默认</span>
+                    )}
                     {preset.maxTokens ? <span className="status-chip px-2 py-1">Max {preset.maxTokens}</span> : null}
                     {preset.temperature !== null ? <span className="status-chip px-2 py-1">Temp {preset.temperature}</span> : null}
                   </div>
@@ -92,7 +100,7 @@ export default async function AdminAiPage({ searchParams }: AdminAiPageProps) {
                   label={preset.label}
                   model={preset.model}
                   capabilities={preset.capabilities}
-                  defaultForTask={preset.defaultForTask}
+                  defaultForTasks={preset.tasks.map((task) => task.taskType)}
                   temperature={preset.temperature}
                   maxTokens={preset.maxTokens}
                   enabled={preset.enabled}
@@ -113,7 +121,7 @@ function PresetForm({
   model = "",
   label = "",
   capabilities = ["text", "json"],
-  defaultForTask = AiTaskType.explain_question,
+  defaultForTasks = [],
   temperature = null,
   maxTokens = 700,
   enabled = true,
@@ -124,7 +132,7 @@ function PresetForm({
   model?: string;
   label?: string;
   capabilities?: string[];
-  defaultForTask?: string | null;
+  defaultForTasks?: string[];
   temperature?: number | null;
   maxTokens?: number | null;
   enabled?: boolean;
@@ -133,7 +141,7 @@ function PresetForm({
   return (
     <form action={upsertAiProviderPresetAction} className="grid gap-4">
       {id ? <input name="id" type="hidden" value={id} /> : null}
-      <div className="grid gap-3 lg:grid-cols-[0.8fr_1fr_1fr_1fr_0.8fr_0.8fr]">
+      <div className="grid gap-3 lg:grid-cols-[0.8fr_1fr_1fr_0.8fr_0.8fr]">
         <SelectField label="Provider" name="provider" defaultValue={provider}>
           {Object.values(AiProvider).map((item) => (
             <option key={item} value={item}>
@@ -143,17 +151,26 @@ function PresetForm({
         </SelectField>
         <TextField label="模型" name="model" defaultValue={model} placeholder="gpt-5.5" required />
         <TextField label="名称" name="label" defaultValue={label} placeholder="OpenAI GPT-5.5" />
-        <SelectField label="默认任务" name="defaultForTask" defaultValue={defaultForTask ?? ""}>
-          <option value="">非默认</option>
-          {Object.values(AiTaskType).map((taskType) => (
-            <option key={taskType} value={taskType}>
-              {taskLabels[taskType] ?? taskType}
-            </option>
-          ))}
-        </SelectField>
         <TextField label="Temperature" name="temperature" defaultValue={temperature === null ? "" : String(temperature)} placeholder="0.2" />
         <TextField label="Max Tokens" name="maxTokens" defaultValue={maxTokens === null ? "" : String(maxTokens)} placeholder="700" />
       </div>
+      <fieldset className="grid gap-2">
+        <legend className="text-sm font-bold">默认任务</legend>
+        <div className="flex flex-wrap gap-3">
+          {Object.values(AiTaskType).map((taskType) => (
+            <label key={taskType} className="flex items-center gap-2 border-2 border-black bg-white px-3 py-2 text-sm font-bold">
+              <input
+                className="h-4 w-4 accent-black"
+                defaultChecked={defaultForTasks.includes(taskType)}
+                name="defaultForTasks"
+                type="checkbox"
+                value={taskType}
+              />
+              {taskLabels[taskType] ?? taskType}
+            </label>
+          ))}
+        </div>
+      </fieldset>
       <fieldset className="grid gap-2">
         <legend className="text-sm font-bold">Capabilities</legend>
         <div className="flex flex-wrap gap-3">
