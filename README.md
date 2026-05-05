@@ -1,5 +1,13 @@
 # OpenExam
 
+<p align="center">
+  <img src="docs/assets/openexam-banner.png" alt="OpenExam self-hosted AI exam preparation platform" />
+</p>
+
+<p align="center">
+  <a href="README.zh-CN.md">简体中文</a> · <strong>English</strong>
+</p>
+
 [![CI](https://github.com/hacksynth/openexam/actions/workflows/ci.yml/badge.svg)](https://github.com/hacksynth/openexam/actions/workflows/ci.yml)
 [![Docker](https://github.com/hacksynth/openexam/actions/workflows/docker.yml/badge.svg)](https://github.com/hacksynth/openexam/actions/workflows/docker.yml)
 [![CodeQL](https://github.com/hacksynth/openexam/actions/workflows/codeql.yml/badge.svg)](https://github.com/hacksynth/openexam/actions/workflows/codeql.yml)
@@ -25,6 +33,12 @@ The first product version targets Simplified Chinese (`zh-CN`) UI copy by defaul
 - BYOK AI settings, provider call logs, admin model presets, material extraction jobs, context chat, learning diagnosis, and 14-day study plans.
 - Private local asset serving for generated wrong-note review cards.
 - CI for Prisma validation, TypeScript checks, Vitest, app builds, migration deploy, Playwright browser workflows, Docker image builds, and CodeQL analysis.
+
+## Product Screenshots
+
+| Learner dashboard | Admin dashboard |
+| --- | --- |
+| ![Learner dashboard screenshot](docs/assets/screenshots/learner-dashboard.png) | ![Admin dashboard screenshot](docs/assets/screenshots/admin-dashboard.png) |
 
 ## Documentation
 
@@ -148,6 +162,10 @@ GitHub Actions runs `npm ci`, Prisma generation and validation, TypeScript linti
 - `.github/workflows/`: CI, Docker image build, and CodeQL code scanning workflows.
 - `.editorconfig` and `.gitattributes`: consistent text encoding, line endings, and binary handling.
 - `CODE_OF_CONDUCT.md`, `CONTRIBUTING.md`, `SECURITY.md`, and `SUPPORT.md`: community and maintainer operating policies.
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=hacksynth/openexam&type=Date)](https://www.star-history.com/#hacksynth/openexam&Date)
 
 ## Contributing
 
