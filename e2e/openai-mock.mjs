@@ -37,9 +37,25 @@ const server = createServer(async (request, response) => {
       return;
     }
 
-    const isExtraction = String(body.input ?? "").includes("资料正文");
+    const input = String(body.input ?? "");
+    const isExtraction = input.includes("资料正文");
+    const isPlan = input.includes("14 天学习计划");
     const knowledgeNodeId = String(body.input ?? "").match(/(cm[a-z0-9]+)/)?.[1] ?? "";
-    const text = isExtraction
+    const goalId = input.match(/目标 ID：([^\n]+)/)?.[1]?.trim() ?? "goal_mock";
+    const text = isPlan
+      ? JSON.stringify({
+          goalId,
+          generatedAt: "2026-05-05T00:00:00.000Z",
+          days: 14,
+          tasks: Array.from({ length: 14 }, (_, index) => ({
+            day: index + 1,
+            title: `第 ${index + 1} 天复习事务基础并完成单选练习`,
+            kind: index % 5 === 4 ? "wrong_note_review" : "practice",
+            minutes: 45,
+            knowledgeNodeIds: knowledgeNodeId ? [knowledgeNodeId] : []
+          }))
+        })
+      : isExtraction
       ? JSON.stringify({
           questions: [
             {

@@ -108,6 +108,7 @@ model User {
   aiCalls        AiCall[]
   jobs           Job[]
   providerKeys   UserProviderKey[]
+  studyPlans     StudyPlan[]
   sessions       Session[]
   auditLogs      AuditLog[]        @relation("AuditActor")
 }
@@ -179,6 +180,7 @@ model Subject {
   syllabi     Syllabus[]
   papers      Paper[]
   goals       ExamGoal[]
+  planTasks   StudyPlanTask[]
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
 
@@ -290,6 +292,7 @@ model Paper {
   archivedAt  DateTime?
   questions   PaperQuestion[]
   attempts    Attempt[]
+  planTasks   StudyPlanTask[]
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
 
@@ -328,6 +331,7 @@ model ExamGoal {
   dailyMinutes   Int          @default(60)
   isPrimary      Boolean      @default(false)
   attempts       Attempt[]
+  studyPlans     StudyPlan[]
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
@@ -412,6 +416,7 @@ model Material {
   sourceLicense   String?
   assets          Asset[]
   candidates      MaterialQuestionCandidate[]
+  planTasks       StudyPlanTask[]
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -526,6 +531,46 @@ model Job {
 
   @@index([status, priority, runAt])
   @@index([userId])
+}
+
+model StudyPlan {
+  id          String          @id @default(cuid())
+  userId      String
+  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  goalId      String
+  goal        ExamGoal        @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  status      String          @default("active")
+  generatedAt DateTime        @default(now())
+  sourceStats Json?
+  tasks       StudyPlanTask[]
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@index([userId, status])
+  @@index([goalId])
+}
+
+model StudyPlanTask {
+  id               String    @id @default(cuid())
+  planId           String
+  plan             StudyPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  day              Int
+  title            String
+  kind             String
+  minutes          Int
+  subjectId        String?
+  subject          Subject?  @relation(fields: [subjectId], references: [id])
+  knowledgeNodeIds String[]  @default([])
+  paperId          String?
+  paper            Paper?    @relation(fields: [paperId], references: [id])
+  materialId       String?
+  material         Material? @relation(fields: [materialId], references: [id])
+  completedAt      DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([planId, day])
+  @@index([completedAt])
 }
 
 model AuditLog {

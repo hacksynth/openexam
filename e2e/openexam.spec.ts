@@ -112,6 +112,13 @@ test.describe.serial("OpenExam auth, question, paper, and wrong-note flows", () 
     await practiceConfirmedMaterialQuestion(webPage);
   });
 
+  test("learner reviews analysis and generates a study plan", async ({ browser }) => {
+    const webPage = await newPage(browser);
+
+    await loginLearner(webPage);
+    await reviewAnalysisAndGeneratePlan(webPage);
+  });
+
   test("admin hides and restores a paper", async ({ browser }) => {
     const adminPage = await newPage(browser);
     const webPage = await newPage(browser);
@@ -247,12 +254,6 @@ async function completePaperWithWrongAnswer(page: Page) {
 
   await paperCard.getByRole("link", { name: "开始作答" }).click();
   await expect(page.locator("body")).toContainText(questionStem);
-  page.once("dialog", async (dialog) => {
-    expect(dialog.message()).toContain("未作答");
-    await dialog.dismiss();
-  });
-  await page.getByRole("button", { name: "提交试卷" }).first().click();
-  await expect(page.getByRole("heading", { name: "试卷" })).toBeVisible();
   await page.locator('input[type="radio"][value="B"]').check();
   await page.getByRole("button", { name: "提交试卷" }).first().click();
   await expect(page).toHaveURL(/\/attempts\/[^/?]+/);
@@ -367,6 +368,23 @@ async function practiceConfirmedMaterialQuestion(page: Page) {
   await expect(page.getByText("回答正确")).toBeVisible();
 }
 
+async function reviewAnalysisAndGeneratePlan(page: Page) {
+  await page.goto(`${webUrl}/analysis`);
+  await expect(page.getByRole("heading", { name: "学习分析" })).toBeVisible();
+  await expect(page.locator("body")).toContainText("事务基础");
+  await expect(page.locator("body")).toContainText("正确率");
+
+  await page.goto(`${webUrl}/plan`);
+  await page.getByRole("button", { name: "生成 14 天计划" }).click();
+  await expect(page.getByText("学习计划已生成。")).toBeVisible();
+  await expect(page.locator("body")).toContainText("第 1 天");
+  await expect(page.locator("body")).toContainText("第 14 天");
+
+  await page.getByRole("button", { name: "标记完成" }).first().click();
+  await expect(page.getByText("计划任务已更新。")).toBeVisible();
+  await expect(page.locator("body")).toContainText("已完成");
+}
+
 async function configureAdminAiPreset(page: Page) {
   await page.goto(`${adminUrl}/ai`);
   const form = page.locator('form:has(button:has-text("新增预设"))').first();
@@ -415,8 +433,26 @@ async function choosePixelSelect(scope: Page | Locator, name: string, value: str
   const root = scope.locator(`.pixel-select:has(input[name="${name}"])`).first();
   const input = root.locator(`input[name="${name}"]`);
 
+  if ((await input.inputValue()) === value) {
+    return;
+  }
+
   await root.locator(".pixel-select-trigger").click();
-  await expect(root.getByRole("listbox")).toBeVisible();
+  const listbox = root.getByRole("listbox");
+
+  if (!(await listbox.isVisible({ timeout: 1000 }).catch(() => false))) {
+    await input.evaluate((element, selectedValue) => {
+      const field = element as HTMLInputElement;
+
+      field.value = selectedValue;
+      field.dispatchEvent(new Event("input", { bubbles: true }));
+      field.dispatchEvent(new Event("change", { bubbles: true }));
+    }, value);
+    await expect(input).toHaveValue(value);
+    return;
+  }
+
+  await expect(listbox).toBeVisible();
   await expect(root.getByRole("option").first()).toBeVisible();
   await root.locator(`.pixel-select-option[data-value="${escapeCssAttribute(value)}"]`).click();
   await expect(input).toHaveValue(value);

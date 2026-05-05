@@ -14,11 +14,13 @@
     "./papers": "./src/papers.ts",
     "./practice": "./src/practice.ts",
     "./prisma": "./src/prisma.ts",
+    "./analysis": "./src/analysis.ts",
     "./ai": "./src/ai.ts",
     "./pixel-select": "./src/pixel-select.tsx",
     "./question-admin": "./src/question-admin.ts",
     "./question-governance": "./src/question-governance.ts",
     "./routes": "./src/routes.ts",
+    "./study-plan": "./src/study-plan.ts",
     "./study-plan-schema": "./src/study-plan-schema.ts"
   },
   "dependencies": {
