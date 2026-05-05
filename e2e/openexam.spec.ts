@@ -474,6 +474,7 @@ async function reviewAnalysisAndGeneratePlan(page: Page) {
   await expect(page.locator("body")).toContainText("正确率");
 
   await page.goto(`${webUrl}/plan`);
+  acceptNextDialog(page);
   await page.getByRole("button", { name: "生成 14 天计划" }).click();
   await expect(page.getByText("学习计划已生成。")).toBeVisible();
   await expect(page.locator("body")).toContainText("第 1 天");
@@ -526,6 +527,12 @@ async function hideAndRestorePaper(adminPage: Page, webPage: Page) {
 
 function paperAdminCard(page: Page) {
   return page.locator(`section:has(h2:has-text("${paperTitle}"))`).first();
+}
+
+function acceptNextDialog(page: Page) {
+  page.once("dialog", (dialog) => {
+    void dialog.accept();
+  });
 }
 
 async function choosePixelSelect(scope: Page | Locator, name: string, value: string) {
