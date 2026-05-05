@@ -1,6 +1,8 @@
 # OpenExam
 
 [![CI](https://github.com/hacksynth/openexam/actions/workflows/ci.yml/badge.svg)](https://github.com/hacksynth/openexam/actions/workflows/ci.yml)
+[![Docker](https://github.com/hacksynth/openexam/actions/workflows/docker.yml/badge.svg)](https://github.com/hacksynth/openexam/actions/workflows/docker.yml)
+[![CodeQL](https://github.com/hacksynth/openexam/actions/workflows/codeql.yml/badge.svg)](https://github.com/hacksynth/openexam/actions/workflows/codeql.yml)
 [![License: AGPL-3.0-only](https://img.shields.io/badge/license-AGPL--3.0--only-111111.svg)](LICENSE)
 [![Node.js 24](https://img.shields.io/badge/node-24-339933.svg)](package.json)
 [![Next.js 16](https://img.shields.io/badge/next.js-16-000000.svg)](package.json)
@@ -22,7 +24,7 @@ The first product version targets Simplified Chinese (`zh-CN`) UI copy by defaul
 - Goal-scoped practice, public paper attempts, answer autosave, reports, wrong-note ingestion, retry, and weak-point summaries.
 - BYOK AI settings, provider call logs, admin model presets, material extraction jobs, context chat, learning diagnosis, and 14-day study plans.
 - Private local asset serving for generated wrong-note review cards.
-- CI for Prisma validation, TypeScript checks, Vitest, app builds, migration deploy, and Playwright browser workflows.
+- CI for Prisma validation, TypeScript checks, Vitest, app builds, migration deploy, Playwright browser workflows, Docker image builds, and CodeQL analysis.
 
 ## Documentation
 
@@ -32,6 +34,7 @@ The first product version targets Simplified Chinese (`zh-CN`) UI copy by defaul
 - `docs/design-system.md`: UI direction and accessibility rules.
 - `docs/release-v0.1.0.md`: release scope, acceptance gates, and known follow-up work.
 - `CHANGELOG.md`: user-facing release history.
+- `SUPPORT.md`: support, bug-report, feature-request, and private security-report routing.
 - `AGENTS.md`: contributor and agent guidance for this repository.
 
 ## Stack
@@ -130,11 +133,21 @@ Exercise the release-critical flows in the running stack: learner login, materia
 
 ### Production Checklist
 
-The local Compose defaults are intentionally convenient, but production deployments must override secret defaults. Set strong values for `SESSION_SECRET` and `AI_KEY_ENCRYPTION_SECRET`; configure `OPENAI_API_KEY` and `OPENAI_BASE_URL` only for the platform provider or compatible gateway you intend to use. Use a durable `LOCAL_STORAGE_DIR` volume for local storage, or move uploads and generated assets to S3-compatible storage when that driver is completed.
+The local Compose defaults are intentionally convenient, but production deployments must override secret defaults. Set strong values for `SESSION_SECRET` and `AI_KEY_ENCRYPTION_SECRET`; configure `OPENAI_API_KEY` and `OPENAI_BASE_URL` only for the platform provider or compatible gateway you intend to use. Use a durable `LOCAL_STORAGE_DIR` volume for local storage, or configure `STORAGE_DRIVER=s3` with S3-compatible storage for uploads and generated assets.
 
 Keep PostgreSQL on persistent storage with backups and restore testing. Tune `OPENEXAM_WORKER_POLL_MS`, `OPENEXAM_JOB_STALE_MS`, `OPENEXAM_WORKER_HEALTH_PATH`, and `OPENEXAM_WORKER_HEALTH_MAX_AGE_MS` for your worker runtime so queued jobs are picked up promptly, stale running jobs are recovered, and health checks do not mask a stalled worker.
 
-GitHub Actions runs `npm ci`, Prisma generation and validation, TypeScript linting, Vitest, both app builds, migration deploy, and Playwright browser workflows on pushes to `main` and pull requests targeting `main`.
+GitHub Actions runs `npm ci`, Prisma generation and validation, TypeScript linting, Vitest, both app builds, migration deploy, Playwright browser workflows, Docker image builds, and CodeQL analysis on pushes to `main` and pull requests targeting `main`. Dependabot checks npm, GitHub Actions, and Docker base image updates weekly.
+
+## Repository Maintenance
+
+- `.github/ISSUE_TEMPLATE/`: structured bug and feature intake.
+- `.github/PULL_REQUEST_TEMPLATE.md`: required summary, test, release, and security checks.
+- `.github/CODEOWNERS`: default review ownership.
+- `.github/dependabot.yml`: weekly dependency update pull requests.
+- `.github/workflows/`: CI, Docker image build, and CodeQL code scanning workflows.
+- `.editorconfig` and `.gitattributes`: consistent text encoding, line endings, and binary handling.
+- `CODE_OF_CONDUCT.md`, `CONTRIBUTING.md`, `SECURITY.md`, and `SUPPORT.md`: community and maintainer operating policies.
 
 ## Contributing
 

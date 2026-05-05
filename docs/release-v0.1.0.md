@@ -11,9 +11,10 @@ Release date: 2026-05-05
 - Learner app: registration, login, dashboard, goal selection, practice, paper attempts, reports, wrong notes, BYOK AI settings, material uploads, analysis, study plans, and context chat.
 - Admin app: login, dashboard metrics, exam hierarchy, knowledge nodes, questions, papers, materials, jobs, AI presets, users, and audit events.
 - Worker: database-backed material extraction and wrong-note review-card jobs with stale-job recovery.
-- Storage: local private asset storage for uploads and generated images.
+- Storage: local or S3-compatible private asset storage for uploads and generated images.
 - Data: Prisma migrations and seed data for the first Ruankao Software Designer sample track.
 - Delivery: Dockerfiles, Docker Compose, CI, Vitest, and Playwright browser workflows.
+- Repository infrastructure: issue templates, pull request template, CodeQL, Docker image build workflow, Dependabot, CODEOWNERS, support policy, security policy, behavior policy, changelog, and release notes.
 
 ## Acceptance Gates
 
@@ -55,5 +56,5 @@ Then exercise the release-critical flows in a browser:
 - Deeper subjective grading review and confirmation workflows.
 - Problem-solving diagram generation.
 - Source/license governance and public question provenance hardening.
-- S3-compatible storage driver completion.
+- S3-compatible storage production hardening.
 - Broader audit coverage and production deployment guides.
