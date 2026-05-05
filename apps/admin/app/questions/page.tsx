@@ -72,6 +72,26 @@ const questionKindLabels: Record<string, string> = {
   case_analysis: "案例"
 };
 
+const answerPresetOptions = [
+  "A",
+  "B",
+  "C",
+  "D",
+  "A,B",
+  "A,C",
+  "A,D",
+  "B,C",
+  "B,D",
+  "C,D",
+  "A,B,C",
+  "A,B,D",
+  "A,C,D",
+  "B,C,D",
+  "A,B,C,D",
+  "true",
+  "false"
+] as const;
+
 const archivedLabels: Record<string, string> = {
   active: "未归档",
   archived: "已归档",
@@ -289,8 +309,20 @@ function QuestionForm({
         <TextField label="选项 C（选择题）" name="optionC" defaultValue={question?.optionC ?? ""} />
         <TextField label="选项 D（选择题）" name="optionD" defaultValue={question?.optionD ?? ""} />
       </div>
-      <div className="grid gap-3 lg:grid-cols-[1.2fr_1fr_1fr]">
-        <TextField label="答案 / 参考答案" name="answer" defaultValue={question?.answer ?? ""} placeholder="单选 A；多选 A,B；判断 true/false；填空答案" />
+      <div className="grid gap-3 lg:grid-cols-[1fr_1.2fr_1fr_1fr]">
+        <SelectField label="答案模板" name="answer" defaultValue={answerPresetDefault(question?.answer)} required>
+          {answerPresetOptions.map((answer) => (
+            <option key={answer} value={answer}>
+              {answer}
+            </option>
+          ))}
+        </SelectField>
+        <TextField
+          label="填空 / 主观参考答案"
+          name="answerText"
+          defaultValue={answerTextDefault(question?.answer)}
+          placeholder="需要自由文本时填写"
+        />
         <SelectField label="可见性" name="visibility" defaultValue={question?.visibility ?? "private"} required>
           {questionVisibilityOptions.map((visibility) => (
             <option key={visibility} value={visibility}>
@@ -407,6 +439,14 @@ function TextField({
       <input className={inputClass} defaultValue={defaultValue} name={name} placeholder={placeholder} required={required} />
     </label>
   );
+}
+
+function answerPresetDefault(value: string | undefined) {
+  return answerPresetOptions.includes(value as (typeof answerPresetOptions)[number]) ? value : "A";
+}
+
+function answerTextDefault(value: string | undefined) {
+  return value && !answerPresetOptions.includes(value as (typeof answerPresetOptions)[number]) ? value : "";
 }
 
 function SelectField({

@@ -74,7 +74,7 @@ function readQuestion(formData: FormData): AdminQuestionInput {
     optionB: value(formData, "optionB"),
     optionC: value(formData, "optionC"),
     optionD: value(formData, "optionD"),
-    answer: value(formData, "answer"),
+    answer: value(formData, "answerText") || value(formData, "answer"),
     payloadJson: value(formData, "payloadJson"),
     answerKeyJson: value(formData, "answerKeyJson"),
     rubricJson: value(formData, "rubricJson"),
