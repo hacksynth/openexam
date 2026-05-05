@@ -16,9 +16,16 @@ const envSchema = z.object({
   OPENEXAM_WORKER_HEALTH_MAX_AGE_MS: z.coerce.number().int().positive().default(30000),
   STORAGE_DRIVER: z.enum(["local", "s3"]).default("local"),
   LOCAL_STORAGE_DIR: z.string().default("./storage"),
+  S3_REGION: z.string().default("us-east-1"),
+  S3_ENDPOINT: z.string().default(""),
+  S3_BUCKET: z.string().default(""),
+  S3_ACCESS_KEY_ID: z.string().default(""),
+  S3_SECRET_ACCESS_KEY: z.string().default(""),
+  S3_FORCE_PATH_STYLE: z.coerce.boolean().default(false),
+  AWS_PROFILE: z.string().optional(),
   NEXT_PUBLIC_APP_NAME: z.string().default("OpenExam")
 });
 
-export function readEnv(source = process.env) {
+export function readEnv(source: Record<string, unknown> = process.env) {
   return envSchema.parse(source);
 }

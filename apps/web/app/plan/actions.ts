@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { Route } from "next";
 import { requireWebSession } from "@/lib/auth";
-import { generateStudyPlan, setStudyPlanTaskCompleted } from "@openexam/core/study-plan";
+import { abandonCurrentStudyPlan, generateStudyPlan, setStudyPlanTaskCompleted } from "@openexam/core/study-plan";
 
 export async function generateStudyPlanAction() {
   const session = await requireWebSession();
@@ -31,4 +31,17 @@ export async function setStudyPlanTaskCompletedAction(formData: FormData) {
   }
 
   redirect(`/plan?notice=${encodeURIComponent("计划任务已更新。")}` as Route);
+}
+
+export async function abandonCurrentStudyPlanAction() {
+  const session = await requireWebSession();
+  const result = await abandonCurrentStudyPlan(session.user.id);
+
+  revalidatePath("/plan" as Route);
+
+  if (!result.ok) {
+    redirect(`/plan?error=${encodeURIComponent(result.error)}` as Route);
+  }
+
+  redirect(`/plan?notice=${encodeURIComponent("学习计划已放弃。")}` as Route);
 }

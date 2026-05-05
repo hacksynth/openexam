@@ -3,8 +3,8 @@ import type { Route } from "next";
 import { AppShell } from "@/components/app-shell";
 import { requireWebSession } from "@/lib/auth";
 import { getLearningAnalysis } from "@openexam/core/analysis";
-import { getCurrentStudyPlan } from "@openexam/core/study-plan";
-import { generateStudyPlanAction, setStudyPlanTaskCompletedAction } from "./actions";
+import { getCurrentStudyPlan, listStudyPlanHistory } from "@openexam/core/study-plan";
+import { abandonCurrentStudyPlanAction, generateStudyPlanAction, setStudyPlanTaskCompletedAction } from "./actions";
 
 type PlanPageProps = {
   searchParams: Promise<{ error?: string; notice?: string }>;
@@ -18,9 +18,20 @@ const kindLabels: Record<string, string> = {
   material_review: "资料"
 };
 
+const planStatusLabels: Record<string, string> = {
+  active: "进行中",
+  archived: "已归档",
+  abandoned: "已放弃"
+};
+
 export default async function PlanPage({ searchParams }: PlanPageProps) {
   const session = await requireWebSession();
-  const [params, analysis, plan] = await Promise.all([searchParams, getLearningAnalysis(session.user.id), getCurrentStudyPlan(session.user.id)]);
+  const [params, analysis, plan, planHistory] = await Promise.all([
+    searchParams,
+    getLearningAnalysis(session.user.id),
+    getCurrentStudyPlan(session.user.id),
+    listStudyPlanHistory(session.user.id)
+  ]);
 
   return (
     <AppShell section="learner" eyebrow="学习计划" title="学习计划">
@@ -45,6 +56,13 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
                     {plan ? "重新生成计划" : "生成 14 天计划"}
                   </button>
                 </form>
+                {plan ? (
+                  <form action={abandonCurrentStudyPlanAction}>
+                    <button className="pixel-button bg-white px-4 py-2" type="submit">
+                      放弃当前计划
+                    </button>
+                  </form>
+                ) : null}
                 <Link href={"/analysis" as Route} className="pixel-button bg-white px-4 py-2">
                   查看分析
                 </Link>
@@ -58,7 +76,7 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
                 <section className="grid gap-4 md:grid-cols-3">
                   <Metric label="任务完成" value={`${plan.completedCount} / ${plan.taskCount}`} />
                   <Metric label="生成日期" value={formatDate(plan.generatedAt)} />
-                  <Metric label="计划状态" value={plan.status === "active" ? "进行中" : plan.status} />
+                  <Metric label="计划状态" value={planStatusLabels[plan.status] ?? plan.status} />
                 </section>
 
                 <section className="grid gap-4">
@@ -99,6 +117,34 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
                 </section>
               </>
             )}
+
+            {planHistory.length > 0 ? (
+              <section className="pixel-panel grid gap-4 p-5">
+                <div>
+                  <p className="text-xs font-bold uppercase text-[var(--muted)]">History</p>
+                  <h2 className="mt-1 text-xl font-black">计划历史</h2>
+                </div>
+                <div className="grid gap-3">
+                  {planHistory.map((item) => (
+                    <article key={item.id} className="grid gap-3 border-2 border-black bg-white p-3 md:grid-cols-[1fr_auto]">
+                      <div>
+                        <div className="mb-2 flex flex-wrap gap-2">
+                          <span className="status-chip px-2 py-1">{planStatusLabels[item.status] ?? item.status}</span>
+                          <span className="status-chip px-2 py-1">{formatDate(item.generatedAt)}</span>
+                          <span className="status-chip px-2 py-1">
+                            {item.completedCount} / {item.taskCount}
+                          </span>
+                        </div>
+                        <p className="break-words font-black">{item.goalPath}</p>
+                      </div>
+                      {item.status === "active" ? (
+                        <span className="status-chip self-start bg-[var(--teal)] px-2 py-1">当前</span>
+                      ) : null}
+                    </article>
+                  ))}
+                </div>
+              </section>
+            ) : null}
           </>
         )}
       </section>

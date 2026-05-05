@@ -4,7 +4,7 @@ import { AppShell } from "@/components/app-shell";
 import { requireWebSession } from "@/lib/auth";
 import { formatGoalPath } from "@openexam/core/exam-core";
 import { getAttemptResult, getPracticeQuestion } from "@openexam/core/practice";
-import { collectPracticeQuestionAction, submitPracticeAnswerAction } from "./actions";
+import { collectPracticeQuestionAction, confirmPracticeAnswerScoreAction, generatePracticeAnswerAiExplanationAction, submitPracticeAnswerAction } from "./actions";
 
 type PracticePageProps = {
   searchParams: Promise<{ attempt?: string; error?: string; material?: string; retry?: string; skip?: string; knowledgeNodeId?: string }>;
@@ -162,6 +162,26 @@ function AttemptResultCard({
           <p className="mt-1 leading-7">{result.explanation}</p>
         </div>
       ) : null}
+      {result.aiSuggestedScore !== null && !result.userConfirmed ? (
+        <form action={confirmPracticeAnswerScoreAction} className="grid gap-3 border-2 border-black bg-[var(--surface-subtle)] p-3 sm:grid-cols-[1fr_auto]">
+          <input name="attemptId" type="hidden" value={result.id} />
+          <input name="attemptAnswerId" type="hidden" value={result.attemptAnswerId} />
+          <input name="materialId" type="hidden" value={materialId ?? ""} />
+          <label className="grid gap-1 text-sm font-bold">
+            确认分
+            <input className="w-32 border-2 border-black bg-white px-2 py-1" defaultValue={String(result.aiSuggestedScore)} max={result.maxScore} min="0" name="score" step="0.5" type="number" />
+          </label>
+          <button className="pixel-button self-end bg-white px-3 py-2 text-sm" type="submit">
+            确认分数
+          </button>
+        </form>
+      ) : null}
+      {result.aiExplanation ? (
+        <div className="border-2 border-black bg-[var(--ai-soft)] p-3">
+          <p className="text-sm font-bold text-[var(--muted)]">本题 AI 解析</p>
+          <p className="mt-1 whitespace-pre-line leading-7">{result.aiExplanation}</p>
+        </div>
+      ) : null}
       <div className="flex flex-wrap gap-3">
         <Link href={nextHref} className="pixel-button px-4 py-2">
           再练一题
@@ -183,6 +203,14 @@ function AttemptResultCard({
             </button>
           </form>
         ) : null}
+        <form action={generatePracticeAnswerAiExplanationAction}>
+          <input name="attemptId" type="hidden" value={result.id} />
+          <input name="attemptAnswerId" type="hidden" value={result.attemptAnswerId} />
+          <input name="materialId" type="hidden" value={materialId ?? ""} />
+          <button className="pixel-button bg-white px-4 py-2" type="submit">
+            {result.aiExplanation ? "重新生成本题 AI 解析" : "请求本题 AI 解析"}
+          </button>
+        </form>
       </div>
     </section>
   );

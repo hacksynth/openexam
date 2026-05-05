@@ -18,16 +18,19 @@ type ActionResult<T = undefined> = T extends undefined
   : { ok: true; data: T } | { ok: false; error: string };
 
 export const singleChoiceAnswerKeys = ["A", "B", "C", "D"] as const;
+export const adminQuestionKindOptions = ["single_choice", "multiple_choice", "true_false", "blank", "short_answer", "case_analysis"] as const;
 export const questionVisibilityOptions = ["private", "unlisted", "public"] as const;
 export const questionSourceTypeOptions = ["original", "authorized", "public_domain_or_open", "user_uploaded", "ai_generated", "unknown"] as const;
 export const questionReviewStatusOptions = ["draft", "pending_review", "approved", "rejected", "needs_changes", "takedown"] as const;
 export const adminQuestionArchiveFilters = ["active", "archived", "all"] as const;
 
 export type SingleChoiceAnswerKey = (typeof singleChoiceAnswerKeys)[number];
+export type AdminQuestionKind = (typeof adminQuestionKindOptions)[number];
 export type AdminQuestionArchiveFilter = (typeof adminQuestionArchiveFilters)[number];
 
 export type AdminQuestionFilters = {
   q?: string | null;
+  kind?: string | null;
   knowledgeNodeId?: string | null;
   visibility?: string | null;
   sourceType?: string | null;
@@ -36,13 +39,17 @@ export type AdminQuestionFilters = {
   archived?: string | null;
 };
 
-export type SingleChoiceQuestionInput = {
+export type AdminQuestionInput = {
+  kind?: string | null;
   stem: string;
-  optionA: string;
-  optionB: string;
-  optionC: string;
-  optionD: string;
-  answer: string;
+  optionA?: string | null;
+  optionB?: string | null;
+  optionC?: string | null;
+  optionD?: string | null;
+  answer?: string | null;
+  payloadJson?: string | null;
+  answerKeyJson?: string | null;
+  rubricJson?: string | null;
   explanation?: string | null;
   difficulty?: string | number | null;
   knowledgeNodeId: string;
@@ -54,18 +61,20 @@ export type SingleChoiceQuestionInput = {
   reviewStatus?: string | null;
 };
 
-export type SingleChoiceQuestionImportInput = {
+export type SingleChoiceQuestionInput = AdminQuestionInput;
+
+export type AdminQuestionImportInput = {
   jsonPayload: string;
 };
 
-type ParsedSingleChoiceQuestion = {
+export type SingleChoiceQuestionImportInput = AdminQuestionImportInput;
+
+type ParsedAdminQuestion = {
+  kind: QuestionKind;
   stem: string;
-  payload: {
-    options: { key: SingleChoiceAnswerKey; text: string }[];
-  };
-  answerKey: {
-    value: SingleChoiceAnswerKey;
-  };
+  payload: Prisma.InputJsonValue;
+  answerKey: Prisma.InputJsonValue;
+  rubric: Prisma.InputJsonValue | null;
   explanation: string | null;
   difficulty: number | null;
   knowledgeNodeId: string;
@@ -115,9 +124,11 @@ type AdminQuestionRecord = Prisma.QuestionGetPayload<{ include: typeof adminQues
 
 export function normalizeAdminQuestionFilters(filters: AdminQuestionFilters = {}) {
   const difficulty = parseFilterDifficulty(filters.difficulty);
+  const kind = parseFilterEnum(filters.kind, adminQuestionKindOptions);
 
   return {
     q: optionalText(filters.q),
+    ...(kind ? { kind } : {}),
     knowledgeNodeId: optionalText(filters.knowledgeNodeId),
     visibility: parseFilterEnum(filters.visibility, questionVisibilityOptions),
     sourceType: parseFilterEnum(filters.sourceType, questionSourceTypeOptions),
@@ -130,7 +141,7 @@ export function normalizeAdminQuestionFilters(filters: AdminQuestionFilters = {}
 export async function listAdminQuestions(filters: AdminQuestionFilters = {}) {
   const normalized = normalizeAdminQuestionFilters(filters);
   const where: Prisma.QuestionWhereInput = {
-    kind: QuestionKind.single_choice,
+    ...(normalized.kind ? { kind: normalized.kind as QuestionKind } : {}),
     ...(normalized.archived === "active" ? { deletedAt: null } : {}),
     ...(normalized.archived === "archived" ? { deletedAt: { not: null } } : {}),
     ...(normalized.q
@@ -166,8 +177,8 @@ export async function listAdminQuestions(filters: AdminQuestionFilters = {}) {
   return questions.map(toAdminQuestion);
 }
 
-export async function createSingleChoiceQuestion(input: SingleChoiceQuestionInput): Promise<ActionResult> {
-  const parsed = await parseSingleChoiceQuestionInput(input);
+export async function createAdminQuestion(input: AdminQuestionInput): Promise<ActionResult> {
+  const parsed = await parseAdminQuestionInput(input);
 
   if (!parsed.ok) {
     return parsed;
@@ -176,7 +187,7 @@ export async function createSingleChoiceQuestion(input: SingleChoiceQuestionInpu
   try {
     await prisma.question.create({
       data: {
-        kind: QuestionKind.single_choice,
+        kind: parsed.data.kind,
         currentVersion: 1,
         ...questionData(parsed.data),
         knowledgeBindings: {
@@ -192,6 +203,7 @@ export async function createSingleChoiceQuestion(input: SingleChoiceQuestionInpu
             stem: parsed.data.stem,
             payload: parsed.data.payload,
             answerKey: parsed.data.answerKey,
+            rubric: parsed.data.rubric ?? Prisma.DbNull,
             explanation: parsed.data.explanation,
             sourceType: parsed.data.sourceType,
             visibility: parsed.data.visibility,
@@ -207,8 +219,12 @@ export async function createSingleChoiceQuestion(input: SingleChoiceQuestionInpu
   }
 }
 
-export async function importSingleChoiceQuestions(input: SingleChoiceQuestionImportInput): Promise<ActionResult<{ count: number }>> {
-  const parsed = validateSingleChoiceQuestionImportPayload(input);
+export async function createSingleChoiceQuestion(input: SingleChoiceQuestionInput): Promise<ActionResult> {
+  return createAdminQuestion({ ...input, kind: input.kind ?? QuestionKind.single_choice });
+}
+
+export async function importAdminQuestions(input: AdminQuestionImportInput): Promise<ActionResult<{ count: number }>> {
+  const parsed = validateAdminQuestionImportPayload(input);
 
   if (!parsed.ok) {
     return parsed;
@@ -237,7 +253,7 @@ export async function importSingleChoiceQuestions(input: SingleChoiceQuestionImp
       parsed.data.questions.map((question) =>
         prisma.question.create({
           data: {
-            kind: QuestionKind.single_choice,
+            kind: question.kind,
             currentVersion: 1,
             ...questionData(question),
             knowledgeBindings: {
@@ -253,6 +269,7 @@ export async function importSingleChoiceQuestions(input: SingleChoiceQuestionImp
                 stem: question.stem,
                 payload: question.payload,
                 answerKey: question.answerKey,
+                rubric: question.rubric ?? Prisma.DbNull,
                 explanation: question.explanation,
                 sourceType: question.sourceType,
                 visibility: question.visibility,
@@ -270,8 +287,12 @@ export async function importSingleChoiceQuestions(input: SingleChoiceQuestionImp
   }
 }
 
-export async function updateSingleChoiceQuestion(id: string, input: SingleChoiceQuestionInput): Promise<ActionResult> {
-  const parsed = await parseSingleChoiceQuestionInput(input);
+export async function importSingleChoiceQuestions(input: SingleChoiceQuestionImportInput): Promise<ActionResult<{ count: number }>> {
+  return importAdminQuestions(input);
+}
+
+export async function updateAdminQuestion(id: string, input: AdminQuestionInput): Promise<ActionResult> {
+  const parsed = await parseAdminQuestionInput(input);
 
   if (!parsed.ok) {
     return parsed;
@@ -286,7 +307,6 @@ export async function updateSingleChoiceQuestion(id: string, input: SingleChoice
       const question = await tx.question.findFirst({
         where: {
           id,
-          kind: QuestionKind.single_choice,
           deletedAt: null
         },
         select: {
@@ -301,7 +321,10 @@ export async function updateSingleChoiceQuestion(id: string, input: SingleChoice
 
       await tx.question.update({
         where: { id: question.id },
-        data: questionData(parsed.data)
+        data: {
+          kind: parsed.data.kind,
+          ...questionData(parsed.data)
+        }
       });
 
       await tx.questionKnowledgeNode.deleteMany({
@@ -329,6 +352,7 @@ export async function updateSingleChoiceQuestion(id: string, input: SingleChoice
           stem: parsed.data.stem,
           payload: parsed.data.payload,
           answerKey: parsed.data.answerKey,
+          rubric: parsed.data.rubric ?? Prisma.DbNull,
           explanation: parsed.data.explanation,
           sourceType: parsed.data.sourceType,
           visibility: parsed.data.visibility,
@@ -340,6 +364,7 @@ export async function updateSingleChoiceQuestion(id: string, input: SingleChoice
           stem: parsed.data.stem,
           payload: parsed.data.payload,
           answerKey: parsed.data.answerKey,
+          rubric: parsed.data.rubric ?? Prisma.DbNull,
           explanation: parsed.data.explanation,
           sourceType: parsed.data.sourceType,
           visibility: parsed.data.visibility,
@@ -358,7 +383,11 @@ export async function updateSingleChoiceQuestion(id: string, input: SingleChoice
   }
 }
 
-export async function updateSingleChoiceQuestionReviewStatus(id: string, reviewStatus: string): Promise<ActionResult> {
+export async function updateSingleChoiceQuestion(id: string, input: SingleChoiceQuestionInput): Promise<ActionResult> {
+  return updateAdminQuestion(id, input);
+}
+
+export async function updateAdminQuestionReviewStatus(id: string, reviewStatus: string): Promise<ActionResult> {
   const parsedReviewStatus = parseEnum(reviewStatus, questionReviewStatusOptions, "draft");
 
   if (!parsedReviewStatus.ok) {
@@ -374,7 +403,6 @@ export async function updateSingleChoiceQuestionReviewStatus(id: string, reviewS
       const question = await tx.question.findFirst({
         where: {
           id,
-          kind: QuestionKind.single_choice,
           deletedAt: null
         },
         select: {
@@ -427,7 +455,11 @@ export async function updateSingleChoiceQuestionReviewStatus(id: string, reviewS
   }
 }
 
-export async function setSingleChoiceQuestionArchived(id: string, archived: boolean): Promise<ActionResult> {
+export async function updateSingleChoiceQuestionReviewStatus(id: string, reviewStatus: string): Promise<ActionResult> {
+  return updateAdminQuestionReviewStatus(id, reviewStatus);
+}
+
+export async function setAdminQuestionArchived(id: string, archived: boolean): Promise<ActionResult> {
   if (!id.trim()) {
     return { ok: false, error: "题目不存在。" };
   }
@@ -435,8 +467,7 @@ export async function setSingleChoiceQuestionArchived(id: string, archived: bool
   try {
     const result = await prisma.question.updateMany({
       where: {
-        id,
-        kind: QuestionKind.single_choice
+        id
       },
       data: {
         deletedAt: archived ? new Date() : null
@@ -449,11 +480,19 @@ export async function setSingleChoiceQuestionArchived(id: string, archived: bool
   }
 }
 
-export function validateSingleChoiceQuestionInput(input: SingleChoiceQuestionInput) {
-  return parseSingleChoiceQuestionInputSync(input);
+export async function setSingleChoiceQuestionArchived(id: string, archived: boolean): Promise<ActionResult> {
+  return setAdminQuestionArchived(id, archived);
 }
 
-export function validateSingleChoiceQuestionImportPayload(input: SingleChoiceQuestionImportInput) {
+export function validateAdminQuestionInput(input: AdminQuestionInput) {
+  return parseAdminQuestionInputSync(input);
+}
+
+export function validateSingleChoiceQuestionInput(input: SingleChoiceQuestionInput) {
+  return parseAdminQuestionInputSync({ ...input, kind: input.kind ?? QuestionKind.single_choice });
+}
+
+export function validateAdminQuestionImportPayload(input: AdminQuestionImportInput) {
   const jsonPayload = input.jsonPayload.trim();
 
   if (!jsonPayload) {
@@ -478,7 +517,7 @@ export function validateSingleChoiceQuestionImportPayload(input: SingleChoiceQue
     return { ok: false, error: "单次最多导入 100 道题。" } as const;
   }
 
-  const questions: ParsedSingleChoiceQuestion[] = [];
+  const questions: ParsedAdminQuestion[] = [];
   const errors: string[] = [];
 
   items.forEach((item, index) => {
@@ -487,7 +526,7 @@ export function validateSingleChoiceQuestionImportPayload(input: SingleChoiceQue
       return;
     }
 
-    const result = parseSingleChoiceQuestionInputSync(toImportQuestionInput(item));
+    const result = parseAdminQuestionInputSync(toImportQuestionInput(item));
 
     if (!result.ok) {
       errors.push(`第 ${index + 1} 题：${result.error}`);
@@ -509,8 +548,12 @@ export function validateSingleChoiceQuestionImportPayload(input: SingleChoiceQue
   } as const;
 }
 
-async function parseSingleChoiceQuestionInput(input: SingleChoiceQuestionInput) {
-  const parsed = parseSingleChoiceQuestionInputSync(input);
+export function validateSingleChoiceQuestionImportPayload(input: SingleChoiceQuestionImportInput) {
+  return validateAdminQuestionImportPayload(input);
+}
+
+async function parseAdminQuestionInput(input: AdminQuestionInput) {
+  const parsed = parseAdminQuestionInputSync(input);
 
   if (!parsed.ok) {
     return parsed;
@@ -532,15 +575,9 @@ async function parseSingleChoiceQuestionInput(input: SingleChoiceQuestionInput) 
   return parsed;
 }
 
-function parseSingleChoiceQuestionInputSync(input: SingleChoiceQuestionInput) {
+function parseAdminQuestionInputSync(input: AdminQuestionInput) {
   const stem = input.stem.trim();
-  const options: ParsedSingleChoiceQuestion["payload"]["options"] = [
-    { key: "A", text: input.optionA.trim() },
-    { key: "B", text: input.optionB.trim() },
-    { key: "C", text: input.optionC.trim() },
-    { key: "D", text: input.optionD.trim() }
-  ];
-  const answer = input.answer.trim().toUpperCase();
+  const kind = parseEnum(input.kind, adminQuestionKindOptions, QuestionKind.single_choice);
   const difficulty = parseDifficulty(input.difficulty);
   const visibility = parseEnum(input.visibility, questionVisibilityOptions, "private");
   const sourceType = parseEnum(input.sourceType, questionSourceTypeOptions, "original");
@@ -550,17 +587,16 @@ function parseSingleChoiceQuestionInputSync(input: SingleChoiceQuestionInput) {
   const sourceUrl = optionalText(input.sourceUrl);
   const sourceLicense = optionalText(input.sourceLicense);
   const knowledgeNodeId = input.knowledgeNodeId.trim();
+  const payloadOverride = parseOptionalJson(input.payloadJson, "payload JSON");
+  const answerKeyOverride = parseOptionalJson(input.answerKeyJson, "answerKey JSON");
+  const rubricOverride = parseOptionalJson(input.rubricJson, "rubric JSON");
 
   if (!stem) {
     return { ok: false, error: "题干不能为空。" } as const;
   }
 
-  if (options.some((option) => !option.text)) {
-    return { ok: false, error: "A/B/C/D 四个选项都必须填写。" } as const;
-  }
-
-  if (!singleChoiceAnswerKeys.includes(answer as SingleChoiceAnswerKey)) {
-    return { ok: false, error: "正确答案只能是 A、B、C 或 D。" } as const;
+  if (!kind.ok) {
+    return kind;
   }
 
   if (!difficulty.ok) {
@@ -577,6 +613,18 @@ function parseSingleChoiceQuestionInputSync(input: SingleChoiceQuestionInput) {
 
   if (!reviewStatus.ok) {
     return reviewStatus;
+  }
+
+  if (!payloadOverride.ok) {
+    return payloadOverride;
+  }
+
+  if (!answerKeyOverride.ok) {
+    return answerKeyOverride;
+  }
+
+  if (!rubricOverride.ok) {
+    return rubricOverride;
   }
 
   if (!knowledgeNodeId) {
@@ -597,16 +645,30 @@ function parseSingleChoiceQuestionInputSync(input: SingleChoiceQuestionInput) {
     return { ok: false, error: "公开题必须填写来源标题和来源许可。" } as const;
   }
 
+  const storage = buildQuestionStorage({
+    kind: kind.value as QuestionKind,
+    optionA: input.optionA,
+    optionB: input.optionB,
+    optionC: input.optionC,
+    optionD: input.optionD,
+    answer: input.answer,
+    payloadOverride: payloadOverride.data,
+    answerKeyOverride: answerKeyOverride.data,
+    rubricOverride: rubricOverride.data
+  });
+
+  if (!storage.ok) {
+    return storage;
+  }
+
   return {
     ok: true,
     data: {
+      kind: kind.value as QuestionKind,
       stem,
-      payload: {
-        options
-      },
-      answerKey: {
-        value: answer as SingleChoiceAnswerKey
-      },
+      payload: storage.data.payload,
+      answerKey: storage.data.answerKey,
+      rubric: storage.data.rubric,
       explanation,
       difficulty: difficulty.value,
       knowledgeNodeId,
@@ -620,16 +682,127 @@ function parseSingleChoiceQuestionInputSync(input: SingleChoiceQuestionInput) {
   } as const;
 }
 
-function toImportQuestionInput(item: Record<string, unknown>): SingleChoiceQuestionInput {
+function buildQuestionStorage(input: {
+  kind: QuestionKind;
+  optionA?: string | null;
+  optionB?: string | null;
+  optionC?: string | null;
+  optionD?: string | null;
+  answer?: string | null;
+  payloadOverride: Prisma.InputJsonValue | null;
+  answerKeyOverride: Prisma.InputJsonValue | null;
+  rubricOverride: Prisma.InputJsonValue | null;
+}): ActionResult<{ payload: Prisma.InputJsonValue; answerKey: Prisma.InputJsonValue; rubric: Prisma.InputJsonValue | null }> {
+  const answer = String(input.answer ?? "").trim();
+
+  if (input.kind === QuestionKind.single_choice || input.kind === QuestionKind.multiple_choice) {
+    const options = [
+      { key: "A", text: String(input.optionA ?? "").trim() },
+      { key: "B", text: String(input.optionB ?? "").trim() },
+      { key: "C", text: String(input.optionC ?? "").trim() },
+      { key: "D", text: String(input.optionD ?? "").trim() }
+    ];
+
+    if (options.some((option) => !option.text)) {
+      return { ok: false, error: "A/B/C/D 四个选项都必须填写。" };
+    }
+
+    if (input.kind === QuestionKind.single_choice) {
+      const normalized = answer.toUpperCase();
+
+      if (!singleChoiceAnswerKeys.includes(normalized as SingleChoiceAnswerKey)) {
+        return { ok: false, error: "正确答案只能是 A、B、C 或 D。" };
+      }
+
+      return {
+        ok: true,
+        data: {
+          payload: { options },
+          answerKey: input.answerKeyOverride ?? { value: normalized },
+          rubric: input.rubricOverride
+        }
+      };
+    }
+
+    const values = parseAnswerValues(answer);
+
+    if (values.length === 0 || values.some((value) => !singleChoiceAnswerKeys.includes(value as SingleChoiceAnswerKey))) {
+      return { ok: false, error: "多选题答案请用 A/B/C/D 组合，以逗号或空格分隔。" };
+    }
+
+    return {
+      ok: true,
+      data: {
+        payload: { options },
+        answerKey: input.answerKeyOverride ?? { values },
+        rubric: input.rubricOverride
+      }
+    };
+  }
+
+  if (input.kind === QuestionKind.true_false) {
+    const value = parseTrueFalseAnswer(answer);
+
+    if (value === null && !input.answerKeyOverride) {
+      return { ok: false, error: "判断题答案只能是 true/false、正确/错误 或 对/错。" };
+    }
+
+    return {
+      ok: true,
+      data: {
+        payload:
+          input.payloadOverride ??
+          {
+            options: [
+              { key: "true", text: "正确" },
+              { key: "false", text: "错误" }
+            ]
+          },
+        answerKey: input.answerKeyOverride ?? { value },
+        rubric: input.rubricOverride
+      }
+    };
+  }
+
+  if (input.kind === QuestionKind.blank) {
+    if (!answer && !input.answerKeyOverride) {
+      return { ok: false, error: "填空题答案不能为空。" };
+    }
+
+    return {
+      ok: true,
+      data: {
+        payload: input.payloadOverride ?? {},
+        answerKey: input.answerKeyOverride ?? { value: answer },
+        rubric: input.rubricOverride
+      }
+    };
+  }
+
+  return {
+    ok: true,
+    data: {
+      payload: input.payloadOverride ?? {},
+      answerKey: input.answerKeyOverride ?? (answer ? { value: answer } : {}),
+      rubric: input.rubricOverride ?? (answer ? { referenceAnswer: answer } : null)
+    }
+  };
+}
+
+function toImportQuestionInput(item: Record<string, unknown>): AdminQuestionInput {
   const options = isPlainObject(item.options) ? item.options : {};
 
   return {
+    kind: textValue(item.kind),
     stem: textValue(item.stem),
     optionA: textValue(item.optionA ?? options.A ?? options.a),
     optionB: textValue(item.optionB ?? options.B ?? options.b),
     optionC: textValue(item.optionC ?? options.C ?? options.c),
     optionD: textValue(item.optionD ?? options.D ?? options.d),
-    answer: textValue(item.answer),
+    answer: answerTextValue(item.answer ?? readValueFromAnswerKey(item.answerKey)),
+    payloadJson: jsonTextValue(item.payload),
+    answerKeyJson: jsonTextValue(item.answerKey),
+    rubricJson: jsonTextValue(item.rubric),
     explanation: textValue(item.explanation),
     difficulty: typeof item.difficulty === "number" ? item.difficulty : textValue(item.difficulty),
     knowledgeNodeId: textValue(item.knowledgeNodeId),
@@ -642,11 +815,12 @@ function toImportQuestionInput(item: Record<string, unknown>): SingleChoiceQuest
   };
 }
 
-function questionData(data: ParsedSingleChoiceQuestion) {
+function questionData(data: ParsedAdminQuestion) {
   return {
     stem: data.stem,
     payload: data.payload,
     answerKey: data.answerKey,
+    rubric: data.rubric ?? Prisma.DbNull,
     explanation: data.explanation,
     difficulty: data.difficulty,
     sourceType: data.sourceType as SourceType,
@@ -663,17 +837,22 @@ function toAdminQuestion(question: AdminQuestionRecord) {
   const version = question.versions.find((item) => item.version === question.currentVersion) ?? question.versions[0] ?? null;
   const payload = version?.payload ?? question.payload;
   const answerKey = version?.answerKey ?? question.answerKey;
+  const rubric = version?.rubric ?? question.rubric;
   const options = readOptions(payload);
   const primaryBinding = question.knowledgeBindings.find((binding) => binding.isPrimary) ?? question.knowledgeBindings[0] ?? null;
 
   return {
     id: question.id,
+    kind: question.kind,
     stem: version?.stem ?? question.stem,
     optionA: options.A,
     optionB: options.B,
     optionC: options.C,
     optionD: options.D,
     answer: readAnswer(answerKey),
+    payloadJson: formatJson(payload),
+    answerKeyJson: formatJson(answerKey),
+    rubricJson: formatJson(rubric),
     explanation: version?.explanation ?? question.explanation ?? "",
     difficulty: question.difficulty,
     visibility: question.visibility,
@@ -699,7 +878,7 @@ function readOptions(payload: Prisma.JsonValue | null | undefined) {
   }
 
   for (const item of payload.options) {
-    if (isJsonObject(item) && typeof item.key === "string" && typeof item.text === "string" && item.key in empty) {
+    if (isPlainObject(item) && typeof item.key === "string" && typeof item.text === "string" && item.key in empty) {
       empty[item.key as SingleChoiceAnswerKey] = item.text;
     }
   }
@@ -708,8 +887,12 @@ function readOptions(payload: Prisma.JsonValue | null | undefined) {
 }
 
 function readAnswer(answerKey: Prisma.JsonValue | null | undefined) {
-  if (isJsonObject(answerKey) && typeof answerKey.value === "string") {
-    return answerKey.value;
+  if (isJsonObject(answerKey) && Array.isArray(answerKey.values)) {
+    return answerKey.values.map((value) => String(value)).join(",");
+  }
+
+  if (isJsonObject(answerKey) && (typeof answerKey.value === "string" || typeof answerKey.value === "number" || typeof answerKey.value === "boolean")) {
+    return String(answerKey.value);
   }
 
   if (typeof answerKey === "string" || typeof answerKey === "number" || typeof answerKey === "boolean") {
@@ -717,6 +900,14 @@ function readAnswer(answerKey: Prisma.JsonValue | null | undefined) {
   }
 
   return "";
+}
+
+function formatJson(value: Prisma.JsonValue | null | undefined) {
+  if (value === null || value === undefined) {
+    return "";
+  }
+
+  return JSON.stringify(value, null, 2);
 }
 
 function formatKnowledgePath(node: AdminQuestionRecord["knowledgeBindings"][number]["knowledgeNode"]) {
@@ -771,6 +962,55 @@ function parseFilterDifficulty(value: string | number | null | undefined) {
   return Number.isInteger(difficulty) && difficulty >= 1 && difficulty <= 5 ? difficulty : null;
 }
 
+function parseOptionalJson(value: string | null | undefined, label: string): ActionResult<Prisma.InputJsonValue | null> {
+  const text = value?.trim();
+
+  if (!text) {
+    return { ok: true, data: null };
+  }
+
+  try {
+    const parsed = JSON.parse(text);
+
+    if (parsed === null) {
+      return { ok: true, data: null };
+    }
+
+    if (!isInputJsonValue(parsed)) {
+      return { ok: false, error: `${label} 格式无效。` };
+    }
+
+    return { ok: true, data: parsed as Prisma.InputJsonValue };
+  } catch {
+    return { ok: false, error: `${label} 不是有效 JSON。` };
+  }
+}
+
+function parseAnswerValues(value: string) {
+  return [
+    ...new Set(
+      value
+        .split(/[,\s，、]+/)
+        .map((item) => item.trim().toUpperCase())
+        .filter(Boolean)
+    )
+  ];
+}
+
+function parseTrueFalseAnswer(value: string) {
+  const normalized = value.trim().toLowerCase();
+
+  if (["true", "t", "yes", "y", "1", "对", "正确"].includes(normalized)) {
+    return true;
+  }
+
+  if (["false", "f", "no", "n", "0", "错", "错误"].includes(normalized)) {
+    return false;
+  }
+
+  return null;
+}
+
 function publicationError(reasons: string[]) {
   if (reasons.includes("Public questions must be approved.")) {
     return "公开题必须是已审核通过状态。";
@@ -793,6 +1033,30 @@ function textValue(value: unknown) {
   return typeof value === "string" || typeof value === "number" || typeof value === "boolean" ? String(value) : "";
 }
 
+function answerTextValue(value: unknown) {
+  return Array.isArray(value) ? value.map((item) => textValue(item)).filter(Boolean).join(",") : textValue(value);
+}
+
+function jsonTextValue(value: unknown) {
+  if (value === undefined) {
+    return "";
+  }
+
+  return JSON.stringify(value);
+}
+
+function readValueFromAnswerKey(value: unknown) {
+  if (!isPlainObject(value)) {
+    return "";
+  }
+
+  if (Array.isArray(value.values)) {
+    return value.values;
+  }
+
+  return value.value;
+}
+
 function databaseError(error: unknown, fallback: string): { ok: false; error: string } {
   if (error instanceof Prisma.PrismaClientKnownRequestError) {
     return { ok: false, error: `${fallback} (${error.code})` };
@@ -807,6 +1071,22 @@ function isJsonObject(value: Prisma.JsonValue | null | undefined): value is Pris
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function isInputJsonValue(value: unknown): boolean {
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return true;
+  }
+
+  if (Array.isArray(value)) {
+    return value.every((item) => item === null || isInputJsonValue(item));
+  }
+
+  if (isPlainObject(value)) {
+    return Object.values(value).every((item) => item === null || isInputJsonValue(item));
+  }
+
+  return false;
 }
 
 class QuestionAdminError extends Error {}

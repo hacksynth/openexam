@@ -387,6 +387,7 @@ model AttemptAnswer {
   score             Float?
   maxScore          Float?
   aiSuggestedScore  Float?
+  aiExplanation     String?
   userConfirmed     Boolean          @default(false)
   wrongNotes        WrongNote[]
   createdAt         DateTime         @default(now())

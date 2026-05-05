@@ -3,7 +3,7 @@ import type { Route } from "next";
 import { AppShell } from "@/components/app-shell";
 import { requireWebSession } from "@/lib/auth";
 import { getAttemptReport } from "@openexam/core/papers";
-import { collectAttemptQuestionAction, confirmAttemptAnswerScoreAction } from "../../papers/actions";
+import { collectAttemptQuestionAction, confirmAttemptAnswerScoreAction, generateAttemptAnswerAiExplanationAction } from "../../papers/actions";
 
 type AttemptReportPageProps = {
   params: Promise<{ attemptId: string }>;
@@ -128,10 +128,23 @@ export default async function AttemptReportPage({ params, searchParams }: Attemp
                     </div>
                   ) : null}
                   {answer.explanation ? <p className="border-2 border-black bg-white p-3 leading-7">{answer.explanation}</p> : null}
+                  {answer.aiExplanation ? (
+                    <div className="border-2 border-black bg-[var(--ai-soft)] p-3">
+                      <p className="text-sm font-bold text-[var(--muted)]">本题 AI 解析</p>
+                      <p className="mt-1 whitespace-pre-line leading-7">{answer.aiExplanation}</p>
+                    </div>
+                  ) : null}
                   <div className="flex flex-wrap gap-2">
                     <Link href={`/practice?retry=${answer.questionId}` as Route} className="pixel-button w-fit bg-white px-4 py-2">
                       重练此题
                     </Link>
+                    <form action={generateAttemptAnswerAiExplanationAction}>
+                      <input name="attemptId" type="hidden" value={report.id} />
+                      <input name="attemptAnswerId" type="hidden" value={answer.id} />
+                      <button className="pixel-button w-fit bg-white px-4 py-2" type="submit">
+                        {answer.aiExplanation ? "重新生成本题 AI 解析" : "请求本题 AI 解析"}
+                      </button>
+                    </form>
                     {answer.isCorrect !== false && answer.userAnswer ? (
                       <form action={collectAttemptQuestionAction}>
                         <input name="attemptId" type="hidden" value={report.id} />

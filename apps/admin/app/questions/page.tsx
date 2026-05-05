@@ -5,20 +5,20 @@ import { AppShell } from "@/components/app-shell";
 import { requireAdminSession } from "@/lib/auth";
 import { listKnowledgeHierarchy } from "@openexam/core/exam-core";
 import {
+  adminQuestionKindOptions,
   adminQuestionArchiveFilters,
   listAdminQuestions,
   questionReviewStatusOptions,
   questionSourceTypeOptions,
-  questionVisibilityOptions,
-  singleChoiceAnswerKeys
+  questionVisibilityOptions
 } from "@openexam/core/question-admin";
 import {
-  archiveSingleChoiceQuestionAction,
-  createSingleChoiceQuestionAction,
-  importSingleChoiceQuestionsAction,
-  restoreSingleChoiceQuestionAction,
-  updateSingleChoiceQuestionReviewStatusAction,
-  updateSingleChoiceQuestionAction
+  archiveAdminQuestionAction,
+  createAdminQuestionAction,
+  importAdminQuestionsAction,
+  restoreAdminQuestionAction,
+  updateAdminQuestionReviewStatusAction,
+  updateAdminQuestionAction
 } from "./actions";
 
 type QuestionsPageProps = {
@@ -26,6 +26,7 @@ type QuestionsPageProps = {
     error?: string;
     notice?: string;
     q?: string;
+    kind?: string;
     knowledgeNodeId?: string;
     visibility?: string;
     sourceType?: string;
@@ -62,6 +63,15 @@ const reviewStatusLabels: Record<string, string> = {
   takedown: "已下架"
 };
 
+const questionKindLabels: Record<string, string> = {
+  single_choice: "单选",
+  multiple_choice: "多选",
+  true_false: "判断",
+  blank: "填空",
+  short_answer: "简答",
+  case_analysis: "案例"
+};
+
 const archivedLabels: Record<string, string> = {
   active: "未归档",
   archived: "已归档",
@@ -91,8 +101,16 @@ export default async function AdminQuestionsPage({ searchParams }: QuestionsPage
             <p className="text-xs font-bold uppercase text-[var(--muted)]">Filters</p>
             <h2 className="mt-1 text-xl font-black">题目筛选</h2>
           </div>
-          <form className="grid gap-3 lg:grid-cols-[1.2fr_1.6fr_1fr_1fr_1fr_0.8fr_0.9fr_auto_auto]">
+          <form className="grid gap-3 lg:grid-cols-[1.2fr_1fr_1.6fr_1fr_1fr_1fr_0.8fr_0.9fr_auto_auto]">
             <TextField label="关键词" name="q" defaultValue={params.q ?? ""} placeholder="题干" />
+            <SelectField label="题型" name="kind" defaultValue={params.kind ?? ""}>
+              <option value="">全部题型</option>
+              {adminQuestionKindOptions.map((kind) => (
+                <option key={kind} value={kind}>
+                  {questionKindLabels[kind]}
+                </option>
+              ))}
+            </SelectField>
             <SelectField label="知识点" name="knowledgeNodeId" defaultValue={params.knowledgeNodeId ?? ""}>
               <option value="">全部知识点</option>
               {knowledgeNodes.map((node) => (
@@ -144,13 +162,13 @@ export default async function AdminQuestionsPage({ searchParams }: QuestionsPage
 
         <section className="pixel-panel grid gap-4 p-5">
           <div>
-            <p className="text-xs font-bold uppercase text-[var(--muted)]">Single Choice</p>
-            <h2 className="mt-1 text-xl font-black">新增单选题</h2>
+            <p className="text-xs font-bold uppercase text-[var(--muted)]">Question</p>
+            <h2 className="mt-1 text-xl font-black">新增题目</h2>
           </div>
           {knowledgeNodes.length === 0 ? (
             <p className="border-2 border-black bg-[var(--surface-subtle)] p-3 text-sm font-bold text-[var(--muted)]">请先在知识页创建大纲和知识点。</p>
           ) : (
-            <QuestionForm action={createSingleChoiceQuestionAction} knowledgeNodes={knowledgeNodes} submitLabel="新增题目" />
+            <QuestionForm action={createAdminQuestionAction} knowledgeNodes={knowledgeNodes} submitLabel="新增题目" />
           )}
         </section>
 
@@ -174,7 +192,7 @@ export default async function AdminQuestionsPage({ searchParams }: QuestionsPage
           {questions.length === 0 ? (
             <section className="pixel-panel p-5">
               <h2 className="text-2xl font-black">暂无题目</h2>
-              <p className="mt-1 font-bold text-[var(--muted)]">创建单选题后，学习端练习会按目标范围读取公开且审核通过的题目。</p>
+              <p className="mt-1 font-bold text-[var(--muted)]">创建题目后，学习端练习会按目标范围读取公开且审核通过的题目。</p>
             </section>
           ) : (
             questions.map((question) => (
@@ -184,6 +202,7 @@ export default async function AdminQuestionsPage({ searchParams }: QuestionsPage
                     <span className="status-chip px-2 py-1">{visibilityLabels[question.visibility]}</span>
                     <span className="status-chip px-2 py-1">{sourceTypeLabels[question.sourceType]}</span>
                     <span className="status-chip px-2 py-1">{reviewStatusLabels[question.reviewStatus]}</span>
+                    <span className="status-chip px-2 py-1">{questionKindLabels[question.kind]}</span>
                     {question.archived ? <span className="status-chip bg-[var(--danger)] px-2 py-1 text-white">已归档</span> : null}
                     <span className="status-chip px-2 py-1">V{question.currentVersion}</span>
                   </div>
@@ -192,7 +211,7 @@ export default async function AdminQuestionsPage({ searchParams }: QuestionsPage
                 </div>
                 <QuestionActions questionId={question.id} archived={question.archived} />
                 <QuestionForm
-                  action={updateSingleChoiceQuestionAction}
+                  action={updateAdminQuestionAction}
                   id={question.id}
                   knowledgeNodes={knowledgeNodes}
                   question={question}
@@ -209,13 +228,13 @@ export default async function AdminQuestionsPage({ searchParams }: QuestionsPage
 
 function ImportForm() {
   return (
-    <form action={importSingleChoiceQuestionsAction} className="grid gap-3">
+    <form action={importAdminQuestionsAction} className="grid gap-3">
       <label className={labelClass}>
         JSON 内容
         <textarea
           className={`${inputClass} font-mono`}
           name="jsonPayload"
-          placeholder='[{"stem":"题干","optionA":"A","optionB":"B","optionC":"C","optionD":"D","answer":"A","knowledgeNodeId":"...","visibility":"private","sourceType":"original","reviewStatus":"draft"}]'
+          placeholder='[{"kind":"multiple_choice","stem":"题干","options":{"A":"选项A","B":"选项B","C":"选项C","D":"选项D"},"answer":["A","B"],"knowledgeNodeId":"...","visibility":"private","sourceType":"original","reviewStatus":"draft"}]'
           required
           rows={7}
         />
@@ -243,32 +262,15 @@ function QuestionForm({
   return (
     <form action={action} className="grid gap-4">
       {id ? <input name="id" type="hidden" value={id} /> : null}
-      <label className={labelClass}>
-        题干
-        <textarea className={inputClass} defaultValue={question?.stem ?? ""} name="stem" placeholder="输入题干" required rows={3} />
-      </label>
-      <div className="grid gap-3 lg:grid-cols-2">
-        <TextField label="选项 A" name="optionA" defaultValue={question?.optionA ?? ""} required />
-        <TextField label="选项 B" name="optionB" defaultValue={question?.optionB ?? ""} required />
-        <TextField label="选项 C" name="optionC" defaultValue={question?.optionC ?? ""} required />
-        <TextField label="选项 D" name="optionD" defaultValue={question?.optionD ?? ""} required />
-      </div>
-      <div className="grid gap-3 lg:grid-cols-[1fr_1fr_1fr_1fr]">
-        <SelectField label="正确答案" name="answer" defaultValue={question?.answer || "A"} required>
-          {singleChoiceAnswerKeys.map((answer) => (
-            <option key={answer} value={answer}>
-              {answer}
+      <div className="grid gap-3 lg:grid-cols-[1fr_1fr_1fr]">
+        <SelectField label="题型" name="kind" defaultValue={question?.kind ?? "single_choice"} required>
+          {adminQuestionKindOptions.map((kind) => (
+            <option key={kind} value={kind}>
+              {questionKindLabels[kind]}
             </option>
           ))}
         </SelectField>
         <TextField label="难度" name="difficulty" defaultValue={question?.difficulty?.toString() ?? ""} placeholder="1-5" />
-        <SelectField label="可见性" name="visibility" defaultValue={question?.visibility ?? "private"} required>
-          {questionVisibilityOptions.map((visibility) => (
-            <option key={visibility} value={visibility}>
-              {visibilityLabels[visibility]}
-            </option>
-          ))}
-        </SelectField>
         <SelectField label="审核状态" name="reviewStatus" defaultValue={question?.reviewStatus ?? "draft"} required>
           {questionReviewStatusOptions.map((status) => (
             <option key={status} value={status}>
@@ -277,7 +279,25 @@ function QuestionForm({
           ))}
         </SelectField>
       </div>
-      <div className="grid gap-3 lg:grid-cols-[1fr_2fr]">
+      <label className={labelClass}>
+        题干
+        <textarea className={inputClass} defaultValue={question?.stem ?? ""} name="stem" placeholder="输入题干" required rows={3} />
+      </label>
+      <div className="grid gap-3 lg:grid-cols-2">
+        <TextField label="选项 A（选择题）" name="optionA" defaultValue={question?.optionA ?? ""} />
+        <TextField label="选项 B（选择题）" name="optionB" defaultValue={question?.optionB ?? ""} />
+        <TextField label="选项 C（选择题）" name="optionC" defaultValue={question?.optionC ?? ""} />
+        <TextField label="选项 D（选择题）" name="optionD" defaultValue={question?.optionD ?? ""} />
+      </div>
+      <div className="grid gap-3 lg:grid-cols-[1.2fr_1fr_1fr]">
+        <TextField label="答案 / 参考答案" name="answer" defaultValue={question?.answer ?? ""} placeholder="单选 A；多选 A,B；判断 true/false；填空答案" />
+        <SelectField label="可见性" name="visibility" defaultValue={question?.visibility ?? "private"} required>
+          {questionVisibilityOptions.map((visibility) => (
+            <option key={visibility} value={visibility}>
+              {visibilityLabels[visibility]}
+            </option>
+          ))}
+        </SelectField>
         <SelectField label="来源类型" name="sourceType" defaultValue={question?.sourceType ?? "original"} required>
           {questionSourceTypeOptions.map((sourceType) => (
             <option key={sourceType} value={sourceType}>
@@ -285,6 +305,8 @@ function QuestionForm({
             </option>
           ))}
         </SelectField>
+      </div>
+      <div className="grid gap-3 lg:grid-cols-[2fr_1fr]">
         <SelectField label="主知识点" name="knowledgeNodeId" defaultValue={question?.knowledgeNodeId ?? ""} required>
           <option value="">选择知识点</option>
           {knowledgeNodes.map((node) => (
@@ -293,11 +315,22 @@ function QuestionForm({
             </option>
           ))}
         </SelectField>
+        <TextField label="answerKey JSON（可选）" name="answerKeyJson" defaultValue={question?.answerKeyJson ?? ""} placeholder='{"values":["A","B"]}' />
       </div>
       <div className="grid gap-3 lg:grid-cols-3">
         <TextField label="来源标题" name="sourceTitle" defaultValue={question?.sourceTitle ?? ""} placeholder="教材 / 真题 / 用户资料标题" />
         <TextField label="来源 URL" name="sourceUrl" defaultValue={question?.sourceUrl ?? ""} placeholder="https://..." />
         <TextField label="来源许可" name="sourceLicense" defaultValue={question?.sourceLicense ?? ""} placeholder="原创 / 授权 / CC BY" />
+      </div>
+      <div className="grid gap-3 lg:grid-cols-2">
+        <label className={labelClass}>
+          payload JSON（非选择题可选）
+          <textarea className={`${inputClass} font-mono`} defaultValue={question?.payloadJson ?? ""} name="payloadJson" placeholder='{"hints":[]}' rows={3} />
+        </label>
+        <label className={labelClass}>
+          rubric JSON（主观题可选）
+          <textarea className={`${inputClass} font-mono`} defaultValue={question?.rubricJson ?? ""} name="rubricJson" placeholder='{"points":["要点1","要点2"]}' rows={3} />
+        </label>
       </div>
       <label className={labelClass}>
         解析
@@ -314,7 +347,7 @@ function QuestionActions({ questionId, archived }: { questionId: string; archive
   return (
     <div className="flex flex-wrap gap-2 border-2 border-black bg-[var(--surface-subtle)] p-3">
       {archived ? (
-        <form action={restoreSingleChoiceQuestionAction}>
+        <form action={restoreAdminQuestionAction}>
           <input name="id" type="hidden" value={questionId} />
           <button className="pixel-button bg-white px-3 py-2 text-sm" type="submit">
             恢复题目
@@ -323,7 +356,7 @@ function QuestionActions({ questionId, archived }: { questionId: string; archive
       ) : (
         <>
           {questionReviewStatusOptions.map((status) => (
-            <form key={status} action={updateSingleChoiceQuestionReviewStatusAction}>
+            <form key={status} action={updateAdminQuestionReviewStatusAction}>
               <input name="id" type="hidden" value={questionId} />
               <input name="reviewStatus" type="hidden" value={status} />
               <button className="pixel-button bg-white px-3 py-2 text-sm" type="submit">
@@ -331,7 +364,7 @@ function QuestionActions({ questionId, archived }: { questionId: string; archive
               </button>
             </form>
           ))}
-          <form action={archiveSingleChoiceQuestionAction}>
+          <form action={archiveAdminQuestionAction}>
             <input name="id" type="hidden" value={questionId} />
             <button className="pixel-button bg-white px-3 py-2 text-sm" type="submit">
               归档题目

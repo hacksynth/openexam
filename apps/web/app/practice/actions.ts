@@ -3,6 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { Route } from "next";
+import { generateAttemptAnswerAiExplanation } from "@openexam/core/ai";
+import { confirmAttemptAnswerScore } from "@openexam/core/papers";
 import { collectQuestionForReview, submitPracticeAnswer } from "@openexam/core/practice";
 import { requireWebSession } from "@/lib/auth";
 
@@ -51,6 +53,43 @@ export async function collectPracticeQuestionAction(formData: FormData) {
   }
 
   redirect(practiceRedirect({ attemptId: value(formData, "attemptId") || undefined, materialId: optionalText(value(formData, "materialId")) }));
+}
+
+export async function confirmPracticeAnswerScoreAction(formData: FormData) {
+  const session = await requireWebSession();
+  const materialId = optionalText(value(formData, "materialId"));
+  const attemptId = value(formData, "attemptId");
+  const result = await confirmAttemptAnswerScore(session.user.id, {
+    attemptAnswerId: value(formData, "attemptAnswerId"),
+    score: value(formData, "score")
+  });
+
+  revalidatePath("/practice" as Route);
+  revalidatePath("/attempts" as Route);
+  revalidatePath("/wrong-notes" as Route);
+  revalidatePath("/dashboard" as Route);
+
+  if (!result.ok) {
+    redirect(practiceRedirect({ attemptId, materialId, error: result.error }));
+  }
+
+  redirect(practiceRedirect({ attemptId, materialId }));
+}
+
+export async function generatePracticeAnswerAiExplanationAction(formData: FormData) {
+  const session = await requireWebSession();
+  const materialId = optionalText(value(formData, "materialId"));
+  const attemptId = value(formData, "attemptId");
+  const result = await generateAttemptAnswerAiExplanation(session.user.id, value(formData, "attemptAnswerId"));
+
+  revalidatePath("/practice" as Route);
+  revalidatePath("/ai/tasks" as Route);
+
+  if (!result.ok) {
+    redirect(practiceRedirect({ attemptId, materialId, error: result.error }));
+  }
+
+  redirect(practiceRedirect({ attemptId, materialId }));
 }
 
 function optionalText(value: string) {

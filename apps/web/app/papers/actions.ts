@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { Route } from "next";
+import { generateAttemptAnswerAiExplanation } from "@openexam/core/ai";
 import {
   confirmAttemptAnswerScore,
   pausePaperAttempt,
@@ -130,4 +131,19 @@ export async function collectAttemptQuestionAction(formData: FormData) {
   }
 
   redirect(`/attempts/${attemptId}?notice=${encodeURIComponent("题目已加入复习。")}` as Route);
+}
+
+export async function generateAttemptAnswerAiExplanationAction(formData: FormData) {
+  const session = await requireWebSession();
+  const attemptId = String(formData.get("attemptId") ?? "");
+  const result = await generateAttemptAnswerAiExplanation(session.user.id, String(formData.get("attemptAnswerId") ?? ""));
+
+  revalidatePath(`/attempts/${attemptId}` as Route);
+  revalidatePath("/ai/tasks" as Route);
+
+  if (!result.ok) {
+    redirect(`/attempts/${attemptId}?error=${encodeURIComponent(result.error)}` as Route);
+  }
+
+  redirect(`/attempts/${attemptId}?notice=${encodeURIComponent("本题 AI 解析已生成。")}` as Route);
 }

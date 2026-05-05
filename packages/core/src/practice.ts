@@ -333,6 +333,7 @@ export async function submitPracticeAnswer(
         },
         { db: prisma }
       );
+  const initialScore = objectiveKind ? grading.result.score : aiSuggestedScore;
 
   const now = new Date();
   const result = await prisma.$transaction(async (tx) => {
@@ -342,7 +343,7 @@ export async function submitPracticeAnswer(
         goalId: goal.id,
         status: objectiveKind ? "graded" : "submitted",
         submittedAt: now,
-        totalScore: grading.result.score,
+        totalScore: initialScore,
         maxScore: grading.result.maxScore
       }
     });
@@ -354,7 +355,7 @@ export async function submitPracticeAnswer(
         questionVersionId: currentVersion?.id ?? null,
         userAnswer: { value: answer },
         isCorrect: grading.result.isCorrect,
-        score: grading.result.score,
+        score: initialScore,
         maxScore: grading.result.maxScore,
         aiSuggestedScore
       }
@@ -422,6 +423,7 @@ export async function getAttemptResult(userId: string, attemptId: string) {
     maxScore: answer.maxScore ?? 1,
     attemptAnswerId: answer.id,
     aiSuggestedScore: answer.aiSuggestedScore,
+    aiExplanation: answer.aiExplanation,
     userConfirmed: answer.userConfirmed,
     userAnswer: readSubmittedAnswer(answer.userAnswer),
     correctAnswer: formatAnswerValue(answerKey),

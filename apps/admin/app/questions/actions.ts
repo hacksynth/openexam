@@ -4,36 +4,36 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { Route } from "next";
 import {
-  createSingleChoiceQuestion,
-  importSingleChoiceQuestions,
-  setSingleChoiceQuestionArchived,
-  updateSingleChoiceQuestionReviewStatus,
-  updateSingleChoiceQuestion,
-  type SingleChoiceQuestionInput
+  createAdminQuestion,
+  importAdminQuestions,
+  setAdminQuestionArchived,
+  updateAdminQuestionReviewStatus,
+  updateAdminQuestion,
+  type AdminQuestionInput
 } from "@openexam/core/question-admin";
 import { writeAuditLog } from "@openexam/core/audit";
 import { requireAdminSession } from "@/lib/auth";
 
-type Result = Awaited<ReturnType<typeof createSingleChoiceQuestion>> | Awaited<ReturnType<typeof importSingleChoiceQuestions>>;
+type Result = Awaited<ReturnType<typeof createAdminQuestion>> | Awaited<ReturnType<typeof importAdminQuestions>>;
 
-export async function createSingleChoiceQuestionAction(formData: FormData) {
+export async function createAdminQuestionAction(formData: FormData) {
   const session = await requireAdminSession();
-  const result = await createSingleChoiceQuestion(readQuestion(formData));
+  const result = await createAdminQuestion(readQuestion(formData));
   await auditIfOk(session.user.id, result, "question.create", null);
   finish(result, "题目已创建。");
 }
 
-export async function updateSingleChoiceQuestionAction(formData: FormData) {
+export async function updateAdminQuestionAction(formData: FormData) {
   const session = await requireAdminSession();
   const id = value(formData, "id");
-  const result = await updateSingleChoiceQuestion(id, readQuestion(formData));
+  const result = await updateAdminQuestion(id, readQuestion(formData));
   await auditIfOk(session.user.id, result, "question.update", id);
   finish(result, "题目已更新。");
 }
 
-export async function importSingleChoiceQuestionsAction(formData: FormData) {
+export async function importAdminQuestionsAction(formData: FormData) {
   const session = await requireAdminSession();
-  const result = await importSingleChoiceQuestions({
+  const result = await importAdminQuestions({
     jsonPayload: value(formData, "jsonPayload")
   });
 
@@ -41,39 +41,43 @@ export async function importSingleChoiceQuestionsAction(formData: FormData) {
   finish(result, result.ok ? `已导入 ${result.data.count} 道题。` : "题目导入失败。");
 }
 
-export async function updateSingleChoiceQuestionReviewStatusAction(formData: FormData) {
+export async function updateAdminQuestionReviewStatusAction(formData: FormData) {
   const session = await requireAdminSession();
   const id = value(formData, "id");
   const reviewStatus = value(formData, "reviewStatus");
-  const result = await updateSingleChoiceQuestionReviewStatus(id, reviewStatus);
+  const result = await updateAdminQuestionReviewStatus(id, reviewStatus);
   await auditIfOk(session.user.id, result, "question.review_status", id, { reviewStatus });
   finish(result, "审核状态已更新。");
 }
 
-export async function archiveSingleChoiceQuestionAction(formData: FormData) {
+export async function archiveAdminQuestionAction(formData: FormData) {
   const session = await requireAdminSession();
   const id = value(formData, "id");
-  const result = await setSingleChoiceQuestionArchived(id, true);
+  const result = await setAdminQuestionArchived(id, true);
   await auditIfOk(session.user.id, result, "question.archive", id);
   finish(result, "题目已归档。");
 }
 
-export async function restoreSingleChoiceQuestionAction(formData: FormData) {
+export async function restoreAdminQuestionAction(formData: FormData) {
   const session = await requireAdminSession();
   const id = value(formData, "id");
-  const result = await setSingleChoiceQuestionArchived(id, false);
+  const result = await setAdminQuestionArchived(id, false);
   await auditIfOk(session.user.id, result, "question.restore", id);
   finish(result, "题目已恢复。");
 }
 
-function readQuestion(formData: FormData): SingleChoiceQuestionInput {
+function readQuestion(formData: FormData): AdminQuestionInput {
   return {
+    kind: value(formData, "kind"),
     stem: value(formData, "stem"),
     optionA: value(formData, "optionA"),
     optionB: value(formData, "optionB"),
     optionC: value(formData, "optionC"),
     optionD: value(formData, "optionD"),
     answer: value(formData, "answer"),
+    payloadJson: value(formData, "payloadJson"),
+    answerKeyJson: value(formData, "answerKeyJson"),
+    rubricJson: value(formData, "rubricJson"),
     explanation: value(formData, "explanation"),
     difficulty: value(formData, "difficulty"),
     knowledgeNodeId: value(formData, "knowledgeNodeId"),

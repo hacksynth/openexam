@@ -330,7 +330,6 @@ export async function submitPaperAttempt(
   }
 
   const maxScore = grading.data.maxScore;
-  const totalScore = grading.data.totalScore;
   const subjectiveSuggestions = await Promise.all(
     grading.data.answers.map(async (answer) => {
       if (answer.isCorrect !== null) {
@@ -364,6 +363,16 @@ export async function submitPaperAttempt(
     })
   );
   const suggestionByQuestionId = new Map(subjectiveSuggestions.filter((item): item is { questionId: string; score: number } => typeof item?.score === "number").map((item) => [item.questionId, item.score]));
+  const answersWithSuggestions = grading.data.answers.map((answer) => {
+    const suggestedScore = suggestionByQuestionId.get(answer.questionId) ?? null;
+
+    return {
+      ...answer,
+      score: answer.isCorrect === null && suggestedScore !== null ? suggestedScore : answer.score,
+      aiSuggestedScore: suggestedScore
+    };
+  });
+  const totalScore = answersWithSuggestions.reduce((sum, answer) => sum + (answer.score ?? 0), 0);
 
   const attemptId = await db.$transaction(async (tx) => {
     const existingAttempt = input.attemptId
@@ -415,7 +424,7 @@ export async function submitPaperAttempt(
       }
     });
 
-    for (const answer of grading.data.answers) {
+    for (const answer of answersWithSuggestions) {
       const existingAnswer = await tx.attemptAnswer.findFirst({
         where: {
           attemptId: attempt.id,
@@ -425,10 +434,7 @@ export async function submitPaperAttempt(
           id: true
         }
       });
-      const data = {
-        ...answer,
-        aiSuggestedScore: suggestionByQuestionId.get(answer.questionId) ?? null
-      };
+      const data = answer;
       const attemptAnswer = existingAnswer
         ? await tx.attemptAnswer.update({
             where: { id: existingAnswer.id },
@@ -808,6 +814,7 @@ export async function getAttemptReport(userId: string, attemptId: string) {
       score: answer.score ?? 0,
       maxScore: answer.maxScore ?? 0,
       aiSuggestedScore: answer.aiSuggestedScore,
+      aiExplanation: answer.aiExplanation,
       userConfirmed: answer.userConfirmed,
       userAnswer: readSubmittedAnswer(answer.userAnswer),
       correctAnswer: formatAnswerValue(readObjectiveAnswerKey(answerKey)),

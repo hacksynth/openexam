@@ -1,7 +1,7 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
 import { AiProvider, AiTaskType, Prisma } from "@prisma/client";
 import OpenAI from "openai";
-import { readSingleChoiceAnswerKey, readSingleChoiceOptions, type SingleChoiceOption } from "./practice";
+import { formatAnswerValue, readObjectiveAnswerKey, readSingleChoiceOptions, type SingleChoiceOption } from "./practice";
 import { prisma } from "./prisma";
 
 type ActionResult<T = undefined> = T extends undefined
@@ -65,6 +65,16 @@ export type WrongNoteAiContext = {
   errorCount: number;
 };
 
+export type AttemptAnswerAiContext = {
+  kind: string;
+  stem: string;
+  options: SingleChoiceOption[];
+  userAnswer: string;
+  correctAnswer: string | null;
+  officialExplanation: string | null;
+  knowledgeNodes: string[];
+};
+
 export type AiProviderPresetInput = {
   id?: string;
   provider: string;
@@ -81,6 +91,7 @@ const openAiProvider = AiProvider.openai;
 const supportedAiProviders = [AiProvider.openai, AiProvider.anthropic, AiProvider.gemini] as const;
 const wrongNoteTask = AiTaskType.explain_question;
 const wrongNotePromptVersion = "wrong-note-explain-v1";
+const questionPromptVersion = "question-explain-v1";
 const defaultOpenAiModel = "gpt-5.5";
 const defaultAnthropicModel = "claude-sonnet-4-5-20250929";
 const defaultGeminiModel = "gemini-2.5-flash";
@@ -500,12 +511,15 @@ export async function retryFailedAiCall(
   }
 
   const wrongNoteId = parseWrongNoteSource(failedCall.inputContextSource);
+  const attemptAnswerId = parseAttemptAnswerSource(failedCall.inputContextSource);
 
-  if (!wrongNoteId) {
-    return { ok: false, error: "这条 AI 任务缺少可重试的错题来源。" };
+  if (!wrongNoteId && !attemptAnswerId) {
+    return { ok: false, error: "这条 AI 任务缺少可重试的题目来源。" };
   }
 
-  const result = await generateWrongNoteAiAnalysis(userId, wrongNoteId, options);
+  const result = wrongNoteId
+    ? await generateWrongNoteAiAnalysis(userId, wrongNoteId, options)
+    : await generateAttemptAnswerAiExplanation(userId, attemptAnswerId!, options);
 
   if (!result.ok) {
     return result;
@@ -630,6 +644,116 @@ export async function generateWrongNoteAiAnalysis(
   }
 }
 
+export async function generateAttemptAnswerAiExplanation(
+  userId: string,
+  attemptAnswerId: string,
+  options: {
+    db?: AiDatabase;
+    env?: NodeJS.ProcessEnv;
+    generateText?: AiTextGenerator;
+  } = {}
+): Promise<ActionResult<{ analysis: string; aiCallId: string }>> {
+  const db = options.db ?? prisma;
+  const env = options.env ?? process.env;
+  const preset = await resolveWrongNotePreset(db);
+  const answer = await loadAttemptAnswerContext(userId, attemptAnswerId, db);
+
+  if (!answer) {
+    return { ok: false, error: "作答记录不存在。" };
+  }
+
+  const context = toAttemptAnswerAiContext(answer);
+  const prompt = buildQuestionExplanationPrompt(context);
+  const aiCall = await db.aiCall.create({
+    data: {
+      userId,
+      provider: preset.provider,
+      model: preset.model,
+      taskType: wrongNoteTask,
+      promptVersion: questionPromptVersion,
+      inputContextSource: `attempt_answer:${answer.id}`,
+      tokenEstimate: estimateTokens(prompt.input),
+      status: "running"
+    }
+  });
+
+  try {
+    const fakeText = readFakeAiResponse(env);
+    let result: AiTextResponse;
+
+    if (fakeText) {
+      result = { text: fakeText, usage: { fake: true } };
+    } else {
+      const credential = options.generateText ? null : await resolveAiCredential(userId, preset.provider, db, env);
+
+      if (credential?.ok === false) {
+        const error = credential.error;
+
+        await markAiCallFailed(aiCall.id, error, db);
+        return { ok: false, error };
+      }
+
+      if (credential?.ok) {
+        const usageAllowed = await assertAiUsageAllowed(userId, credential.data.source, db, env);
+
+        if (!usageAllowed.ok) {
+          await markAiCallFailed(aiCall.id, usageAllowed.error, db);
+          return usageAllowed;
+        }
+
+        await db.aiCall.update({
+          where: { id: aiCall.id },
+          data: {
+            credentialSource: credential.data.source
+          }
+        });
+      }
+
+      result = await (options.generateText ?? generateAiText)({
+        provider: preset.provider,
+        apiKey: credential?.ok ? credential.data.apiKey : "test-key",
+        baseURL: credential?.ok ? credential.data.baseURL : normalizeBaseUrl(env[platformBaseUrlEnv[preset.provider]]),
+        model: preset.model,
+        instructions: prompt.instructions,
+        input: prompt.input,
+        maxOutputTokens: preset.maxOutputTokens,
+        temperature: preset.temperature
+      });
+    }
+
+    const analysis = result.text.trim();
+
+    if (!analysis) {
+      throw new Error("AI 没有返回解析内容。");
+    }
+
+    await db.$transaction([
+      db.attemptAnswer.update({
+        where: { id: answer.id },
+        data: {
+          aiExplanation: analysis
+        }
+      }),
+      db.aiCall.update({
+        where: { id: aiCall.id },
+        data: {
+          status: "succeeded",
+          usage: result.usage ?? undefined,
+          errorSummary: null
+        }
+      })
+    ]);
+
+    return { ok: true, data: { analysis, aiCallId: aiCall.id } };
+  } catch (error) {
+    const message = formatAiError(error);
+
+    await markAiCallFailed(aiCall.id, message, db);
+
+    return { ok: false, error: message };
+  }
+}
+
 export function buildWrongNotePrompt(context: WrongNoteAiContext) {
   const options = context.options.map((option) => `${option.key}. ${option.text}`).join("\n") || "无选项";
 
@@ -651,6 +775,31 @@ export function buildWrongNotePrompt(context: WrongNoteAiContext) {
       `用户标签：${context.mistakeTags?.join(" / ") || "暂无"}`,
       `用户笔记：${context.userNotes || "暂无"}`,
       `累计错误次数：${context.errorCount}`,
+      "",
+      "输出 3-5 个短段落，不要使用 Markdown 表格。"
+    ].join("\n")
+  };
+}
+
+export function buildQuestionExplanationPrompt(context: AttemptAnswerAiContext) {
+  const options = context.options.map((option) => `${option.key}. ${option.text}`).join("\n") || "无选项";
+
+  return {
+    instructions:
+      "你是 OpenExam 的题目讲解助手。只根据给定题目上下文作答，不要编造题目以外的信息。用简体中文，直接解释解题思路和关键知识点。",
+    input: [
+      "请为这道题生成一段独立学习解析，包含：",
+      "1. 题目考查点。",
+      "2. 推荐解题步骤。",
+      "3. 学员答案与参考答案的差异。",
+      "",
+      `题型：${context.kind}`,
+      `题干：${context.stem}`,
+      `选项：\n${options}`,
+      `学员答案：${context.userAnswer || "未记录"}`,
+      `参考答案：${context.correctAnswer ?? "未配置"}`,
+      `官方解析：${context.officialExplanation || "暂无"}`,
+      `知识点：${context.knowledgeNodes.join(" / ") || "未绑定知识点"}`,
       "",
       "输出 3-5 个短段落，不要使用 Markdown 表格。"
     ].join("\n")
@@ -809,6 +958,33 @@ async function loadWrongNoteContext(userId: string, wrongNoteId: string, db: AiD
   });
 }
 
+async function loadAttemptAnswerContext(userId: string, attemptAnswerId: string, db: AiDatabase) {
+  return db.attemptAnswer.findFirst({
+    where: {
+      id: attemptAnswerId.trim(),
+      attempt: {
+        userId
+      }
+    },
+    include: {
+      questionVersion: true,
+      question: {
+        include: {
+          knowledgeBindings: {
+            include: {
+              knowledgeNode: true
+            }
+          },
+          versions: {
+            orderBy: { version: "desc" },
+            take: 1
+          }
+        }
+      }
+    }
+  });
+}
+
 function toWrongNoteAiContext(wrongNote: NonNullable<Awaited<ReturnType<typeof loadWrongNoteContext>>>): WrongNoteAiContext {
   const version = wrongNote.attemptAnswer?.questionVersion ?? wrongNote.question.versions[0] ?? null;
   const payload = version?.payload ?? wrongNote.question.payload;
@@ -818,12 +994,28 @@ function toWrongNoteAiContext(wrongNote: NonNullable<Awaited<ReturnType<typeof l
     stem: version?.stem ?? wrongNote.question.stem,
     options: readSingleChoiceOptions(payload) ?? [],
     userAnswer: readSubmittedAnswer(wrongNote.attemptAnswer?.userAnswer),
-    correctAnswer: readSingleChoiceAnswerKey(answerKey),
+    correctAnswer: formatAnswerValue(readObjectiveAnswerKey(answerKey)),
     officialExplanation: version?.explanation ?? wrongNote.question.explanation,
     knowledgeNodes: wrongNote.question.knowledgeBindings.map((binding) => binding.knowledgeNode.title),
     mistakeTags: wrongNote.mistakeTags,
     userNotes: wrongNote.userNotes,
     errorCount: wrongNote.errorCount
+  };
+}
+
+function toAttemptAnswerAiContext(answer: NonNullable<Awaited<ReturnType<typeof loadAttemptAnswerContext>>>): AttemptAnswerAiContext {
+  const version = answer.questionVersion ?? answer.question.versions[0] ?? null;
+  const payload = version?.payload ?? answer.question.payload;
+  const answerKey = version?.answerKey ?? answer.question.answerKey;
+
+  return {
+    kind: answer.question.kind,
+    stem: version?.stem ?? answer.question.stem,
+    options: readSingleChoiceOptions(payload) ?? [],
+    userAnswer: readSubmittedAnswer(answer.userAnswer),
+    correctAnswer: formatAnswerValue(readObjectiveAnswerKey(answerKey)),
+    officialExplanation: version?.explanation ?? answer.question.explanation,
+    knowledgeNodes: answer.question.knowledgeBindings.map((binding) => binding.knowledgeNode.title)
   };
 }
 
@@ -1050,6 +1242,16 @@ function parseBoolean(value: string | boolean | null | undefined) {
 
 function parseWrongNoteSource(value: string | null) {
   const prefix = "wrong_note:";
+
+  if (!value?.startsWith(prefix)) {
+    return null;
+  }
+
+  return value.slice(prefix.length).trim() || null;
+}
+
+function parseAttemptAnswerSource(value: string | null) {
+  const prefix = "attempt_answer:";
 
   if (!value?.startsWith(prefix)) {
     return null;

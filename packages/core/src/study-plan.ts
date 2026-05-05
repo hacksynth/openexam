@@ -23,6 +23,22 @@ const taskHrefByKind: Record<StudyPlan["tasks"][number]["kind"], string> = {
   material_review: "/materials"
 };
 
+const studyPlanInclude = {
+  goal: {
+    include: {
+      program: true,
+      track: true,
+      cycle: true,
+      subject: true
+    }
+  },
+  tasks: {
+    orderBy: [{ day: "asc" }, { createdAt: "asc" }]
+  }
+} satisfies Prisma.StudyPlanInclude;
+
+type StudyPlanRecord = Prisma.StudyPlanGetPayload<{ include: typeof studyPlanInclude }>;
+
 export type StudyPlanView = Awaited<ReturnType<typeof getCurrentStudyPlan>>;
 
 export async function getCurrentStudyPlan(userId: string, db: StudyPlanDatabase = prisma) {
@@ -31,43 +47,24 @@ export async function getCurrentStudyPlan(userId: string, db: StudyPlanDatabase 
       userId,
       status: "active"
     },
-    include: {
-      goal: {
-        include: {
-          program: true,
-          track: true,
-          cycle: true,
-          subject: true
-        }
-      },
-      tasks: {
-        orderBy: [{ day: "asc" }, { createdAt: "asc" }]
-      }
-    },
+    include: studyPlanInclude,
     orderBy: [{ generatedAt: "desc" }]
   });
 
-  if (!plan) {
-    return null;
-  }
+  return plan ? toStudyPlanView(plan) : null;
+}
 
-  return {
-    id: plan.id,
-    status: plan.status,
-    generatedAt: plan.generatedAt,
-    goalPath: formatGoalPath(plan.goal),
-    completedCount: plan.tasks.filter((task) => task.completedAt).length,
-    taskCount: plan.tasks.length,
-    tasks: plan.tasks.map((task) => ({
-      id: task.id,
-      day: task.day,
-      title: task.title,
-      kind: task.kind,
-      minutes: task.minutes,
-      completedAt: task.completedAt,
-      href: taskHrefByKind[task.kind as keyof typeof taskHrefByKind] ?? "/practice"
-    }))
-  };
+export async function listStudyPlanHistory(userId: string, db: StudyPlanDatabase = prisma) {
+  const plans = await db.studyPlan.findMany({
+    where: {
+      userId
+    },
+    include: studyPlanInclude,
+    orderBy: [{ generatedAt: "desc" }],
+    take: 10
+  });
+
+  return plans.map(toStudyPlanView);
 }
 
 export async function generateStudyPlan(
@@ -219,6 +216,40 @@ export async function setStudyPlanTaskCompleted(userId: string, taskId: string, 
   });
 
   return result.count > 0 ? { ok: true } : { ok: false, error: "计划任务不存在。" };
+}
+
+export async function abandonCurrentStudyPlan(userId: string, db: StudyPlanDatabase = prisma): Promise<ActionResult> {
+  const result = await db.studyPlan.updateMany({
+    where: {
+      userId,
+      status: "active"
+    },
+    data: {
+      status: "abandoned"
+    }
+  });
+
+  return result.count > 0 ? { ok: true } : { ok: false, error: "当前没有可放弃的学习计划。" };
+}
+
+function toStudyPlanView(plan: StudyPlanRecord) {
+  return {
+    id: plan.id,
+    status: plan.status,
+    generatedAt: plan.generatedAt,
+    goalPath: formatGoalPath(plan.goal),
+    completedCount: plan.tasks.filter((task) => task.completedAt).length,
+    taskCount: plan.tasks.length,
+    tasks: plan.tasks.map((task) => ({
+      id: task.id,
+      day: task.day,
+      title: task.title,
+      kind: task.kind,
+      minutes: task.minutes,
+      completedAt: task.completedAt,
+      href: taskHrefByKind[task.kind as keyof typeof taskHrefByKind] ?? "/practice"
+    }))
+  };
 }
 
 export function buildStudyPlanPrompt(analysis: Extract<LearningAnalysisState, { status: "ready" }>) {
