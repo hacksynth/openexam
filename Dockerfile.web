@@ -32,5 +32,7 @@ ENV NODE_ENV=production
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 COPY --from=builder /app ./
+RUN mkdir -p apps/web/.next/standalone/apps/web/.next \
+  && cp -R apps/web/.next/static apps/web/.next/standalone/apps/web/.next/static
 EXPOSE 3000
 CMD ["sh", "-c", "npx prisma migrate deploy && if [ -f apps/web/.next/standalone/apps/web/server.js ]; then exec node apps/web/.next/standalone/apps/web/server.js; fi; exec node apps/web/.next/standalone/server.js"]
