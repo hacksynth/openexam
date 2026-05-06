@@ -1,12 +1,15 @@
+import Link from "next/link";
+import type { Route } from "next";
+import type { ReactNode } from "react";
 import { AppShell } from "@/components/app-shell";
 import { requireAdminSession } from "@/lib/auth";
 import { listKnowledgeHierarchy } from "@openexam/core/exam-core";
-import { listAdminMaterials, listMaterialQuestionCandidates, materialQuestionKinds } from "@openexam/core/materials";
+import { listAdminMaterials, listMaterialQuestionCandidateSections, materialCandidatePageSizeOptions, materialQuestionKinds, type MaterialQuestionCandidateView } from "@openexam/core/materials";
 import { FeedbackMessage, SelectField, SubmitButton, TextareaField, TextField } from "@openexam/core/pixel-ui";
 import { confirmCandidateAction, updateCandidateAction, uploadAdminMaterialAction } from "./actions";
 
 type AdminMaterialsPageProps = {
-  searchParams: Promise<{ error?: string; notice?: string }>;
+  searchParams: Promise<{ confirmedPage?: string; candidatePageSize?: string; error?: string; notice?: string; pendingPage?: string }>;
 };
 
 const libraryScopeLabels: Record<string, string> = {
@@ -16,7 +19,21 @@ const libraryScopeLabels: Record<string, string> = {
 
 export default async function AdminMaterialsPage({ searchParams }: AdminMaterialsPageProps) {
   await requireAdminSession();
-  const [params, materials, candidates, subjects] = await Promise.all([searchParams, listAdminMaterials(), listMaterialQuestionCandidates(undefined), listKnowledgeHierarchy()]);
+  const params = await searchParams;
+  const [materials, candidateSections, subjects] = await Promise.all([
+    listAdminMaterials(),
+    listMaterialQuestionCandidateSections({
+      pendingPage: params.pendingPage,
+      confirmedPage: params.confirmedPage,
+      pageSize: params.candidatePageSize
+    }),
+    listKnowledgeHierarchy()
+  ]);
+  const candidatePaging = {
+    pendingPage: candidateSections.pending.pagination.page,
+    confirmedPage: candidateSections.confirmed.pagination.page,
+    pageSize: candidateSections.pageSize
+  };
   const subjectOptions = subjects.map((subject) => ({
     id: subject.id,
     label: `${subject.cycle.track.program.name} / ${subject.cycle.track.name} / ${subject.cycle.name} / ${subject.name}`
@@ -98,44 +115,34 @@ export default async function AdminMaterialsPage({ searchParams }: AdminMaterial
         <section className="grid gap-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-2xl font-black">候选题</h2>
-            <span className="status-chip px-2 py-1">当前 {candidates.length} 道</span>
+            <span className="status-chip px-2 py-1">当前 {candidateSections.totalCount} 道</span>
           </div>
-          {candidates.length === 0 ? (
+          {candidateSections.totalCount === 0 ? (
             <section className="pixel-panel p-5">
               <h2 className="text-2xl font-black">暂无候选题</h2>
               <p className="mt-1 font-bold text-[var(--muted)]">处理抽题任务后，AI 候选题会显示在这里。</p>
             </section>
           ) : (
-            candidates.map((candidate) => (
-              <article key={candidate.id} className="pixel-panel grid gap-3 p-5">
-                <div className="flex flex-wrap gap-2">
-                  <span className="status-chip px-2 py-1">{candidate.status === "confirmed" ? "已确认" : "待确认"}</span>
-                  <span className="status-chip px-2 py-1">{candidate.materialTitle}</span>
-                  <span className="status-chip px-2 py-1">{libraryScopeLabels[candidate.materialScope] ?? candidate.materialScope}</span>
-                  <span className="status-chip px-2 py-1">{candidate.kind}</span>
-                  <span className="status-chip px-2 py-1">答案 {candidate.answer}</span>
-                  {candidate.difficulty ? <span className="status-chip px-2 py-1">难度 {candidate.difficulty}</span> : null}
-                </div>
-                <h2 className="break-words text-xl font-black">{candidate.stem}</h2>
-                <div className="grid gap-2 text-sm font-bold">
-                  {(["A", "B", "C", "D"] as const).map((key) => (
-                    <p key={key} className="border-2 border-black bg-white p-2">
-                      {key}. {candidate.options[key]}
-                    </p>
-                  ))}
-                </div>
-                {candidate.explanation ? <p className="border-2 border-black bg-[var(--surface-subtle)] p-3 text-sm font-bold">{candidate.explanation}</p> : null}
-                {candidate.status !== "confirmed" ? (
-                  <div className="grid gap-3">
-                    <CandidateEditForm candidate={candidate} knowledgeNodes={knowledgeNodes} />
-                    <form action={confirmCandidateAction}>
-                      <input name="candidateId" type="hidden" value={candidate.id} />
-                      <SubmitButton className="w-fit px-4 py-2" label="确认入题库" />
-                    </form>
-                  </div>
-                ) : null}
-              </article>
-            ))
+            <div className="grid gap-5">
+              <CandidateListSection
+                emptyMessage="暂无未确认候选题。"
+                items={candidateSections.pending.items}
+                knowledgeNodes={knowledgeNodes}
+                pagination={candidateSections.pending.pagination}
+                paging={candidatePaging}
+                section="pending"
+                title="未确认候选题"
+              />
+              <CandidateListSection
+                emptyMessage="暂无已确认候选题。"
+                items={candidateSections.confirmed.items}
+                knowledgeNodes={knowledgeNodes}
+                pagination={candidateSections.confirmed.pagination}
+                paging={candidatePaging}
+                section="confirmed"
+                title="已确认候选题"
+              />
+            </div>
           )}
         </section>
       </section>
@@ -143,16 +150,138 @@ export default async function AdminMaterialsPage({ searchParams }: AdminMaterial
   );
 }
 
+type CandidatePaging = {
+  confirmedPage: number;
+  pageSize: number;
+  pendingPage: number;
+};
+
+type CandidateSectionName = "pending" | "confirmed";
+
+type CandidatePagination = Awaited<ReturnType<typeof listMaterialQuestionCandidateSections>>["pending"]["pagination"];
+
+function CandidateListSection({
+  emptyMessage,
+  items,
+  knowledgeNodes,
+  pagination,
+  paging,
+  section,
+  title
+}: {
+  emptyMessage: string;
+  items: MaterialQuestionCandidateView[];
+  knowledgeNodes: { id: string; label: string }[];
+  pagination: CandidatePagination;
+  paging: CandidatePaging;
+  section: CandidateSectionName;
+  title: string;
+}) {
+  return (
+    <section className="grid gap-3">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h3 className="text-xl font-black">{title}</h3>
+          <p className="mt-1 text-sm font-bold text-[var(--muted)]">
+            共 {pagination.totalItems} 道 · 第 {pagination.page} / {pagination.totalPages} 页
+          </p>
+        </div>
+        <CandidatePageSizeForm pageSize={paging.pageSize} />
+      </div>
+      {items.length === 0 ? (
+        <section className="pixel-panel p-5">
+          <p className="font-bold text-[var(--muted)]">{emptyMessage}</p>
+        </section>
+      ) : (
+        items.map((candidate) => (
+          <CandidateCard
+            key={candidate.id}
+            candidate={candidate}
+            editable={section === "pending"}
+            knowledgeNodes={knowledgeNodes}
+            paging={paging}
+          />
+        ))
+      )}
+      <CandidatePaginationControls pagination={pagination} paging={paging} section={section} />
+    </section>
+  );
+}
+
+function CandidatePageSizeForm({ pageSize }: { pageSize: number }) {
+  return (
+    <form method="get" className="flex flex-wrap items-end gap-2">
+      <input name="pendingPage" type="hidden" value="1" />
+      <input name="confirmedPage" type="hidden" value="1" />
+      <SelectField defaultValue={String(pageSize)} label="每页" name="candidatePageSize" selectClassName="min-w-28">
+        {materialCandidatePageSizeOptions.map((option) => (
+          <option key={option} value={option}>
+            {option}
+          </option>
+        ))}
+      </SelectField>
+      <SubmitButton className="bg-white px-3 py-2" label="应用" />
+    </form>
+  );
+}
+
+function CandidateCard({
+  candidate,
+  editable,
+  knowledgeNodes,
+  paging
+}: {
+  candidate: MaterialQuestionCandidateView;
+  editable: boolean;
+  knowledgeNodes: { id: string; label: string }[];
+  paging: CandidatePaging;
+}) {
+  return (
+    <article className="pixel-panel grid gap-3 p-5">
+      <div className="flex flex-wrap gap-2">
+        <span className="status-chip px-2 py-1">{candidateStatusLabel(candidate.status)}</span>
+        <span className="status-chip px-2 py-1">{candidate.materialTitle}</span>
+        <span className="status-chip px-2 py-1">{libraryScopeLabels[candidate.materialScope] ?? candidate.materialScope}</span>
+        <span className="status-chip px-2 py-1">{candidate.kind}</span>
+        <span className="status-chip px-2 py-1">答案 {candidate.answer}</span>
+        {candidate.difficulty ? <span className="status-chip px-2 py-1">难度 {candidate.difficulty}</span> : null}
+      </div>
+      <h2 className="break-words text-xl font-black">{candidate.stem}</h2>
+      <div className="grid gap-2 text-sm font-bold">
+        {(["A", "B", "C", "D"] as const).map((key) => (
+          <p key={key} className="border-2 border-black bg-white p-2">
+            {key}. {candidate.options[key]}
+          </p>
+        ))}
+      </div>
+      {candidate.explanation ? <p className="border-2 border-black bg-[var(--surface-subtle)] p-3 text-sm font-bold">{candidate.explanation}</p> : null}
+      {editable ? (
+        <div className="grid gap-3">
+          <CandidateEditForm candidate={candidate} knowledgeNodes={knowledgeNodes} paging={paging} />
+          <form action={confirmCandidateAction}>
+            <input name="candidateId" type="hidden" value={candidate.id} />
+            <CandidatePagingInputs paging={paging} />
+            <SubmitButton className="w-fit px-4 py-2" label="确认入题库" />
+          </form>
+        </div>
+      ) : null}
+    </article>
+  );
+}
+
 function CandidateEditForm({
   candidate,
-  knowledgeNodes
+  knowledgeNodes,
+  paging
 }: {
-  candidate: Awaited<ReturnType<typeof listMaterialQuestionCandidates>>[number];
+  candidate: MaterialQuestionCandidateView;
   knowledgeNodes: { id: string; label: string }[];
+  paging: CandidatePaging;
 }) {
   return (
     <form action={updateCandidateAction} className="grid gap-3 border-2 border-black bg-[var(--surface-subtle)] p-3">
       <input name="candidateId" type="hidden" value={candidate.id} />
+      <CandidatePagingInputs paging={paging} />
       <div className="grid gap-3 lg:grid-cols-[1fr_1fr_1fr]">
         <SelectField label="题型" name="kind" defaultValue={candidate.kind}>
           {materialQuestionKinds.map((kind) => (
@@ -192,8 +321,68 @@ function CandidateEditForm({
   );
 }
 
+function CandidatePagingInputs({ paging }: { paging: CandidatePaging }) {
+  return (
+    <>
+      <input name="pendingPage" type="hidden" value={paging.pendingPage} />
+      <input name="confirmedPage" type="hidden" value={paging.confirmedPage} />
+      <input name="candidatePageSize" type="hidden" value={paging.pageSize} />
+    </>
+  );
+}
+
+function CandidatePaginationControls({
+  pagination,
+  paging,
+  section
+}: {
+  pagination: CandidatePagination;
+  paging: CandidatePaging;
+  section: CandidateSectionName;
+}) {
+  if (pagination.totalItems === 0) {
+    return null;
+  }
+
+  return (
+    <nav className="flex flex-wrap items-center justify-end gap-2" aria-label={`${section === "pending" ? "未确认" : "已确认"}候选题分页`}>
+      <CandidatePageLink disabled={!pagination.hasPreviousPage} href={buildCandidatePageHref(section, paging, pagination.previousPage ?? pagination.page)}>
+        上一页
+      </CandidatePageLink>
+      <CandidatePageLink disabled={!pagination.hasNextPage} href={buildCandidatePageHref(section, paging, pagination.nextPage ?? pagination.page)}>
+        下一页
+      </CandidatePageLink>
+    </nav>
+  );
+}
+
+function CandidatePageLink({ children, disabled, href }: { children: ReactNode; disabled: boolean; href: Route }) {
+  const className = `pixel-button bg-white px-4 py-2 text-sm ${disabled ? "pointer-events-none opacity-50" : ""}`;
+
+  return disabled ? (
+    <span aria-disabled="true" className={className}>
+      {children}
+    </span>
+  ) : (
+    <Link className={className} href={href}>
+      {children}
+    </Link>
+  );
+}
+
+function buildCandidatePageHref(section: CandidateSectionName, paging: CandidatePaging, page: number): Route {
+  const pendingPage = section === "pending" ? page : paging.pendingPage;
+  const confirmedPage = section === "confirmed" ? page : paging.confirmedPage;
+
+  return `/admin/materials?pendingPage=${pendingPage}&confirmedPage=${confirmedPage}&candidatePageSize=${paging.pageSize}` as Route;
+}
+
 function stateLabel(value: string) {
   return { pending: "待处理", queued: "排队中", running: "处理中", succeeded: "已完成", failed: "失败" }[value] ?? value;
+}
+
+function candidateStatusLabel(value: string) {
+  return { confirmed: "已确认", needs_changes: "需修改", pending: "待确认", rejected: "已忽略" }[value] ?? value;
 }
 
 function jobStatusLabel(value: string) {

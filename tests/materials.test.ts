@@ -2,7 +2,14 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { buildMaterialExtractionPrompt, confirmMaterialQuestionCandidate, createMaterialQuestionCandidates, readMaterialText, validateExtractedQuestionsJson } from "@openexam/core/materials";
+import {
+  buildMaterialExtractionPrompt,
+  confirmMaterialQuestionCandidate,
+  createMaterialQuestionCandidates,
+  listMaterialQuestionCandidateSections,
+  readMaterialText,
+  validateExtractedQuestionsJson
+} from "@openexam/core/materials";
 
 describe("material question extraction", () => {
   it("accepts valid single-choice extraction JSON", () => {
@@ -172,6 +179,120 @@ describe("material question extraction", () => {
             stem: "事务原子性最准确的含义是什么？"
           })
         ]
+      }
+    });
+  });
+
+  it("lists material candidates in separate paginated pending and confirmed sections", async () => {
+    const calls: { method: string; args?: unknown }[] = [];
+    const db = {
+      materialQuestionCandidate: {
+        count: async (args: unknown) => {
+          calls.push({ method: "count", args });
+
+          return hasConfirmedStatus(args) ? 12 : 31;
+        },
+        findMany: async (args: unknown) => {
+          calls.push({ method: "findMany", args });
+
+          return [];
+        }
+      }
+    };
+
+    const result = await listMaterialQuestionCandidateSections(
+      {
+        materialId: "material_1",
+        pendingPage: "3",
+        confirmedPage: "2",
+        pageSize: "10"
+      },
+      db as never
+    );
+    const findCalls = calls.filter((call) => call.method === "findMany");
+
+    expect(result).toMatchObject({
+      pageSize: 10,
+      totalCount: 43,
+      pending: {
+        pagination: {
+          page: 3,
+          pageSize: 10,
+          totalItems: 31,
+          totalPages: 4,
+          hasPreviousPage: true,
+          hasNextPage: true,
+          previousPage: 2,
+          nextPage: 4
+        }
+      },
+      confirmed: {
+        pagination: {
+          page: 2,
+          pageSize: 10,
+          totalItems: 12,
+          totalPages: 2,
+          hasPreviousPage: true,
+          hasNextPage: false,
+          previousPage: 1,
+          nextPage: null
+        }
+      }
+    });
+    expect(findCalls[0].args).toMatchObject({
+      where: {
+        materialId: "material_1",
+        status: {
+          not: "confirmed"
+        }
+      },
+      orderBy: [{ createdAt: "desc" }],
+      skip: 20,
+      take: 10
+    });
+    expect(findCalls[1].args).toMatchObject({
+      where: {
+        materialId: "material_1",
+        status: "confirmed"
+      },
+      orderBy: [{ updatedAt: "desc" }],
+      skip: 10,
+      take: 10
+    });
+  });
+
+  it("falls back to default candidate pagination values for invalid query params", async () => {
+    const db = {
+      materialQuestionCandidate: {
+        count: async () => 0,
+        findMany: async () => []
+      }
+    };
+
+    await expect(
+      listMaterialQuestionCandidateSections(
+        {
+          pendingPage: "-1",
+          confirmedPage: "abc",
+          pageSize: "99"
+        },
+        db as never
+      )
+    ).resolves.toMatchObject({
+      pageSize: 20,
+      pending: {
+        pagination: {
+          page: 1,
+          totalItems: 0,
+          totalPages: 1
+        }
+      },
+      confirmed: {
+        pagination: {
+          page: 1,
+          totalItems: 0,
+          totalPages: 1
+        }
       }
     });
   });
@@ -447,6 +568,16 @@ describe("material question extraction", () => {
     }
   });
 });
+
+function hasConfirmedStatus(args: unknown) {
+  if (!args || typeof args !== "object" || !("where" in args)) {
+    return false;
+  }
+
+  const where = (args as { where?: { status?: unknown } }).where;
+
+  return where?.status === "confirmed";
+}
 
 function materialConfirmDb({
   material,

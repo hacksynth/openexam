@@ -49,7 +49,7 @@ export async function confirmCandidateAction(formData: FormData) {
   revalidatePath("/admin/questions" as Route);
 
   if (!result.ok) {
-    redirect(`/admin/materials?error=${encodeURIComponent(result.error)}` as Route);
+    redirect(materialsRedirectUrl(formData, "error", result.error));
   }
 
   await writeAuditLog({
@@ -60,7 +60,7 @@ export async function confirmCandidateAction(formData: FormData) {
     metadata: { questionId: result.data.questionId }
   });
 
-  redirect(`/admin/materials?notice=${encodeURIComponent("候选题已确认并加入题库。")}` as Route);
+  redirect(materialsRedirectUrl(formData, "notice", "候选题已确认并加入题库。"));
 }
 
 export async function updateCandidateAction(formData: FormData) {
@@ -85,7 +85,7 @@ export async function updateCandidateAction(formData: FormData) {
   revalidatePath("/admin/materials" as Route);
 
   if (!result.ok) {
-    redirect(`/admin/materials?error=${encodeURIComponent(result.error)}` as Route);
+    redirect(materialsRedirectUrl(formData, "error", result.error));
   }
 
   await writeAuditLog({
@@ -95,11 +95,27 @@ export async function updateCandidateAction(formData: FormData) {
     entityId: candidateId
   });
 
-  redirect(`/admin/materials?notice=${encodeURIComponent("候选题已更新。")}` as Route);
+  redirect(materialsRedirectUrl(formData, "notice", "候选题已更新。"));
 }
 
 function value(formData: FormData, name: string) {
   return String(formData.get(name) ?? "");
+}
+
+function materialsRedirectUrl(formData: FormData, feedbackKey: "error" | "notice", feedbackValue: string): Route {
+  const params = new URLSearchParams();
+
+  for (const key of ["pendingPage", "confirmedPage", "candidatePageSize"]) {
+    const current = value(formData, key);
+
+    if (current) {
+      params.set(key, current);
+    }
+  }
+
+  params.set(feedbackKey, feedbackValue);
+
+  return `/admin/materials?${params.toString()}` as Route;
 }
 
 function isUploadFile(value: FormDataEntryValue | null): value is File {

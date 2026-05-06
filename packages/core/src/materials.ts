@@ -61,6 +61,9 @@ export const supportedMaterialMimeTypes = [
 ] as const;
 export const materialQuestionKinds = ["single_choice", "multiple_choice", "true_false", "blank", "short_answer", "case_analysis"] as const;
 export const materialLibraryScopes = ["personal", "platform"] as const;
+export const materialCandidatePageSizeOptions = [10, 20, 50] as const;
+
+type MaterialCandidatePageSize = (typeof materialCandidatePageSizeOptions)[number];
 
 export type ExtractedMaterialQuestion = {
   kind?: string | null;
@@ -75,6 +78,8 @@ export type ExtractedMaterialQuestion = {
   knowledgeNodeId?: string | null;
   sourceRef?: string | null;
 };
+
+export type MaterialQuestionCandidateView = ReturnType<typeof toMaterialQuestionCandidateView>;
 
 export async function uploadMaterial(userId: string, input: UploadMaterialInput, db: MaterialDatabase = prisma): Promise<ActionResult<{ materialId: string; jobId: string }>> {
   const file = input.file;
@@ -210,26 +215,70 @@ export async function listMaterialQuestionCandidates(materialId: string | undefi
     take: 100
   });
 
-  return candidates.map((candidate) => ({
-    id: candidate.id,
-    materialId: candidate.materialId,
-    materialTitle: candidate.material.title,
-    materialScope: candidate.material.libraryScope,
-    ownerEmail: candidate.material.owner.email,
-    kind: candidate.kind,
-    stem: candidate.stem,
-    options: readCandidateOptions(candidate.payload),
-    answer: readCandidateAnswer(candidate.answerKey),
-    payload: candidate.payload,
-    answerKey: candidate.answerKey,
-    explanation: candidate.explanation,
-    difficulty: candidate.difficulty,
-    knowledgeNodeId: candidate.knowledgeNodeId,
-    sourceRef: candidate.sourceRef,
-    status: candidate.status,
-    confirmedQuestionId: candidate.confirmedQuestionId,
-    createdAt: candidate.createdAt
-  }));
+  return candidates.map(toMaterialQuestionCandidateView);
+}
+
+export async function listMaterialQuestionCandidateSections(
+  input: {
+    materialId?: string | null;
+    pendingPage?: string | number | null;
+    confirmedPage?: string | number | null;
+    pageSize?: string | number | null;
+  } = {},
+  db: MaterialDatabase = prisma
+) {
+  const materialId = optionalText(String(input.materialId ?? ""));
+  const pageSize = parseMaterialCandidatePageSize(input.pageSize);
+  const baseWhere: Prisma.MaterialQuestionCandidateWhereInput = materialId ? { materialId } : {};
+  const pendingWhere: Prisma.MaterialQuestionCandidateWhereInput = { ...baseWhere, status: { not: "confirmed" } };
+  const confirmedWhere: Prisma.MaterialQuestionCandidateWhereInput = { ...baseWhere, status: "confirmed" };
+  const [pendingTotal, confirmedTotal] = await Promise.all([
+    db.materialQuestionCandidate.count({ where: pendingWhere }),
+    db.materialQuestionCandidate.count({ where: confirmedWhere })
+  ]);
+  const pendingPagination = buildCandidatePagination(input.pendingPage, pendingTotal, pageSize);
+  const confirmedPagination = buildCandidatePagination(input.confirmedPage, confirmedTotal, pageSize);
+  const [pendingCandidates, confirmedCandidates] = await Promise.all([
+    db.materialQuestionCandidate.findMany({
+      where: pendingWhere,
+      include: {
+        material: {
+          include: {
+            owner: true
+          }
+        }
+      },
+      orderBy: [{ createdAt: "desc" }],
+      skip: (pendingPagination.page - 1) * pageSize,
+      take: pageSize
+    }),
+    db.materialQuestionCandidate.findMany({
+      where: confirmedWhere,
+      include: {
+        material: {
+          include: {
+            owner: true
+          }
+        }
+      },
+      orderBy: [{ updatedAt: "desc" }],
+      skip: (confirmedPagination.page - 1) * pageSize,
+      take: pageSize
+    })
+  ]);
+
+  return {
+    pageSize,
+    totalCount: pendingTotal + confirmedTotal,
+    pending: {
+      items: pendingCandidates.map(toMaterialQuestionCandidateView),
+      pagination: pendingPagination
+    },
+    confirmed: {
+      items: confirmedCandidates.map(toMaterialQuestionCandidateView),
+      pagination: confirmedPagination
+    }
+  };
 }
 
 export async function updateMaterialQuestionCandidate(candidateId: string, input: MaterialQuestionCandidateUpdateInput, db: MaterialDatabase = prisma): Promise<ActionResult> {
@@ -907,6 +956,69 @@ function toMaterialView(
         }
       : null
   };
+}
+
+function toMaterialQuestionCandidateView(
+  candidate: Prisma.MaterialQuestionCandidateGetPayload<{
+    include: {
+      material: {
+        include: {
+          owner: true;
+        };
+      };
+    };
+  }>
+) {
+  return {
+    id: candidate.id,
+    materialId: candidate.materialId,
+    materialTitle: candidate.material.title,
+    materialScope: candidate.material.libraryScope,
+    ownerEmail: candidate.material.owner.email,
+    kind: candidate.kind,
+    stem: candidate.stem,
+    options: readCandidateOptions(candidate.payload),
+    answer: readCandidateAnswer(candidate.answerKey),
+    payload: candidate.payload,
+    answerKey: candidate.answerKey,
+    explanation: candidate.explanation,
+    difficulty: candidate.difficulty,
+    knowledgeNodeId: candidate.knowledgeNodeId,
+    sourceRef: candidate.sourceRef,
+    status: candidate.status,
+    confirmedQuestionId: candidate.confirmedQuestionId,
+    createdAt: candidate.createdAt,
+    updatedAt: candidate.updatedAt
+  };
+}
+
+function parseMaterialCandidatePageSize(value: string | number | null | undefined): MaterialCandidatePageSize {
+  const pageSize = Number(value);
+
+  return materialCandidatePageSizeOptions.includes(pageSize as MaterialCandidatePageSize) ? (pageSize as MaterialCandidatePageSize) : 20;
+}
+
+function buildCandidatePagination(value: string | number | null | undefined, totalItems: number, pageSize: MaterialCandidatePageSize) {
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  const requestedPage = parsePositiveInteger(value) ?? 1;
+  const page = Math.min(requestedPage, totalPages);
+
+  return {
+    page,
+    pageSize,
+    totalItems,
+    totalPages,
+    hasPreviousPage: page > 1,
+    hasNextPage: page < totalPages,
+    previousPage: page > 1 ? page - 1 : null,
+    nextPage: page < totalPages ? page + 1 : null
+  };
+}
+
+function parsePositiveInteger(value: string | number | null | undefined) {
+  const parsed = Number(value);
+
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
 function inferMaterialMimeType(fileName: string, providedType: string | undefined) {
