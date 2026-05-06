@@ -6,7 +6,7 @@ type DashboardDatabase = typeof prisma;
 
 const dashboardPlanInclude = {
   tasks: {
-    orderBy: [{ day: "asc" }, { createdAt: "asc" }]
+    orderBy: [{ scheduledDate: "asc" }, { day: "asc" }, { createdAt: "asc" }]
   }
 } satisfies Prisma.StudyPlanInclude;
 
@@ -20,6 +20,10 @@ type DashboardPaperAttempt = Prisma.AttemptGetPayload<{ include: typeof dashboar
 export type LearnerDashboard = Awaited<ReturnType<typeof getLearnerDashboard>>;
 
 export async function getLearnerDashboard(userId: string, db: DashboardDatabase = prisma, now = new Date()) {
+  const goal = await db.examGoal.findFirst({
+    where: { userId, isPrimary: true },
+    select: { id: true }
+  });
   const [wrongNotes, plan, jobs, aiCalls, paperAttempts] = await Promise.all([
     db.wrongNote.findMany({
       where: {
@@ -41,6 +45,7 @@ export async function getLearnerDashboard(userId: string, db: DashboardDatabase 
     db.studyPlan.findFirst({
       where: {
         userId,
+        goalId: goal?.id ?? "__no_active_goal__",
         status: "active"
       },
       include: dashboardPlanInclude,
@@ -111,9 +116,14 @@ function getTodayPlanTasks(plan: DashboardPlan | null, now: Date) {
     return [];
   }
 
-  const day = Math.max(1, Math.floor((startOfLocalDay(now).getTime() - startOfLocalDay(plan.generatedAt).getTime()) / 86_400_000) + 1);
+  const today = dateKey(startOfLocalDay(now));
 
-  return plan.tasks.filter((task) => task.day === day && !task.completedAt);
+  return plan.tasks.filter((task) => {
+    const status = task.status || (task.completedAt ? "completed" : "pending");
+    const scheduledDate = task.scheduledDate ?? new Date(startOfLocalDay(plan.generatedAt).getTime() + Math.max(0, task.day - 1) * 86_400_000);
+
+    return status === "pending" && dateKey(startOfLocalDay(scheduledDate)) === today;
+  });
 }
 
 function buildDerivedTasks(
@@ -224,4 +234,8 @@ function statusLabel(status: string) {
 
 function startOfLocalDay(value: Date) {
   return new Date(value.getFullYear(), value.getMonth(), value.getDate());
+}
+
+function dateKey(value: Date) {
+  return value.toISOString().slice(0, 10);
 }

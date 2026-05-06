@@ -33,7 +33,7 @@ The MVP must complete this learning loop:
 6. View grading, explanations, and wrong notes.
 7. Generate an AI explanation for a wrong question.
 8. View weak knowledge points.
-9. Generate a structured 14-day study plan.
+9. Generate a structured rolling study plan from the saved exam date and daily available time.
 10. Upload a material file, extract candidate questions with AI, manually confirm them, and add them to the private question bank.
 11. Generate a wrong-note review card image.
 12. Let an administrator inspect question sources, AI usage, job status, and user usage.
@@ -47,7 +47,7 @@ Current implementation status:
 - Learners can save a primary exam goal and see it on the dashboard.
 - The practice workflow is implemented with goal-scoped question retrieval, repeat avoidance, single-choice/multiple-choice/true-false/blank objective grading, subjective answer capture, paper attempts, attempt reports, wrong-note auto-collection, wrong-note knowledge filters/retry, mastery toggles, and database-backed dashboard summaries.
 - Admin single-choice question CRUD is implemented for question creation, JSON import, editing, filtering, review-status changes, archive/restore, knowledge binding, source, visibility, and review status.
-- Admin paper CRUD is implemented for ordered multi-kind papers with subject binding, visibility, type, question order, section, number, score, archivedAt-based filters, and hide/restore controls. OpenAI/Claude/Gemini BYOK settings, wrong-note AI analysis, AI call logs, failed-call retry, admin model presets, learning analysis, structured 14-day plans, material uploads, worker-backed extraction jobs, wrong-note review-card image jobs, AI candidate questions, private asset serving, and basic usage protection are implemented for the first release path; advanced practice modes and deeper admin hardening remain future implementation work.
+- Admin paper CRUD is implemented for ordered multi-kind papers with subject binding, visibility, type, question order, section, number, score, archivedAt-based filters, and hide/restore controls. OpenAI/Claude/Gemini BYOK settings, wrong-note AI analysis, AI call logs, failed-call retry, admin model presets, learning analysis, rolling study plans, material uploads, worker-backed extraction jobs, wrong-note review-card image jobs, AI candidate questions, private asset serving, and basic usage protection are implemented for the first release path; advanced practice modes and deeper admin hardening remain future implementation work.
 
 ## Exam Coverage
 
@@ -272,9 +272,9 @@ Diagnosis outputs:
 - Recommended next actions.
 - Plan suggestions.
 
-Study plans must be structured task tables, not plain text. Tasks are checkable and can bind to subjects, knowledge nodes, papers, materials, and question sets.
+Study plans must be structured task tables, not plain text. Tasks are scheduled by date, carry explicit status, and can bind to subjects, knowledge nodes, papers, materials, and question sets. A saved target date is required before plan generation. The active window starts today and covers the remaining exam-prep period up to a maximum of 30 days.
 
-Implementation note: `/analysis` summarizes practice history, weak knowledge nodes, and wrong-note pressure from database-backed learning data. `/plan` generates structured 14-day plans with the first schema in `packages/core/src/study-plan-schema.ts`, stores tasks, and supports task completion state.
+Implementation note: `/analysis` summarizes practice history, weak knowledge nodes, and wrong-note pressure from database-backed learning data. `/plan` generates and adjusts structured rolling plans with the schema in `packages/core/src/study-plan-schema.ts`, stores scheduled task status, and records plan revisions.
 
 ## Question Bank Policy
 

@@ -17,7 +17,7 @@ Current progress:
 - Learners can save a primary exam goal and see that goal on the dashboard.
 - The first Practice Loop slice is implemented for goal-scoped multi-kind objective practice, subjective answer capture, improved question rotation, paper attempts, attempt reports, answer-card submission, wrong-note filters/retry, and database-backed dashboard summaries.
 - Admins can create and govern single-choice questions, filter and archive questions, and create/filter/hide ordered public papers.
-- Learning analysis, structured 14-day plans, worker-backed jobs, private generated assets, and wrong-note review-card images are started.
+- Learning analysis, structured rolling plans, worker-backed jobs, private generated assets, and wrong-note review-card images are started.
 - The visible foundation UI uses Simplified Chinese (`zh-CN`) copy.
 
 ## 1. Foundation
@@ -167,13 +167,13 @@ Deliverables:
 - Goal-based analysis page. Started.
 - AI diagnosis grounded in statistics. Started with persisted `LearningDiagnosis` records on `/analysis`.
 - Structured study-plan schema. Started.
-- Plan generation. Started with 14-day JSON plans.
+- Plan generation. Started with rolling JSON plans based on saved exam date, daily availability, and current learning data.
 - Daily plan and task completion. Started.
-- Plan history and abandon/regenerate flow.
+- Plan history, abandon flow, task skipping, and AI-backed adjustment of the active plan.
 
 Acceptance:
 
-- A learner can generate a 14-day plan from a target date, availability, and learning data. Started.
+- A learner can generate a rolling plan from a saved target date, availability, and learning data. Started.
 - Plan tasks are checkable and linked to practice, papers, materials, or knowledge nodes. Started.
 - AI diagnosis cites the data it used.
 

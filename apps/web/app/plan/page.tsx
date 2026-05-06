@@ -5,8 +5,8 @@ import { ConfirmForm } from "@/components/confirm-form";
 import { requireWebSession } from "@/lib/auth";
 import { getLearningAnalysis } from "@openexam/core/analysis";
 import { FeedbackMessage, SubmitButton } from "@openexam/core/pixel-ui";
-import { getCurrentStudyPlan, listStudyPlanHistory } from "@openexam/core/study-plan";
-import { abandonCurrentStudyPlanAction, generateStudyPlanAction, setStudyPlanTaskCompletedAction } from "./actions";
+import { buildStudyPlanWindow, getCurrentStudyPlan, getStudyPlanAdjustmentReasons, listStudyPlanHistory } from "@openexam/core/study-plan";
+import { abandonCurrentStudyPlanAction, generateStudyPlanAction, setStudyPlanTaskCompletedAction, skipStudyPlanTaskAction } from "./actions";
 
 type PlanPageProps = {
   searchParams: Promise<{ error?: string; notice?: string }>;
@@ -24,6 +24,13 @@ const planStatusLabels: Record<string, string> = {
   active: "进行中",
   archived: "已归档",
   abandoned: "已放弃"
+};
+
+const taskStatusLabels: Record<string, string> = {
+  pending: "待完成",
+  completed: "已完成",
+  carried_over: "已顺延",
+  skipped: "已跳过"
 };
 
 export default async function PlanPage({ searchParams }: PlanPageProps) {
@@ -46,21 +53,13 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
           <>
             <section className="pixel-panel grid gap-4 p-5">
               <div>
-                <p className="text-xs font-bold uppercase text-[var(--muted)]">14-Day Plan</p>
+                <p className="text-xs font-bold uppercase text-[var(--muted)]">Rolling Plan</p>
                 <h2 className="mt-1 break-words text-2xl font-black">{plan ? `${plan.goalPath}` : "尚未生成学习计划"}</h2>
                 <p className="mt-1 font-bold text-[var(--muted)]">
                   当前数据：作答 {analysis.summary.totalQuestions} 题，正确率 {analysis.summary.accuracy}%，未掌握错题 {analysis.summary.pendingWrongNotes}。
                 </p>
               </div>
-              <div className="flex flex-wrap gap-3">
-                <ConfirmForm action={generateStudyPlanAction} buttonLabel={plan ? "重新生成计划" : "生成 14 天计划"} confirmMessage={plan ? "重新生成将归档当前计划并创建新计划，确定继续？" : "将基于当前学习数据生成 14 天计划，确定继续？"} buttonClassName="pixel-button px-4 py-2" />
-                {plan ? (
-                  <ConfirmForm action={abandonCurrentStudyPlanAction} buttonLabel="放弃当前计划" confirmMessage="放弃后计划将标记为已放弃且无法恢复，确定继续？" />
-                ) : null}
-                <Link href={"/analysis" as Route} className="pixel-button bg-white px-4 py-2">
-                  查看分析
-                </Link>
-              </div>
+              <PlanActions analysis={analysis} plan={plan} />
             </section>
 
             {!plan ? (
@@ -69,7 +68,7 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
               <>
                 <section className="grid gap-4 md:grid-cols-3">
                   <Metric label="任务完成" value={`${plan.completedCount} / ${plan.taskCount}`} />
-                  <Metric label="生成日期" value={formatDate(plan.generatedAt)} />
+                  <Metric label="计划窗口" value={plan.windowStartDate && plan.windowEndDate ? `${formatDate(plan.windowStartDate)} - ${formatDate(plan.windowEndDate)}` : formatDate(plan.generatedAt)} />
                   <Metric label="计划状态" value={planStatusLabels[plan.status] ?? plan.status} />
                 </section>
                 <div className="h-4 w-full overflow-hidden border-2 border-black bg-[var(--surface-subtle)]">
@@ -78,9 +77,10 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
                     style={{ width: `${plan.taskCount > 0 ? Math.round((plan.completedCount / plan.taskCount) * 100) : 0}%` }}
                   />
                 </div>
+                {plan.latestRevision?.note ? <p className="border-2 border-black bg-[var(--surface-subtle)] p-3 font-bold text-[var(--muted)]">{plan.latestRevision.note}</p> : null}
 
                 <section className="grid gap-4">
-                  {groupTasksByDay(plan.tasks).map((day) => (
+                  {groupTasksByDay(plan.tasks.filter((task) => task.status === "pending" || task.status === "completed")).map((day) => (
                     <article key={day.day} className="pixel-panel grid gap-4 p-5">
                       <div className="flex flex-wrap items-center justify-between gap-3">
                         <h2 className="text-xl font-black">第 {day.day} 天</h2>
@@ -93,7 +93,8 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
                               <div className="mb-2 flex flex-wrap gap-2">
                                 <span className="status-chip px-2 py-1">{kindLabels[task.kind] ?? task.kind}</span>
                                 <span className="status-chip px-2 py-1">{task.minutes} 分钟</span>
-                                {task.completedAt ? <span className="status-chip bg-[var(--teal)] px-2 py-1">已完成</span> : null}
+                                <span className="status-chip px-2 py-1">{formatDate(task.scheduledDate)}</span>
+                                <span className={`status-chip px-2 py-1 ${task.status === "completed" ? "bg-[var(--teal)]" : ""}`}>{taskStatusLabels[task.status] ?? task.status}</span>
                               </div>
                               <h3 className="break-words text-lg font-black">{task.title}</h3>
                               {(task.knowledgeNodeIds.length > 0 || task.paperId || task.materialId) ? (
@@ -119,9 +120,15 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
                               </Link>
                               <form action={setStudyPlanTaskCompletedAction}>
                                 <input name="taskId" type="hidden" value={task.id} />
-                                <input name="completed" type="hidden" value={task.completedAt ? "false" : "true"} />
-                                <SubmitButton className="px-3 py-2" label={task.completedAt ? "取消完成" : "标记完成"} />
+                                <input name="completed" type="hidden" value={task.status === "completed" ? "false" : "true"} />
+                                <SubmitButton className="px-3 py-2" label={task.status === "completed" ? "取消完成" : "标记完成"} />
                               </form>
+                              {task.status === "pending" ? (
+                                <form action={skipStudyPlanTaskAction}>
+                                  <input name="taskId" type="hidden" value={task.id} />
+                                  <SubmitButton className="bg-white px-3 py-2" label="跳过" />
+                                </form>
+                              ) : null}
                             </div>
                           </div>
                         ))}
@@ -129,6 +136,26 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
                     </article>
                   ))}
                 </section>
+                {plan.historicalTaskCount > 0 ? (
+                  <section className="pixel-panel grid gap-4 p-5">
+                    <div>
+                      <p className="text-xs font-bold uppercase text-[var(--muted)]">Adjusted Tasks</p>
+                      <h2 className="mt-1 text-xl font-black">调整记录</h2>
+                    </div>
+                    <div className="grid gap-2">
+                      {plan.tasks
+                        .filter((task) => task.status === "carried_over" || task.status === "skipped")
+                        .slice(0, 8)
+                        .map((task) => (
+                          <div key={task.id} className="flex flex-wrap items-center gap-2 border-2 border-black bg-white p-3">
+                            <span className="status-chip px-2 py-1">{taskStatusLabels[task.status] ?? task.status}</span>
+                            <span className="status-chip px-2 py-1">{formatDate(task.scheduledDate)}</span>
+                            <span className="min-w-0 break-words font-black">{task.title}</span>
+                          </div>
+                        ))}
+                    </div>
+                  </section>
+                ) : null}
               </>
             )}
 
@@ -165,6 +192,49 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
         )}
       </section>
     </AppShell>
+  );
+}
+
+function PlanActions({
+  analysis,
+  plan
+}: {
+  analysis: Extract<Awaited<ReturnType<typeof getLearningAnalysis>>, { status: "ready" }>;
+  plan: Awaited<ReturnType<typeof getCurrentStudyPlan>>;
+}) {
+  const windowResult = buildStudyPlanWindow(analysis.goal.targetDate);
+  const adjustmentReasons = plan ? getStudyPlanAdjustmentReasons(analysis, plan) : [];
+  const hasTargetChange = adjustmentReasons.some((reason) => reason.includes("考试日期"));
+  const buttonLabel = plan ? (hasTargetChange ? "按新考试日期调整计划" : "调整后续计划") : "生成学习计划";
+  const confirmMessage = plan ? "将保留已完成任务，并根据最新学习情况调整今天未完成及未来计划，确定继续？" : "将基于考试日期、每日时间和当前学习数据生成计划，确定继续？";
+
+  return (
+    <div className="grid gap-3">
+      {!windowResult.ok ? (
+        <div className="flex flex-wrap items-center gap-3">
+          <p className="border-2 border-black bg-[var(--surface-subtle)] p-3 font-bold text-[var(--muted)]">{windowResult.error}</p>
+          <Link href={"/goals" as Route} className="pixel-button px-4 py-2">
+            设置考试日期
+          </Link>
+        </div>
+      ) : (
+        <>
+          <div className="flex flex-wrap gap-3">
+            <ConfirmForm action={generateStudyPlanAction} buttonLabel={buttonLabel} confirmMessage={confirmMessage} buttonClassName="pixel-button px-4 py-2" />
+            {plan ? <ConfirmForm action={abandonCurrentStudyPlanAction} buttonLabel="放弃当前计划" confirmMessage="放弃后计划将标记为已放弃且无法恢复，确定继续？" /> : null}
+            <Link href={"/analysis" as Route} className="pixel-button bg-white px-4 py-2">
+              查看分析
+            </Link>
+          </div>
+          <p className="font-bold text-[var(--muted)]">
+            备考剩余 {windowResult.data.remainingDays} 天，当前计划覆盖 {windowResult.data.days} 天。
+          </p>
+        </>
+      )}
+      {adjustmentReasons.length > 0 ? (
+        <p className="border-2 border-black bg-[var(--primary)] p-3 text-sm font-bold">建议调整计划：{adjustmentReasons.join("、")}。</p>
+      ) : null}
+    </div>
   );
 }
 

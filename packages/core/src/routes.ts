@@ -94,7 +94,7 @@ export const learnerRoutes: RouteItem[] = [
     id: "plan",
     href: "/plan",
     label: "学习计划",
-    description: "基于目标和练习数据生成的结构化 14 天计划。支持历史查看和放弃。",
+    description: "基于考试日期、每日时间和练习数据生成滚动学习计划。支持调整、历史查看和放弃。",
     section: "learner",
     status: "foundation"
   },

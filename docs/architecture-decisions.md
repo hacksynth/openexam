@@ -385,7 +385,7 @@ Use Zod or an equivalent schema library. Failed parsing may retry once. Persiste
 
 Implementation note:
 
-- `packages/core/src/study-plan-schema.ts` defines and tests the structured 14-day plan schema.
+- `packages/core/src/study-plan-schema.ts` defines and tests the structured rolling-plan schema.
 - `packages/core/src/ai-output-schemas.ts` defines and tests structured schemas for material question extraction, subjective grading, learning diagnosis, and review-card image prompts.
 - `packages/core/src/ai.ts` defines the first plain-text wrong-note prompt version, `wrong-note-explain-v1`.
 - Playwright uses an OpenAI-compatible mock `/v1/responses` server so browser tests exercise the HTTP adapter without calling a live model.

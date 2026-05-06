@@ -2,14 +2,16 @@ import { describe, expect, it } from "vitest";
 import { studyPlanSchema } from "@openexam/core/study-plan-schema";
 
 describe("studyPlanSchema", () => {
-  it("accepts structured 14-day plans", () => {
+  it("accepts structured rolling-window plans", () => {
     const result = studyPlanSchema.safeParse({
       goalId: "goal_1",
       generatedAt: "2026-05-05T00:00:00.000Z",
-      days: 14,
+      days: 7,
+      decisions: [],
       tasks: [
         {
           day: 1,
+          scheduledDate: "2026-05-05",
           title: "Practice algorithm complexity",
           kind: "practice",
           minutes: 45,

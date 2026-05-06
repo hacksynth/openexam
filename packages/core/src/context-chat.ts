@@ -539,7 +539,14 @@ async function resolveChatContext(userId: string, contextType: string | null | u
           `目标：${formatGoalPath(plan.goal)}`,
           `状态：${plan.status}`,
           `任务：`,
-          plan.tasks.map((task) => `第 ${task.day} 天 ${task.kind} ${task.minutes} 分钟：${task.title}${task.completedAt ? "（已完成）" : ""}`).join("\n")
+          plan.tasks
+            .map((task) => {
+              const taskStatus = task.status || (task.completedAt ? "completed" : "pending");
+              const scheduledDate = task.scheduledDate?.toISOString().slice(0, 10) ?? `第 ${task.day} 天`;
+
+              return `${scheduledDate} 第 ${task.day} 天 ${task.kind} ${task.minutes} 分钟：${task.title}（${taskStatus}）`;
+            })
+            .join("\n")
         ].join("\n"),
         aiInputParts: []
       }

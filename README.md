@@ -19,7 +19,7 @@ OpenExam is a self-hostable AI exam preparation platform for individual learners
 
 ## Status
 
-OpenExam is prepared as a `v0.1.0` release candidate. The learner and admin apps, shared core package, Prisma/PostgreSQL schema, auth/session layer, exam hierarchy management, multi-kind objective practice, paper attempts with autosave/pause/resume, wrong notes, learning analysis, structured 14-day study plans, OpenAI/Claude/Gemini BYOK settings, AI call logs, material uploads, AI-assisted material question extraction, a persistent worker, and wrong-note review-card image generation are in place.
+OpenExam is prepared as a `v0.1.0` release candidate. The learner and admin apps, shared core package, Prisma/PostgreSQL schema, auth/session layer, exam hierarchy management, multi-kind objective practice, paper attempts with autosave/pause/resume, wrong notes, learning analysis, rolling study plans, OpenAI/Claude/Gemini BYOK settings, AI call logs, material uploads, AI-assisted material question extraction, a persistent worker, and wrong-note review-card image generation are in place.
 
 The release-critical learning loop is covered by automated unit/API tests plus Playwright browser workflows. OCR beyond provider document/image fallback, richer file extraction, deeper subjective grading workflows, problem-solving diagrams, audit hardening, and advanced practice modes remain future work. The product and architecture source of truth remains in `docs/`.
 
@@ -30,7 +30,7 @@ The first product version targets Simplified Chinese (`zh-CN`) UI copy by defaul
 - Split learner/admin Next.js apps with authenticated private routes and independent health APIs.
 - PostgreSQL schema, Prisma migrations, seed data, and Docker Compose services for web, admin, worker, and database.
 - Goal-scoped practice, public paper attempts, answer autosave, reports, wrong-note ingestion, retry, and weak-point summaries.
-- BYOK AI settings, provider call logs, admin model presets, material extraction jobs, context chat, learning diagnosis, and 14-day study plans.
+- BYOK AI settings, provider call logs, admin model presets, material extraction jobs, context chat, learning diagnosis, and rolling study plans.
 - Private local asset serving for generated wrong-note review cards.
 - CI for Prisma validation, TypeScript checks, Vitest, app builds, migration deploy, Playwright browser workflows, Docker image builds, and CodeQL analysis.
 

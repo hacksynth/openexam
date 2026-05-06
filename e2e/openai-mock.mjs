@@ -252,24 +252,41 @@ function shouldFailTextRequest(authorization) {
 
 function buildMockTextResponse(input) {
   const isExtraction = input.includes("资料正文");
-  const isPlan = input.includes("14 天学习计划");
+  const isPlan = input.includes("计划窗口：") && input.includes("学习计划");
   const isPracticeGeneration = input.includes("请为当前考试目标生成") && input.includes("练习题候选");
   const isDiagnosis = input.includes("请基于当前考试目标、作答统计、错题和薄弱知识点生成学习诊断。");
   const knowledgeNodeId = input.match(/(cm[a-z0-9]+)/)?.[1] ?? "";
   const goalId = input.match(/目标 ID：([^\n]+)/)?.[1]?.trim() ?? "goal_mock";
 
   if (isPlan) {
+    const windowMatch = input.match(/计划窗口：(\d{4}-\d{2}-\d{2}) 至 (\d{4}-\d{2}-\d{2})，共 (\d+) 天/);
+    const startDate = windowMatch?.[1] ?? "2026-05-05";
+    const targetDate = (input.match(/考试日期：(\d{4}-\d{2}-\d{2})/)?.[1] ?? windowMatch?.[2]) || "2026-05-18";
+    const days = Math.max(1, Math.min(30, Number(windowMatch?.[3] ?? 14)));
+    const decisionIds = [...input.matchAll(/(task_[a-zA-Z0-9_-]+)/g)].map((match) => match[1]);
+
     return JSON.stringify({
       goalId,
-      generatedAt: "2026-05-05T00:00:00.000Z",
-      days: 14,
-      tasks: Array.from({ length: 14 }, (_, index) => ({
-        day: index + 1,
-        title: `第 ${index + 1} 天复习事务基础并完成单选练习`,
-        kind: index % 5 === 4 ? "wrong_note_review" : "practice",
-        minutes: 45,
-        knowledgeNodeIds: knowledgeNodeId ? [knowledgeNodeId] : []
-      }))
+      generatedAt: new Date().toISOString(),
+      days,
+      decisions: [...new Set(decisionIds)].map((taskId) => ({
+        taskId,
+        status: "carried_over",
+        reason: "合并到新的滚动计划"
+      })),
+      tasks: Array.from({ length: days }, (_, index) => {
+        const scheduledDate = addDays(startDate, index);
+        const isExamDay = scheduledDate === targetDate;
+
+        return {
+          day: index + 1,
+          scheduledDate,
+          title: `第 ${index + 1} 天复习事务基础并完成单选练习`,
+          kind: isExamDay ? "knowledge_review" : index % 5 === 4 ? "wrong_note_review" : "practice",
+          minutes: isExamDay ? 20 : 45,
+          knowledgeNodeIds: knowledgeNodeId ? [knowledgeNodeId] : []
+        };
+      })
     });
   }
 
@@ -324,6 +341,12 @@ function buildMockTextResponse(input) {
   }
 
   return "AI E2E 解析：原子性要求事务中的操作要么全部成功，要么全部失败。复习时要区分原子性和隔离性。";
+}
+
+function addDays(dateKey, days) {
+  const date = new Date(`${dateKey}T00:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
 }
 
 function readPromptText(body) {

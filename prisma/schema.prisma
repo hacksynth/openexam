@@ -654,17 +654,23 @@ model Job {
 }
 
 model StudyPlan {
-  id          String          @id @default(cuid())
-  userId      String
-  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  goalId      String
-  goal        ExamGoal        @relation(fields: [goalId], references: [id], onDelete: Cascade)
-  status      String          @default("active")
-  generatedAt DateTime        @default(now())
-  sourceStats Json?
-  tasks       StudyPlanTask[]
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
+  id                   String              @id @default(cuid())
+  userId               String
+  user                 User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  goalId               String
+  goal                 ExamGoal            @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  status               String              @default("active")
+  generatedAt          DateTime            @default(now())
+  windowStartDate      DateTime?
+  windowEndDate        DateTime?
+  targetDateSnapshot   DateTime?
+  dailyMinutesSnapshot Int?
+  lastAdjustedAt       DateTime?
+  sourceStats          Json?
+  tasks                StudyPlanTask[]
+  revisions            StudyPlanRevision[]
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
 
   @@index([userId, status])
   @@index([goalId])
@@ -675,9 +681,11 @@ model StudyPlanTask {
   planId           String
   plan             StudyPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
   day              Int
+  scheduledDate    DateTime?
   title            String
   kind             String
   minutes          Int
+  status           String    @default("pending")
   subjectId        String?
   subject          Subject?  @relation(fields: [subjectId], references: [id])
   knowledgeNodeIds String[]  @default([])
@@ -690,7 +698,30 @@ model StudyPlanTask {
   updatedAt        DateTime  @updatedAt
 
   @@index([planId, day])
+  @@index([planId, scheduledDate])
+  @@index([status])
   @@index([completedAt])
+}
+
+model StudyPlanRevision {
+  id                   String    @id @default(cuid())
+  planId               String
+  plan                 StudyPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  revisionNumber       Int
+  trigger              String
+  windowStartDate      DateTime
+  windowEndDate        DateTime
+  targetDateSnapshot   DateTime
+  dailyMinutesSnapshot Int
+  sourceStats          Json?
+  aiCallId             String?
+  decisionSummary      Json?
+  note                 String?
+  createdAt            DateTime  @default(now())
+
+  @@unique([planId, revisionNumber])
+  @@index([planId, createdAt])
+  @@index([aiCallId])
 }
 
 model UserKnowledgeNote {

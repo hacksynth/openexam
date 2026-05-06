@@ -4,7 +4,7 @@ import { AppShell } from "@/components/app-shell";
 import { requireWebSession } from "@/lib/auth";
 import { FeedbackMessage, SubmitButton } from "@openexam/core/pixel-ui";
 import { getStudyPlan } from "@openexam/core/study-plan";
-import { setStudyPlanTaskCompletedAction } from "../actions";
+import { setStudyPlanTaskCompletedAction, skipStudyPlanTaskAction } from "../actions";
 
 type PlanDetailPageProps = {
   params: Promise<{ planId: string }>;
@@ -23,6 +23,13 @@ const planStatusLabels: Record<string, string> = {
   active: "进行中",
   archived: "已归档",
   abandoned: "已放弃"
+};
+
+const taskStatusLabels: Record<string, string> = {
+  pending: "待完成",
+  completed: "已完成",
+  carried_over: "已顺延",
+  skipped: "已跳过"
 };
 
 export default async function PlanDetailPage({ params, searchParams }: PlanDetailPageProps) {
@@ -55,7 +62,7 @@ export default async function PlanDetailPage({ params, searchParams }: PlanDetai
           <div>
             <div className="mb-3 flex flex-wrap gap-2">
               <span className="status-chip px-2 py-1">{planStatusLabels[plan.status] ?? plan.status}</span>
-              <span className="status-chip px-2 py-1">{formatDate(plan.generatedAt)}</span>
+              <span className="status-chip px-2 py-1">{plan.windowStartDate && plan.windowEndDate ? `${formatDate(plan.windowStartDate)} - ${formatDate(plan.windowEndDate)}` : formatDate(plan.generatedAt)}</span>
               <span className="status-chip px-2 py-1">
                 {plan.completedCount} / {plan.taskCount} 已完成
               </span>
@@ -68,6 +75,7 @@ export default async function PlanDetailPage({ params, searchParams }: PlanDetai
               style={{ width: `${plan.taskCount > 0 ? Math.round((plan.completedCount / plan.taskCount) * 100) : 0}%` }}
             />
           </div>
+          {plan.latestRevision?.note ? <p className="border-2 border-black bg-[var(--surface-subtle)] p-3 font-bold text-[var(--muted)]">{plan.latestRevision.note}</p> : null}
           <Link href={"/plan" as Route} className="pixel-button w-fit bg-white px-4 py-2">
             返回计划
           </Link>
@@ -87,7 +95,8 @@ export default async function PlanDetailPage({ params, searchParams }: PlanDetai
                       <div className="mb-2 flex flex-wrap gap-2">
                         <span className="status-chip px-2 py-1">{kindLabels[task.kind] ?? task.kind}</span>
                         <span className="status-chip px-2 py-1">{task.minutes} 分钟</span>
-                        {task.completedAt ? <span className="status-chip bg-[var(--teal)] px-2 py-1">已完成</span> : null}
+                        <span className="status-chip px-2 py-1">{formatDate(task.scheduledDate)}</span>
+                        <span className={`status-chip px-2 py-1 ${task.status === "completed" ? "bg-[var(--teal)]" : ""}`}>{taskStatusLabels[task.status] ?? task.status}</span>
                       </div>
                       <h3 className="break-words text-lg font-black">{task.title}</h3>
                       {(task.knowledgeNodeIds.length > 0 || task.paperId || task.materialId) ? (
@@ -112,11 +121,21 @@ export default async function PlanDetailPage({ params, searchParams }: PlanDetai
                         前往
                       </Link>
                       {plan.status === "active" ? (
-                        <form action={setStudyPlanTaskCompletedAction}>
-                          <input name="taskId" type="hidden" value={task.id} />
-                          <input name="completed" type="hidden" value={task.completedAt ? "false" : "true"} />
-                          <SubmitButton className="px-3 py-2" label={task.completedAt ? "取消完成" : "标记完成"} />
-                        </form>
+                        <>
+                          {(task.status === "pending" || task.status === "completed") ? (
+                            <form action={setStudyPlanTaskCompletedAction}>
+                              <input name="taskId" type="hidden" value={task.id} />
+                              <input name="completed" type="hidden" value={task.status === "completed" ? "false" : "true"} />
+                              <SubmitButton className="px-3 py-2" label={task.status === "completed" ? "取消完成" : "标记完成"} />
+                            </form>
+                          ) : null}
+                          {task.status === "pending" ? (
+                            <form action={skipStudyPlanTaskAction}>
+                              <input name="taskId" type="hidden" value={task.id} />
+                              <SubmitButton className="bg-white px-3 py-2" label="跳过" />
+                            </form>
+                          ) : null}
+                        </>
                       ) : null}
                     </div>
                   </div>

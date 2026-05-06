@@ -4,6 +4,9 @@ import { getLearnerDashboard } from "@openexam/core/dashboard-data";
 describe("getLearnerDashboard", () => {
   it("builds learner dashboard data from database records", async () => {
     const db = {
+      examGoal: {
+        findFirst: async () => ({ id: "goal_1" })
+      },
       wrongNote: {
         findMany: async () => [
           {
@@ -27,8 +30,10 @@ describe("getLearnerDashboard", () => {
             {
               id: "task_1",
               day: 1,
+              scheduledDate: new Date("2026-05-05T00:00:00.000Z"),
               title: "完成事务基础练习",
               kind: "practice",
+              status: "pending",
               completedAt: null,
               createdAt: new Date("2026-05-05T00:00:00.000Z")
             }

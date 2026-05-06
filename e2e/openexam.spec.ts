@@ -258,6 +258,12 @@ async function saveGoal(page: Page) {
   await choosePixelSelect(page, "trackId", fixtureIds.trackId);
   await choosePixelSelect(page, "cycleId", fixtureIds.cycleId);
   await choosePixelSelect(page, "subjectId", fixtureIds.subjectId);
+  await page.locator('input[name="targetDate"]').evaluate((element, value) => {
+    const input = element as HTMLInputElement;
+    input.value = String(value);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  }, futureDateInput(45));
   await page.locator('input[name="dailyMinutes"]').fill("45");
   await page.getByRole("button", { name: "保存主目标" }).click();
   await expect(page.getByText("考试目标已保存。")).toBeVisible();
@@ -475,14 +481,20 @@ async function reviewAnalysisAndGeneratePlan(page: Page) {
 
   await page.goto(`${webUrl}/plan`);
   acceptNextDialog(page);
-  await page.getByRole("button", { name: "生成 14 天计划" }).click();
+  await page.getByRole("button", { name: "生成学习计划" }).click();
   await expect(page.getByText("学习计划已生成。")).toBeVisible();
   await expect(page.locator("body")).toContainText("第 1 天");
-  await expect(page.locator("body")).toContainText("第 14 天");
+  await expect(page.locator("body")).toContainText("第 30 天");
 
   await page.getByRole("button", { name: "标记完成" }).first().click();
   await expect(page.getByText("计划任务已更新。")).toBeVisible();
   await expect(page.locator("body")).toContainText("已完成");
+}
+
+function futureDateInput(daysFromToday: number) {
+  const date = new Date();
+  date.setUTCDate(date.getUTCDate() + daysFromToday);
+  return date.toISOString().slice(0, 10);
 }
 
 async function configureAdminAiPreset(page: Page) {
