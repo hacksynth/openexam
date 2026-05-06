@@ -1,4 +1,4 @@
-import { Prisma, QuestionKind } from "@prisma/client";
+import { PracticeMode, Prisma, QuestionKind } from "@prisma/client";
 import { getPrimaryExamGoal, type PrimaryGoal } from "./exam-core";
 import { gradeObjectiveAnswer, type ObjectiveQuestionKind } from "./grading";
 import { generateSubjectiveScoreSuggestion } from "./subjective-scoring";
@@ -49,28 +49,44 @@ export type PracticeMaterialContext = {
 };
 
 export type MaterialPracticeEmptyReason = "general" | "material_unavailable" | "material_goal_mismatch";
+export type PracticeEmptyReason =
+  | MaterialPracticeEmptyReason
+  | "knowledge_required"
+  | "no_new_questions"
+  | "no_wrong_questions"
+  | "no_practiced_questions";
 
 export type PracticeQuestionState =
   | { status: "no_goal"; material?: PracticeMaterialContext }
-  | { status: "error"; goal: NonNullable<PrimaryGoal>; error: string; material?: PracticeMaterialContext }
-  | { status: "empty"; goal: NonNullable<PrimaryGoal>; material?: PracticeMaterialContext; emptyReason?: MaterialPracticeEmptyReason }
-  | { status: "ready"; goal: NonNullable<PrimaryGoal>; question: PracticeQuestion; material?: PracticeMaterialContext };
+  | { status: "error"; goal: NonNullable<PrimaryGoal>; mode: PracticeMode; error: string; material?: PracticeMaterialContext }
+  | { status: "empty"; goal: NonNullable<PrimaryGoal>; mode: PracticeMode; material?: PracticeMaterialContext; emptyReason?: PracticeEmptyReason }
+  | { status: "ready"; goal: NonNullable<PrimaryGoal>; mode: PracticeMode; question: PracticeQuestion; material?: PracticeMaterialContext };
 
 export type PracticeSubmitResult =
   | { ok: true; attemptId: string; isCorrect: boolean | null }
   | { ok: false; error: string };
 
 export type PracticeQuestionOptions = {
+  directQuestionId?: string | null;
   excludeQuestionId?: string | null;
   retryQuestionId?: string | null;
   materialId?: string | null;
   knowledgeNodeId?: string | null;
+  mode?: string | PracticeMode | null;
 };
 
 export type MaterialPracticeScope = {
   material: PracticeMaterialContext;
   questionIds: string[];
 };
+
+type KnowledgePracticeScope = {
+  selectedNodeId: string;
+  nodeIds: string[];
+  rankByNodeId: Map<string, number>;
+};
+
+export const defaultPracticeMode = PracticeMode.new;
 
 export function readSingleChoiceOptions(payload: Prisma.JsonValue | null | undefined) {
   if (!isJsonObject(payload) || !Array.isArray(payload.options)) {
@@ -208,6 +224,7 @@ export function gradeSingleChoiceQuestion(input: { answerKey: Prisma.JsonValue |
 
 export async function getPracticeQuestion(userId: string, options: PracticeQuestionOptions = {}): Promise<PracticeQuestionState> {
   const goal = await getPrimaryExamGoal(userId);
+  const mode = normalizePracticeMode(options.mode);
 
   if (!goal) {
     return { status: "no_goal" };
@@ -217,16 +234,16 @@ export async function getPracticeQuestion(userId: string, options: PracticeQuest
     const retryQuestion = await getRetryQuestion(userId, goal, options.retryQuestionId);
 
     if (!retryQuestion) {
-      return { status: "error", goal, error: "错题不存在，或不在当前考试目标范围内。" };
+      return { status: "error", goal, mode, error: "错题不存在，或不在当前考试目标范围内。" };
     }
 
     const normalizedRetry = toPracticeQuestion(retryQuestion);
 
     if (!normalizedRetry) {
-      return { status: "error", goal, error: "题目配置不完整。" };
+      return { status: "error", goal, mode, error: "题目配置不完整。" };
     }
 
-    return { status: "ready", goal, question: normalizedRetry };
+    return { status: "ready", goal, mode: PracticeMode.wrong, question: normalizedRetry };
   }
 
   const materialScope = await getMaterialPracticeScope(userId, options.materialId);
@@ -235,19 +252,56 @@ export async function getPracticeQuestion(userId: string, options: PracticeQuest
     return {
       status: "empty",
       goal,
+      mode,
       material: materialScope?.material,
       emptyReason: "material_unavailable"
     };
   }
 
-  const question = await selectPracticeQuestion(userId, goal, options.excludeQuestionId, materialScope?.questionIds, options.knowledgeNodeId);
+  if (options.directQuestionId) {
+    const directQuestion = await getDirectPracticeQuestion(userId, goal, {
+      questionId: options.directQuestionId,
+      materialQuestionIds: materialScope?.questionIds,
+      knowledgeNodeId: options.knowledgeNodeId
+    });
+
+    if (!directQuestion) {
+      return { status: "error", goal, mode, material: materialScope?.material, error: "题目不存在，或不在当前练习范围内。" };
+    }
+
+    const normalizedDirect = toPracticeQuestion(directQuestion);
+
+    if (!normalizedDirect) {
+      return { status: "error", goal, mode, material: materialScope?.material, error: "题目配置不完整。" };
+    }
+
+    return { status: "ready", goal, mode, question: normalizedDirect, material: materialScope?.material };
+  }
+
+  if (mode === PracticeMode.new && isBroadGoal(goal) && !options.knowledgeNodeId?.trim() && !materialScope) {
+    return {
+      status: "empty",
+      goal,
+      mode,
+      emptyReason: "knowledge_required"
+    };
+  }
+
+  const selection = await selectPracticeQuestion(userId, goal, {
+    excludeQuestionId: options.excludeQuestionId,
+    materialQuestionIds: materialScope?.questionIds,
+    knowledgeNodeId: options.knowledgeNodeId,
+    mode
+  });
+  const question = selection.question;
 
   if (!question) {
     return {
       status: "empty",
       goal,
+      mode,
       material: materialScope?.material,
-      emptyReason: materialScope ? "material_goal_mismatch" : "general"
+      emptyReason: selection.emptyReason ?? (materialScope ? "material_goal_mismatch" : "general")
     };
   }
 
@@ -257,20 +311,31 @@ export async function getPracticeQuestion(userId: string, options: PracticeQuest
     return {
       status: "empty",
       goal,
+      mode,
       material: materialScope?.material,
       emptyReason: materialScope ? "material_goal_mismatch" : "general"
     };
   }
 
-  return { status: "ready", goal, question: normalized, material: materialScope?.material };
+  return { status: "ready", goal, mode, question: normalized, material: materialScope?.material };
 }
 
 export async function submitPracticeAnswer(
   userId: string,
-  input: { questionId: string; answer: string; retry?: boolean; materialId?: string | null }
+  input: {
+    questionId: string;
+    answer: string;
+    retry?: boolean;
+    materialId?: string | null;
+    knowledgeNodeId?: string | null;
+    practiceMode?: string | PracticeMode | null;
+  }
 ): Promise<PracticeSubmitResult> {
   const answer = input.answer.trim();
   const questionId = input.questionId.trim();
+  const practiceMode = input.retry ? PracticeMode.wrong : normalizePracticeMode(input.practiceMode);
+  const practiceKnowledgeNodeId = optionalText(input.knowledgeNodeId);
+  const practiceMaterialId = optionalText(input.materialId);
 
   if (!answer) {
     return { ok: false, error: "请填写或选择答案。" };
@@ -282,8 +347,12 @@ export async function submitPracticeAnswer(
     return { ok: false, error: "请先设置考试目标。" };
   }
 
-  if (input.materialId && !(await questionBelongsToMaterialPracticeScope(userId, input.materialId, questionId))) {
+  if (practiceMaterialId && !(await questionBelongsToMaterialPracticeScope(userId, practiceMaterialId, questionId))) {
     return { ok: false, error: "题目不存在或不在当前资料范围内。" };
+  }
+
+  if (practiceKnowledgeNodeId && !(await questionBelongsToKnowledgePracticeScope(userId, goal, practiceKnowledgeNodeId, questionId))) {
+    return { ok: false, error: "题目不存在或不在当前知识点范围内。" };
   }
 
   const question = await prisma.question.findFirst({
@@ -350,6 +419,9 @@ export async function submitPracticeAnswer(
         userId,
         goalId: goal.id,
         status: objectiveKind ? "graded" : "submitted",
+        practiceMode,
+        practiceKnowledgeNodeId,
+        practiceMaterialId,
         submittedAt: now,
         totalScore: initialScore,
         maxScore: grading.result.maxScore
@@ -375,7 +447,7 @@ export async function submitPracticeAnswer(
         questionId: question.id,
         attemptAnswerId: attemptAnswer.id,
         isCorrect: grading.result.isCorrect,
-        masteredOnCorrect: input.retry === true,
+        masteredOnCorrect: input.retry === true || practiceMode === PracticeMode.wrong,
         reviewedAt: now
       });
     }
@@ -391,7 +463,7 @@ export async function submitPracticeAnswer(
 
 export async function submitSingleChoiceAnswer(
   userId: string,
-  input: { questionId: string; answer: string; retry?: boolean; materialId?: string | null }
+  input: { questionId: string; answer: string; retry?: boolean; materialId?: string | null; knowledgeNodeId?: string | null; practiceMode?: string | PracticeMode | null }
 ): Promise<PracticeSubmitResult> {
   return submitPracticeAnswer(userId, input);
 }
@@ -789,6 +861,44 @@ async function getRetryQuestion(userId: string, goal: NonNullable<PrimaryGoal>, 
   });
 }
 
+async function getDirectPracticeQuestion(
+  userId: string,
+  goal: NonNullable<PrimaryGoal>,
+  input: {
+    questionId: string | null | undefined;
+    materialQuestionIds?: string[];
+    knowledgeNodeId?: string | null;
+  }
+) {
+  const questionId = input.questionId?.trim();
+
+  if (!questionId) {
+    return null;
+  }
+
+  const knowledgeScope = await getKnowledgePracticeScope(goal, input.knowledgeNodeId);
+  const baseWhere = buildKnowledgeScopedPracticeQuestionWhere(
+    input.materialQuestionIds ? buildMaterialPracticeQuestionWhere(userId, goal, input.materialQuestionIds) : buildPracticeQuestionWhere(userId, goal),
+    knowledgeScope?.nodeIds ?? null
+  );
+
+  if (input.knowledgeNodeId?.trim() && (!knowledgeScope || knowledgeScope.nodeIds.length === 0)) {
+    return null;
+  }
+
+  return prisma.question.findFirst({
+    where: {
+      AND: [
+        baseWhere,
+        {
+          id: questionId
+        }
+      ]
+    },
+    include: practiceQuestionInclude
+  });
+}
+
 export async function getMaterialPracticeScope(userId: string, materialId: string | null | undefined, db: PracticeDatabase = prisma): Promise<MaterialPracticeScope | null> {
   const id = materialId?.trim();
 
@@ -864,27 +974,82 @@ export async function questionBelongsToMaterialPracticeScope(
   return Boolean(candidate);
 }
 
+export async function questionBelongsToKnowledgePracticeScope(
+  userId: string,
+  goal: NonNullable<PrimaryGoal>,
+  knowledgeNodeId: string | null | undefined,
+  questionId: string | null | undefined
+) {
+  const normalizedQuestionId = questionId?.trim();
+  const scope = await getKnowledgePracticeScope(goal, knowledgeNodeId);
+
+  if (!normalizedQuestionId || !scope || scope.nodeIds.length === 0) {
+    return false;
+  }
+
+  const question = await prisma.question.findFirst({
+    where: {
+      id: normalizedQuestionId,
+      AND: [
+        buildPracticeQuestionWhere(userId, goal),
+        {
+          knowledgeBindings: {
+            some: {
+              knowledgeNodeId: {
+                in: scope.nodeIds
+              }
+            }
+          }
+        }
+      ]
+    },
+    select: {
+      id: true
+    }
+  });
+
+  return Boolean(question);
+}
+
 async function selectPracticeQuestion(
   userId: string,
   goal: NonNullable<PrimaryGoal>,
-  excludeQuestionId?: string | null,
-  materialQuestionIds?: string[],
-  knowledgeNodeId?: string | null
+  input: {
+    excludeQuestionId?: string | null;
+    materialQuestionIds?: string[];
+    knowledgeNodeId?: string | null;
+    mode: PracticeMode;
+  }
 ) {
-  const baseWhere = buildFocusedPracticeQuestionWhere(
-    materialQuestionIds ? buildMaterialPracticeQuestionWhere(userId, goal, materialQuestionIds) : buildPracticeQuestionWhere(userId, goal),
-    knowledgeNodeId
+  const knowledgeScope = await getKnowledgePracticeScope(goal, input.knowledgeNodeId);
+  const baseWhere = buildKnowledgeScopedPracticeQuestionWhere(
+    input.materialQuestionIds ? buildMaterialPracticeQuestionWhere(userId, goal, input.materialQuestionIds) : buildPracticeQuestionWhere(userId, goal),
+    knowledgeScope?.nodeIds ?? null
   );
-  const attemptedIds = await listAttemptedQuestionIds(userId, goal, baseWhere);
-  const recentIds = await listRecentQuestionIds(userId, goal, baseWhere);
-  const excludedCurrent = compactIds([excludeQuestionId]);
 
-  return (
-    (await findPracticeQuestion(baseWhere, [...attemptedIds, ...excludedCurrent])) ??
-    (await findPracticeQuestion(baseWhere, [...recentIds, ...excludedCurrent])) ??
-    (await findPracticeQuestion(baseWhere, excludedCurrent)) ??
-    (await findPracticeQuestion(baseWhere, []))
-  );
+  if (input.knowledgeNodeId?.trim() && (!knowledgeScope || knowledgeScope.nodeIds.length === 0)) {
+    return { question: null, emptyReason: "general" as PracticeEmptyReason };
+  }
+
+  const excludedCurrent = compactIds([input.excludeQuestionId]);
+
+  if (input.mode === PracticeMode.wrong) {
+    const question = await findWrongPracticeQuestion(userId, baseWhere, excludedCurrent, knowledgeScope);
+    return { question, emptyReason: question ? undefined : ("no_wrong_questions" as PracticeEmptyReason) };
+  }
+
+  const attemptedIds = await listAttemptedQuestionIds(userId, goal, baseWhere);
+
+  if (input.mode === PracticeMode.retry_practiced) {
+    const question = await findPracticeQuestion(baseWhere, excludedCurrent, {
+      includeIds: attemptedIds,
+      knowledgeScope
+    });
+    return { question, emptyReason: question ? undefined : ("no_practiced_questions" as PracticeEmptyReason) };
+  }
+
+  const question = await findPracticeQuestion(baseWhere, [...attemptedIds, ...excludedCurrent], { knowledgeScope });
+  return { question, emptyReason: question ? undefined : ("no_new_questions" as PracticeEmptyReason) };
 }
 
 async function listAttemptedQuestionIds(userId: string, goal: NonNullable<PrimaryGoal>, questionWhere = buildPracticeQuestionWhere(userId, goal)) {
@@ -892,7 +1057,10 @@ async function listAttemptedQuestionIds(userId: string, goal: NonNullable<Primar
     where: {
       attempt: {
         userId,
-        goalId: goal.id
+        goalId: goal.id,
+        status: {
+          in: ["submitted", "graded"]
+        }
       },
       question: questionWhere
     },
@@ -905,45 +1073,184 @@ async function listAttemptedQuestionIds(userId: string, goal: NonNullable<Primar
   return answers.map((answer) => answer.questionId);
 }
 
-async function listRecentQuestionIds(userId: string, goal: NonNullable<PrimaryGoal>, questionWhere = buildPracticeQuestionWhere(userId, goal)) {
-  const answers = await prisma.attemptAnswer.findMany({
+async function findPracticeQuestion(
+  baseWhere: Prisma.QuestionWhereInput,
+  excludedIds: string[],
+  options: {
+    includeIds?: string[];
+    knowledgeScope?: KnowledgePracticeScope | null;
+  } = {}
+) {
+  const excluded = [...new Set(excludedIds)].filter(Boolean);
+  const included = [...new Set(options.includeIds ?? [])].filter(Boolean);
+  const filters: Prisma.QuestionWhereInput[] = [baseWhere];
+
+  if (excluded.length > 0) {
+    filters.push({
+      id: {
+        notIn: excluded
+      }
+    });
+  }
+
+  if (options.includeIds && included.length === 0) {
+    return null;
+  }
+
+  if (included.length > 0) {
+    filters.push({
+      id: {
+        in: included
+      }
+    });
+  }
+
+  const questions = await prisma.question.findMany({
     where: {
-      attempt: {
-        userId,
-        goalId: goal.id
-      },
-      question: questionWhere
+      AND: filters
     },
-    orderBy: [{ createdAt: "desc" }],
-    take: 10,
-    select: {
-      questionId: true
-    }
+    include: practiceQuestionInclude,
+    orderBy: [{ updatedAt: "asc" }],
+    take: 200
   });
 
-  return [...new Set(answers.map((answer) => answer.questionId))];
+  return sortPracticeQuestions(questions, options.knowledgeScope ?? null)[0] ?? null;
 }
 
-async function findPracticeQuestion(baseWhere: Prisma.QuestionWhereInput, excludedIds: string[]) {
+async function findWrongPracticeQuestion(
+  userId: string,
+  baseWhere: Prisma.QuestionWhereInput,
+  excludedIds: string[],
+  knowledgeScope?: KnowledgePracticeScope | null
+) {
   const excluded = [...new Set(excludedIds)].filter(Boolean);
-
-  return prisma.question.findFirst({
-    where:
-      excluded.length > 0
+  const notes = await prisma.wrongNote.findMany({
+    where: {
+      userId,
+      mastered: false,
+      ...(excluded.length > 0
         ? {
-            AND: [
-              baseWhere,
-              {
-                id: {
-                  notIn: excluded
-                }
-              }
-            ]
+            questionId: {
+              notIn: excluded
+            }
           }
-        : baseWhere,
-    include: practiceQuestionInclude,
-    orderBy: [{ updatedAt: "asc" }]
+        : {}),
+      question: baseWhere
+    },
+    include: {
+      question: {
+        include: practiceQuestionInclude
+      }
+    },
+    orderBy: [{ errorCount: "desc" }, { updatedAt: "asc" }],
+    take: 200
   });
+
+  return (
+    notes
+      .sort((left, right) => {
+        const errorDelta = right.errorCount - left.errorCount;
+        if (errorDelta !== 0) return errorDelta;
+
+        const updatedDelta = left.updatedAt.getTime() - right.updatedAt.getTime();
+        if (updatedDelta !== 0) return updatedDelta;
+
+        return comparePracticeQuestions(left.question, right.question, knowledgeScope ?? null);
+      })
+      .map((note) => note.question)[0] ?? null
+  );
+}
+
+async function getKnowledgePracticeScope(goal: NonNullable<PrimaryGoal>, knowledgeNodeId: string | null | undefined): Promise<KnowledgePracticeScope | null> {
+  const selectedNodeId = knowledgeNodeId?.trim();
+
+  if (!selectedNodeId) {
+    return null;
+  }
+
+  const nodes = await prisma.knowledgeNode.findMany({
+    where: buildKnowledgeNodeWhere(goal),
+    select: {
+      id: true,
+      parentId: true,
+      code: true,
+      title: true
+    },
+    orderBy: [{ code: "asc" }, { title: "asc" }]
+  });
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
+
+  if (!nodeById.has(selectedNodeId)) {
+    return null;
+  }
+
+  const childrenByParent = new Map<string | null, typeof nodes>();
+  for (const node of nodes) {
+    const children = childrenByParent.get(node.parentId) ?? [];
+    children.push(node);
+    childrenByParent.set(node.parentId, children);
+  }
+
+  for (const children of childrenByParent.values()) {
+    children.sort(compareKnowledgeNodes);
+  }
+
+  const ordered: string[] = [];
+  visitKnowledgeNode(selectedNodeId, childrenByParent, ordered);
+
+  return {
+    selectedNodeId,
+    nodeIds: ordered,
+    rankByNodeId: new Map(ordered.map((id, index) => [id, index]))
+  };
+}
+
+function visitKnowledgeNode(nodeId: string, childrenByParent: Map<string | null, Array<{ id: string; parentId: string | null; code: string | null; title: string }>>, ordered: string[]) {
+  ordered.push(nodeId);
+
+  for (const child of childrenByParent.get(nodeId) ?? []) {
+    visitKnowledgeNode(child.id, childrenByParent, ordered);
+  }
+}
+
+function compareKnowledgeNodes(
+  left: { code: string | null; title: string },
+  right: { code: string | null; title: string }
+) {
+  return (left.code ?? "").localeCompare(right.code ?? "", "zh-CN") || left.title.localeCompare(right.title, "zh-CN");
+}
+
+function sortPracticeQuestions(questions: PracticeQuestionRecord[], knowledgeScope: KnowledgePracticeScope | null) {
+  return [...questions].sort((left, right) => comparePracticeQuestions(left, right, knowledgeScope));
+}
+
+function comparePracticeQuestions(left: PracticeQuestionRecord, right: PracticeQuestionRecord, knowledgeScope: KnowledgePracticeScope | null) {
+  const knowledgeDelta = questionKnowledgeRank(left, knowledgeScope) - questionKnowledgeRank(right, knowledgeScope);
+  if (knowledgeDelta !== 0) return knowledgeDelta;
+
+  const difficultyDelta = difficultyRank(left.difficulty) - difficultyRank(right.difficulty);
+  if (difficultyDelta !== 0) return difficultyDelta;
+
+  const updatedDelta = left.updatedAt.getTime() - right.updatedAt.getTime();
+  if (updatedDelta !== 0) return updatedDelta;
+
+  return left.id.localeCompare(right.id);
+}
+
+function questionKnowledgeRank(question: PracticeQuestionRecord, knowledgeScope: KnowledgePracticeScope | null) {
+  if (!knowledgeScope) {
+    return 0;
+  }
+
+  const ranks = question.knowledgeBindings
+    .map((binding) => knowledgeScope.rankByNodeId.get(binding.knowledgeNodeId))
+    .filter((rank): rank is number => typeof rank === "number");
+
+  return ranks.length > 0 ? Math.min(...ranks) : Number.MAX_SAFE_INTEGER;
+}
+
+function difficultyRank(difficulty: number | null) {
+  return typeof difficulty === "number" ? difficulty : Number.MAX_SAFE_INTEGER;
 }
 
 function compactIds(ids: Array<string | null | undefined>) {
@@ -966,6 +1273,28 @@ function optionalText(value: string | null | undefined) {
   const text = value?.trim();
 
   return text || null;
+}
+
+export function normalizePracticeMode(value: string | PracticeMode | null | undefined): PracticeMode {
+  const normalized = String(value ?? "").trim();
+
+  if (normalized === PracticeMode.wrong) {
+    return PracticeMode.wrong;
+  }
+
+  if (normalized === PracticeMode.retry_practiced) {
+    return PracticeMode.retry_practiced;
+  }
+
+  if (normalized === PracticeMode.comprehensive) {
+    return PracticeMode.comprehensive;
+  }
+
+  return defaultPracticeMode;
+}
+
+function isBroadGoal(goal: NonNullable<PrimaryGoal>) {
+  return !goal.subjectId;
 }
 
 function parsePositiveInteger(value: string | number | null | undefined) {
@@ -1034,10 +1363,10 @@ export function buildMaterialPracticeQuestionWhere(userId: string, goal: NonNull
   };
 }
 
-function buildFocusedPracticeQuestionWhere(baseWhere: Prisma.QuestionWhereInput, knowledgeNodeId: string | null | undefined): Prisma.QuestionWhereInput {
-  const normalized = knowledgeNodeId?.trim();
+export function buildKnowledgeScopedPracticeQuestionWhere(baseWhere: Prisma.QuestionWhereInput, knowledgeNodeIds: string[] | null | undefined): Prisma.QuestionWhereInput {
+  const normalized = [...new Set(compactIds(knowledgeNodeIds ?? []))];
 
-  if (!normalized) {
+  if (normalized.length === 0) {
     return baseWhere;
   }
 
@@ -1047,11 +1376,57 @@ function buildFocusedPracticeQuestionWhere(baseWhere: Prisma.QuestionWhereInput,
       {
         knowledgeBindings: {
           some: {
-            knowledgeNodeId: normalized
+            knowledgeNodeId: {
+              in: normalized
+            }
           }
         }
       }
     ]
+  };
+}
+
+function buildKnowledgeNodeWhere(goal: NonNullable<PrimaryGoal>): Prisma.KnowledgeNodeWhereInput {
+  if (goal.subjectId) {
+    return {
+      syllabus: {
+        subjectId: goal.subjectId
+      }
+    };
+  }
+
+  if (goal.cycleId) {
+    return {
+      syllabus: {
+        subject: {
+          cycleId: goal.cycleId
+        }
+      }
+    };
+  }
+
+  if (goal.trackId) {
+    return {
+      syllabus: {
+        subject: {
+          cycle: {
+            trackId: goal.trackId
+          }
+        }
+      }
+    };
+  }
+
+  return {
+    syllabus: {
+      subject: {
+        cycle: {
+          track: {
+            programId: goal.programId
+          }
+        }
+      }
+    }
   };
 }
 

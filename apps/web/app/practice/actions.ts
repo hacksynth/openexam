@@ -11,6 +11,8 @@ import { requireWebSession } from "@/lib/auth";
 export async function submitPracticeAnswerAction(formData: FormData) {
   const session = await requireWebSession();
   const materialId = optionalText(String(formData.get("materialId") ?? ""));
+  const knowledgeNodeId = optionalText(String(formData.get("knowledgeNodeId") ?? ""));
+  const practiceMode = optionalText(String(formData.get("practiceMode") ?? ""));
   const answer = formData
     .getAll("answer")
     .map((item) => String(item).trim())
@@ -20,6 +22,8 @@ export async function submitPracticeAnswerAction(formData: FormData) {
     questionId: String(formData.get("questionId") ?? ""),
     answer,
     materialId,
+    knowledgeNodeId,
+    practiceMode,
     retry: String(formData.get("retry") ?? "") === "true"
   });
 
@@ -28,10 +32,10 @@ export async function submitPracticeAnswerAction(formData: FormData) {
   revalidatePath("/dashboard" as Route);
 
   if (!result.ok) {
-    redirect(practiceRedirect({ error: result.error, materialId }));
+    redirect(practiceRedirect({ error: result.error, materialId, knowledgeNodeId, practiceMode }));
   }
 
-  redirect(practiceRedirect({ attemptId: result.attemptId, materialId }));
+  redirect(practiceRedirect({ attemptId: result.attemptId, materialId, knowledgeNodeId, practiceMode }));
 }
 
 export async function submitSingleChoiceAnswerAction(formData: FormData) {
@@ -52,7 +56,14 @@ export async function collectPracticeQuestionAction(formData: FormData) {
     redirect(practiceRedirect({ error: result.error }));
   }
 
-  redirect(practiceRedirect({ attemptId: value(formData, "attemptId") || undefined, materialId: optionalText(value(formData, "materialId")) }));
+  redirect(
+    practiceRedirect({
+      attemptId: value(formData, "attemptId") || undefined,
+      materialId: optionalText(value(formData, "materialId")),
+      knowledgeNodeId: optionalText(value(formData, "knowledgeNodeId")),
+      practiceMode: optionalText(value(formData, "practiceMode"))
+    })
+  );
 }
 
 export async function confirmPracticeAnswerScoreAction(formData: FormData) {
@@ -70,10 +81,10 @@ export async function confirmPracticeAnswerScoreAction(formData: FormData) {
   revalidatePath("/dashboard" as Route);
 
   if (!result.ok) {
-    redirect(practiceRedirect({ attemptId, materialId, error: result.error }));
+    redirect(practiceRedirect({ attemptId, materialId, knowledgeNodeId: optionalText(value(formData, "knowledgeNodeId")), practiceMode: optionalText(value(formData, "practiceMode")), error: result.error }));
   }
 
-  redirect(practiceRedirect({ attemptId, materialId }));
+  redirect(practiceRedirect({ attemptId, materialId, knowledgeNodeId: optionalText(value(formData, "knowledgeNodeId")), practiceMode: optionalText(value(formData, "practiceMode")) }));
 }
 
 export async function generatePracticeAnswerAiExplanationAction(formData: FormData) {
@@ -86,10 +97,10 @@ export async function generatePracticeAnswerAiExplanationAction(formData: FormDa
   revalidatePath("/ai/tasks" as Route);
 
   if (!result.ok) {
-    redirect(practiceRedirect({ attemptId, materialId, error: result.error }));
+    redirect(practiceRedirect({ attemptId, materialId, knowledgeNodeId: optionalText(value(formData, "knowledgeNodeId")), practiceMode: optionalText(value(formData, "practiceMode")), error: result.error }));
   }
 
-  redirect(practiceRedirect({ attemptId, materialId }));
+  redirect(practiceRedirect({ attemptId, materialId, knowledgeNodeId: optionalText(value(formData, "knowledgeNodeId")), practiceMode: optionalText(value(formData, "practiceMode")) }));
 }
 
 export async function generateQuestionExplanationAction(formData: FormData) {
@@ -117,8 +128,16 @@ function value(formData: FormData, name: string) {
   return String(formData.get(name) ?? "");
 }
 
-function practiceRedirect(input: { attemptId?: string; error?: string; materialId?: string | null }) {
+function practiceRedirect(input: { attemptId?: string; error?: string; materialId?: string | null; knowledgeNodeId?: string | null; practiceMode?: string | null }) {
   const params = new URLSearchParams();
+
+  if (input.practiceMode) {
+    params.set("mode", input.practiceMode);
+  }
+
+  if (input.knowledgeNodeId) {
+    params.set("knowledgeNodeId", input.knowledgeNodeId);
+  }
 
   if (input.materialId) {
     params.set("material", input.materialId);

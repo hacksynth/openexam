@@ -98,12 +98,27 @@ Implementation note: `/goals` now supports creating or updating the current prim
 
 The MVP supports these practice modes:
 
-- Random practice by exam, subject, knowledge node, type, and difficulty.
-- Focused practice by knowledge tree.
+- Focused practice by knowledge tree as the primary learner path.
+- Comprehensive random practice by exam, subject, type, and difficulty as a secondary path.
 - Real-paper practice by year, cycle, and subject.
 - Wrong-note retry.
 - AI-generated practice, saved as user-private content by default.
 - Case-analysis practice for Ruankao application-technology questions.
+
+Practice selection rules:
+
+- The default practice entry should guide the learner to a knowledge node or enter from weak knowledge, today's plan, or the knowledge tree. Full-goal random practice remains available as a secondary "comprehensive practice" entry.
+- Practice modes share `/practice` and are selected with an explicit mode parameter such as `new`, `wrong`, `retry_practiced`, or `comprehensive`. Single-question wrong-note retry continues to use a direct retry question id.
+- Knowledge-node practice includes the selected node and its child nodes by default. Selecting a leaf node naturally scopes practice to that leaf.
+- Default practice excludes questions the learner has already submitted under the current primary exam goal. A question counts as practiced after a submitted attempt answer exists for the current user and goal, including single-question practice, knowledge-node practice, material practice, AI-private questions, and paper attempts. In-progress, unsubmitted, or abandoned drafts do not count.
+- Subjective questions count as practiced immediately after answer submission, even if AI-assisted or manual score confirmation is still pending.
+- Deduplication is by `Question.id`, not by `QuestionVersion`. A later question version does not automatically make the same question eligible as new practice.
+- New-question mode uses a stable queue rather than random selection. Comprehensive practice may provide a separate random entry.
+- Repeat practice is explicit. When no new questions are available, the UI should offer clear actions such as unmastered wrong-note practice, retry practiced questions in the same scope, nearby child/sibling knowledge nodes, or AI-generated new questions.
+- Material and knowledge-node filters intersect. For example, material practice with a knowledge-node filter only returns confirmed questions from that material that also belong to the selected knowledge scope and current goal.
+- AI-generated candidates only enter practice after learner confirmation creates private questions. Confirmed AI questions follow the same knowledge binding and deduplication rules as other questions.
+- After submission, the result page and "practice another question" action must preserve the current mode, knowledge-node filter, material filter, and other explicit practice filters.
+- If the current goal is broader than a single subject, knowledge trees should be grouped by subject. Default new-question practice should start from a selected subject or knowledge node, while comprehensive practice may span subjects inside the goal.
 
 The MVP does not include leaderboards, social check-ins, class assignments, community question lists, or complex adaptive testing.
 
@@ -156,6 +171,17 @@ Required behavior:
 - Filter by exam goal, subject, knowledge node, question type, error count, and recency.
 - Feed status into diagnosis and study plans.
 
+Wrong-note practice rules:
+
+- Wrong-note practice defaults to unmastered wrong notes.
+- Correct retry marks the wrong note mastered.
+- Incorrect retry keeps the note unmastered and increments the error count.
+- Subjective answers do not automatically enter wrong notes at submission time. After score confirmation, non-full-score answers enter wrong notes, full-score answers do not, and retry only marks mastered after a confirmed full score.
+- Practicing mastered or all wrong notes requires an explicit learner choice.
+- Wrong-note retry remains constrained by the current goal, selected knowledge scope, material scope when present, and question permissions.
+- Parent knowledge-node wrong-note practice includes child-node wrong notes, deduplicated by question.
+- Wrong-note practice is ordered by higher error count first, then older update time, then stable knowledge-tree order.
+
 Implementation note: `/wrong-notes` lists auto-collected wrong notes, shows correct answer and explanation, supports all/unmastered/mastered and knowledge-node filters, lets the learner toggle mastered/not mastered, links directly to retry, marks a note mastered after a correct retry, generates OpenAI wrong-note analysis, and can queue private review-card image generation. The page displays the latest review-card job status, generated image asset, and failed-job error summary. Mistake reason tags and user notes remain pending.
 
 ### Knowledge Points
@@ -165,10 +191,18 @@ Knowledge pages are learning indexes, not a full textbook platform.
 Required behavior:
 
 - Browse knowledge trees.
-- Show short descriptions, exam expectations, related questions, common mistakes, mastery status, and recent performance.
+- Show short descriptions, exam expectations, related questions, common mistakes, mastery status, recent performance, new-question count, unmastered wrong-note count, and practiced-question count.
 - Start focused practice from a knowledge point.
 - Let users request AI explanations based on public metadata and their own wrong notes.
 - Allow user notes.
+
+Knowledge-node practice actions:
+
+- The primary action is practicing new questions in that knowledge scope.
+- Parent knowledge-node counts include child nodes for new questions, unmastered wrong notes, and practiced questions.
+- Knowledge-node counts are deduplicated by question, not counted once per knowledge binding.
+- If no new questions remain, the page should explain whether the empty state is caused by goal scope, material scope, knowledge scope, or deduplication.
+- Empty states should prioritize actions in this order: unmastered wrong-note practice for the same knowledge scope, explicit retry of practiced questions, nearby child/sibling knowledge nodes with new questions, and AI generation for the selected knowledge scope.
 
 Not included:
 

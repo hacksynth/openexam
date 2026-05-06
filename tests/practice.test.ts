@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { PrimaryGoal } from "@openexam/core/exam-core";
 import {
+  buildKnowledgeScopedPracticeQuestionWhere,
   buildMaterialPracticeQuestionWhere,
   buildPracticeQuestionWhere,
   getMaterialPracticeScope,
   gradePracticeObjectiveQuestion,
   gradeSingleChoiceQuestion,
+  normalizePracticeMode,
   questionBelongsToMaterialPracticeScope,
   readSingleChoiceAnswerKey,
   readSingleChoiceOptions,
@@ -185,6 +187,30 @@ describe("practice question access", () => {
         }
       ]
     });
+  });
+
+  it("adds a descendant-aware knowledge node filter on top of the current practice scope", () => {
+    expect(buildKnowledgeScopedPracticeQuestionWhere(buildPracticeQuestionWhere("user_1", goal({ subjectId: "subject_1" })), ["node_parent", "node_child", "node_child"])).toMatchObject({
+      AND: [
+        buildPracticeQuestionWhere("user_1", goal({ subjectId: "subject_1" })),
+        {
+          knowledgeBindings: {
+            some: {
+              knowledgeNodeId: {
+                in: ["node_parent", "node_child"]
+              }
+            }
+          }
+        }
+      ]
+    });
+  });
+
+  it("normalizes supported practice modes and falls back to new practice", () => {
+    expect(normalizePracticeMode("wrong")).toBe("wrong");
+    expect(normalizePracticeMode("retry_practiced")).toBe("retry_practiced");
+    expect(normalizePracticeMode("comprehensive")).toBe("comprehensive");
+    expect(normalizePracticeMode("bad")).toBe("new");
   });
 
   it("loads only confirmed question ids from the current user's material", async () => {

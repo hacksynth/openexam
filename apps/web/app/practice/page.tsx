@@ -9,7 +9,7 @@ import { AiExplainButton } from "@/components/ai-explain-button";
 import { collectPracticeQuestionAction, confirmPracticeAnswerScoreAction, generatePracticeAnswerAiExplanationAction, submitPracticeAnswerAction } from "./actions";
 
 type PracticePageProps = {
-  searchParams: Promise<{ attempt?: string; error?: string; material?: string; retry?: string; skip?: string; knowledgeNodeId?: string }>;
+  searchParams: Promise<{ attempt?: string; error?: string; material?: string; mode?: string; question?: string; retry?: string; skip?: string; knowledgeNodeId?: string }>;
 };
 
 const sourceTypeLabels: Record<string, string> = {
@@ -36,30 +36,76 @@ export default async function PracticePage({ searchParams }: PracticePageProps) 
   const materialId = params.retry ? null : params.material;
   const [state, attemptResult] = await Promise.all([
     getPracticeQuestion(session.user.id, {
+      directQuestionId: params.question,
       excludeQuestionId: params.skip,
       knowledgeNodeId: params.knowledgeNodeId,
       materialId,
+      mode: params.mode,
       retryQuestionId: params.retry
     }),
     params.attempt ? getAttemptResult(session.user.id, params.attempt) : Promise.resolve(null)
   ]);
+  const shouldShowPracticeState = !attemptResult;
 
   return (
     <AppShell section="learner" eyebrow="练习闭环" title="练习">
       <section className="grid gap-5">
         <FeedbackMessage error={params.error} />
-        {attemptResult ? <AttemptResultCard materialId={state.status !== "no_goal" ? state.material?.id ?? materialId : materialId} result={attemptResult} /> : null}
+        {attemptResult ? (
+          <AttemptResultCard
+            knowledgeNodeId={params.knowledgeNodeId}
+            materialId={state.status !== "no_goal" ? state.material?.id ?? materialId : materialId}
+            mode={state.status !== "no_goal" ? state.mode : params.mode}
+            result={attemptResult}
+          />
+        ) : null}
 
-        {state.status === "no_goal" ? (
+        {shouldShowPracticeState && state.status === "no_goal" ? (
           <EmptyState title="尚未选择考试目标" description="先设置主目标，练习题会按目标范围筛选。" actionHref="/goals" actionLabel="选择目标" />
         ) : null}
 
-        {state.status === "error" ? (
+        {shouldShowPracticeState && state.status === "error" ? (
           <EmptyState title="无法开始重练" description={state.error} actionHref="/wrong-notes" actionLabel="返回错题本" />
         ) : null}
 
-        {state.status === "empty" ? (
-          state.emptyReason === "material_unavailable" ? (
+        {shouldShowPracticeState && state.status === "empty" ? (
+          state.emptyReason === "knowledge_required" ? (
+            <EmptyState
+              title="请选择知识点"
+              description={`${formatGoalPath(state.goal)} 覆盖多个科目，先从知识树进入具体科目或知识点。`}
+              actionHref="/knowledge"
+              actionLabel="选择知识点"
+              secondaryHref={practiceHref({ mode: "comprehensive" })}
+              secondaryLabel="综合练习"
+            />
+          ) : state.emptyReason === "no_new_questions" ? (
+            <EmptyState
+              title="当前范围新题已练完"
+              description="默认练习不会重复已提交过的题。可以练未掌握错题、显式重练，或生成新题。"
+              actionHref={practiceHref({ mode: "wrong", knowledgeNodeId: params.knowledgeNodeId, materialId })}
+              actionLabel="练错题"
+              secondaryHref={practiceHref({ mode: "retry_practiced", knowledgeNodeId: params.knowledgeNodeId, materialId })}
+              secondaryLabel="重练已练题"
+            />
+          ) : state.emptyReason === "no_wrong_questions" ? (
+            <EmptyState
+              title="当前范围暂无未掌握错题"
+              description="错题练习默认只使用未掌握错题。可以返回练新题或显式重练已练题。"
+              actionHref={practiceHref({ mode: "new", knowledgeNodeId: params.knowledgeNodeId, materialId })}
+              actionLabel="练新题"
+              secondaryHref={practiceHref({ mode: "retry_practiced", knowledgeNodeId: params.knowledgeNodeId, materialId })}
+              secondaryLabel="重练已练题"
+            />
+          ) : state.emptyReason === "no_practiced_questions" ? (
+            <EmptyState
+              title="当前范围暂无已练题"
+              description="重练只会使用当前筛选范围内已经提交过的题。"
+              actionHref={practiceHref({ mode: "new", knowledgeNodeId: params.knowledgeNodeId, materialId })}
+              actionLabel="练新题"
+              secondaryHref="/knowledge"
+              secondaryLabel="选择知识点"
+            />
+          ) : state.emptyReason === "material_unavailable" ? (
             <EmptyState
               title="资料练习暂无题目"
               description={
@@ -89,7 +135,7 @@ export default async function PracticePage({ searchParams }: PracticePageProps) 
           )
         ) : null}
 
-        {state.status === "ready" ? (
+        {shouldShowPracticeState && state.status === "ready" ? (
           <section className="pixel-panel grid gap-5 p-5">
             <div>
               <p className="text-xs font-bold uppercase text-[var(--muted)]">{formatGoalPath(state.goal)}</p>
@@ -115,6 +161,8 @@ export default async function PracticePage({ searchParams }: PracticePageProps) 
             <form action={submitPracticeAnswerAction} className="grid gap-4">
               <input name="questionId" type="hidden" value={state.question.id} />
               <input name="materialId" type="hidden" value={state.material?.id ?? ""} />
+              <input name="knowledgeNodeId" type="hidden" value={params.knowledgeNodeId ?? ""} />
+              <input name="practiceMode" type="hidden" value={state.mode} />
               <input name="retry" type="hidden" value={params.retry ? "true" : "false"} />
               <PracticeAnswerFields question={state.question} />
               <div className="flex flex-wrap gap-3">
@@ -136,15 +184,17 @@ export default async function PracticePage({ searchParams }: PracticePageProps) 
 }
 
 function AttemptResultCard({
+  knowledgeNodeId,
   materialId,
+  mode,
   result
 }: {
+  knowledgeNodeId?: string | null;
   materialId?: string | null;
+  mode?: string | null;
   result: NonNullable<Awaited<ReturnType<typeof getAttemptResult>>>;
 }) {
-  const nextHref = materialId
-    ? (`/practice?material=${encodeURIComponent(materialId)}&skip=${encodeURIComponent(result.question.id)}` as Route)
-    : (`/practice?skip=${encodeURIComponent(result.question.id)}` as Route);
+  const nextHref = practiceHref({ mode, knowledgeNodeId, materialId, skipQuestionId: result.question.id });
 
   return (
     <section className="pixel-panel grid gap-4 p-5">
@@ -180,6 +230,8 @@ function AttemptResultCard({
           <input name="attemptId" type="hidden" value={result.id} />
           <input name="attemptAnswerId" type="hidden" value={result.attemptAnswerId} />
           <input name="materialId" type="hidden" value={materialId ?? ""} />
+          <input name="knowledgeNodeId" type="hidden" value={knowledgeNodeId ?? ""} />
+          <input name="practiceMode" type="hidden" value={mode ?? ""} />
           <TextField defaultValue={String(result.aiSuggestedScore)} inputClassName="w-32 border-2 px-2 py-1" label="确认分" labelClassName="gap-1" max={result.maxScore} min="0" name="score" step="0.5" type="number" />
           <SubmitButton className="bg-white px-3 py-2" label="确认分数" />
         </form>
@@ -189,6 +241,8 @@ function AttemptResultCard({
           <input name="attemptId" type="hidden" value={result.id} />
           <input name="attemptAnswerId" type="hidden" value={result.attemptAnswerId} />
           <input name="materialId" type="hidden" value={materialId ?? ""} />
+          <input name="knowledgeNodeId" type="hidden" value={knowledgeNodeId ?? ""} />
+          <input name="practiceMode" type="hidden" value={mode ?? ""} />
           <div className="flex flex-wrap items-center gap-2">
             <p className="text-sm font-bold text-[var(--muted)]">
               已确认得分 <span className="text-lg font-black text-black">{result.score}</span>
@@ -223,6 +277,8 @@ function AttemptResultCard({
             <input name="attemptId" type="hidden" value={result.id} />
             <input name="attemptAnswerId" type="hidden" value={result.attemptAnswerId} />
             <input name="materialId" type="hidden" value={materialId ?? ""} />
+            <input name="knowledgeNodeId" type="hidden" value={knowledgeNodeId ?? ""} />
+            <input name="practiceMode" type="hidden" value={mode ?? ""} />
             <SubmitButton className="bg-white px-4 py-2" label="收藏复习" />
           </form>
         ) : null}
@@ -230,6 +286,8 @@ function AttemptResultCard({
           <input name="attemptId" type="hidden" value={result.id} />
           <input name="attemptAnswerId" type="hidden" value={result.attemptAnswerId} />
           <input name="materialId" type="hidden" value={materialId ?? ""} />
+          <input name="knowledgeNodeId" type="hidden" value={knowledgeNodeId ?? ""} />
+          <input name="practiceMode" type="hidden" value={mode ?? ""} />
           <SubmitButton className="bg-white px-4 py-2" label={result.aiExplanation ? "重新生成本题 AI 解析" : "请求本题 AI 解析"} />
         </form>
       </div>
@@ -299,6 +357,30 @@ function PracticeAnswerFields({
       ))}
     </fieldset>
   );
+}
+
+function practiceHref(input: { mode?: string | null; knowledgeNodeId?: string | null; materialId?: string | null; skipQuestionId?: string | null }) {
+  const params = new URLSearchParams();
+
+  if (input.mode) {
+    params.set("mode", input.mode);
+  }
+
+  if (input.knowledgeNodeId) {
+    params.set("knowledgeNodeId", input.knowledgeNodeId);
+  }
+
+  if (input.materialId) {
+    params.set("material", input.materialId);
+  }
+
+  if (input.skipQuestionId) {
+    params.set("skip", input.skipQuestionId);
+  }
+
+  const query = params.toString();
+
+  return (query ? `/practice?${query}` : "/practice") as Route;
 }
 
 function EmptyState({

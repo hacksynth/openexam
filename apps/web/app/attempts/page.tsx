@@ -100,7 +100,7 @@ export default async function AttemptsPage({ searchParams }: AttemptsPageProps) 
                         你的答案 {answer.userAnswer || "未记录"} / 正确答案 {answer.correctAnswer ?? "未配置"}
                       </p>
                       {answer.explanation ? <p className="border-2 border-black bg-white p-3 leading-7">{answer.explanation}</p> : null}
-                      <Link href={`/practice?retry=${answer.questionId}` as Route} className="pixel-button w-fit bg-white px-4 py-2">
+                      <Link href={`/practice?question=${answer.questionId}` as Route} className="pixel-button w-fit bg-white px-4 py-2">
                         重练此题
                       </Link>
                     </section>

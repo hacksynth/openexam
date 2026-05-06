@@ -51,6 +51,8 @@ export default async function KnowledgeNodeDetailPage({ params, searchParams }: 
             <div className="mb-3 flex flex-wrap gap-2">
               <span className="status-chip px-2 py-1">{node.subjectPath}</span>
               {node.code ? <span className="status-chip px-2 py-1">{node.code}</span> : null}
+              <span className="status-chip px-2 py-1">新题 {node.newQuestionCount}</span>
+              <span className="status-chip px-2 py-1">已练 {node.practicedQuestionCount}</span>
               <span className="status-chip px-2 py-1">正确率 {node.accuracy}%</span>
               {node.pendingWrongNotes > 0 ? (
                 <span className="status-chip bg-[var(--danger)] px-2 py-1 text-white">错题 {node.pendingWrongNotes}</span>
@@ -60,9 +62,14 @@ export default async function KnowledgeNodeDetailPage({ params, searchParams }: 
             {node.description ? <p className="mt-2 leading-7 text-[var(--muted)]">{node.description}</p> : null}
           </div>
           <div className="flex flex-wrap gap-3">
-            <Link href={`/practice?knowledgeNodeId=${encodeURIComponent(node.id)}` as Route} className="pixel-button px-4 py-2">
-              练这个知识点
+            <Link href={`/practice?mode=new&knowledgeNodeId=${encodeURIComponent(node.id)}` as Route} className="pixel-button px-4 py-2">
+              练新题
             </Link>
+            {node.pendingWrongNotes > 0 ? (
+              <Link href={`/practice?mode=wrong&knowledgeNodeId=${encodeURIComponent(node.id)}` as Route} className="pixel-button bg-white px-4 py-2">
+                练错题
+              </Link>
+            ) : null}
             <Link href={"/knowledge" as Route} className="pixel-button bg-white px-4 py-2">
               返回列表
             </Link>
@@ -81,10 +88,10 @@ export default async function KnowledgeNodeDetailPage({ params, searchParams }: 
 
         <section className="grid gap-4 md:grid-cols-2">
           <div className="pixel-panel p-4">
-            <Metric label="练习次数" value={String(node.recentTotal)} />
+            <Metric label="新题" value={String(node.newQuestionCount)} />
           </div>
           <div className="pixel-panel p-4">
-            <Metric label="最近正确" value={`${node.recentCorrect} / ${node.recentTotal}`} />
+            <Metric label="正确/已练" value={`${node.recentCorrect} / ${node.practicedQuestionCount}`} />
           </div>
         </section>
 
@@ -136,7 +143,7 @@ export default async function KnowledgeNodeDetailPage({ params, searchParams }: 
             </div>
             <div className="grid gap-3">
               {node.relatedQuestions.map((q) => (
-                <Link key={q.id} href={`/practice?retry=${q.id}` as Route} className="flex items-start justify-between gap-3 border-2 border-black bg-white p-3 hover:bg-[var(--surface-subtle)]">
+                <Link key={q.id} href={`/practice?question=${q.id}&knowledgeNodeId=${encodeURIComponent(node.id)}` as Route} className="flex items-start justify-between gap-3 border-2 border-black bg-white p-3 hover:bg-[var(--surface-subtle)]">
                   <div className="min-w-0">
                     <div className="mb-1 flex flex-wrap gap-2">
                       <span className="status-chip px-2 py-1 text-xs">{kindLabels[q.kind] ?? q.kind}</span>

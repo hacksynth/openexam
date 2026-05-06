@@ -96,11 +96,11 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
                   {question.sourceTitle ? <p className="mt-1 break-words text-sm font-bold text-[var(--muted)]">来源：{question.sourceTitle}</p> : null}
                 </div>
                 <div className="flex flex-wrap gap-3">
-                  <Link href={`/practice?retry=${question.id}` as Route} className="pixel-button px-4 py-2">
+                  <Link href={`/practice?question=${question.id}` as Route} className="pixel-button px-4 py-2">
                     练这题
                   </Link>
                   {question.materialId ? (
-                    <Link href={`/practice?material=${encodeURIComponent(question.materialId)}&retry=${question.id}` as Route} className="pixel-button bg-white px-4 py-2">
+                    <Link href={`/practice?material=${encodeURIComponent(question.materialId)}&question=${question.id}` as Route} className="pixel-button bg-white px-4 py-2">
                       资料练习
                     </Link>
                   ) : null}

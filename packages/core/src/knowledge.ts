@@ -1,6 +1,7 @@
 import { AiTaskType, Prisma } from "@prisma/client";
 import { assertAiUsageAllowed, generateAiText, resolveAiCredential, resolveTaskAiPreset, type AiTextGenerator } from "./ai";
 import { formatGoalPath, getPrimaryExamGoal, type PrimaryGoal } from "./exam-core";
+import { buildPracticeQuestionWhere } from "./practice";
 import { prisma } from "./prisma";
 
 type ActionResult<T = undefined> = T extends undefined
@@ -18,6 +19,8 @@ export type KnowledgeNodeDetail = {
   accuracy: number;
   recentTotal: number;
   recentCorrect: number;
+  newQuestionCount: number;
+  practicedQuestionCount: number;
   pendingWrongNotes: number;
   commonErrors: string[];
   note: {
@@ -35,8 +38,17 @@ export type KnowledgeNodeDetail = {
 };
 
 export async function getKnowledgeNode(userId: string, nodeId: string, db = prisma): Promise<KnowledgeNodeDetail | null> {
+  const goal = await getPrimaryExamGoal(userId);
+
+  if (!goal) return null;
+
   const node = await db.knowledgeNode.findFirst({
-    where: { id: nodeId.trim() },
+    where: {
+      AND: [
+        { id: nodeId.trim() },
+        buildKnowledgeNodeWhere(goal)
+      ]
+    },
     include: {
       syllabus: {
         include: {
@@ -53,12 +65,6 @@ export async function getKnowledgeNode(userId: string, nodeId: string, db = pris
           }
         }
       },
-      questionBindings: {
-        include: {
-          question: true
-        },
-        take: 20
-      },
       userNotes: {
         where: { userId },
         take: 1
@@ -68,11 +74,51 @@ export async function getKnowledgeNode(userId: string, nodeId: string, db = pris
 
   if (!node) return null;
 
-  const questionIds = node.questionBindings.map((b) => b.questionId);
+  const treeNodes = await db.knowledgeNode.findMany({
+    where: buildKnowledgeNodeWhere(goal),
+    select: {
+      id: true,
+      parentId: true,
+      code: true,
+      title: true
+    },
+    orderBy: [{ code: "asc" }, { title: "asc" }]
+  });
+  const subtreeNodeIds = collectSubtreeNodeIds(node.id, treeNodes);
+  const relatedQuestions = subtreeNodeIds.length > 0
+    ? await db.question.findMany({
+        where: {
+          AND: [
+            buildPracticeQuestionWhere(userId, goal),
+            {
+              knowledgeBindings: {
+                some: {
+                  knowledgeNodeId: {
+                    in: subtreeNodeIds
+                  }
+                }
+              }
+            }
+          ]
+        },
+        include: {
+          knowledgeBindings: true
+        },
+        orderBy: [{ difficulty: "asc" }, { updatedAt: "asc" }],
+        take: 50
+      })
+    : [];
+  const questionIds = relatedQuestions.map((question) => question.id);
   const recentAnswers = questionIds.length > 0
     ? await db.attemptAnswer.findMany({
         where: {
-          attempt: { userId },
+          attempt: {
+            userId,
+            goalId: goal.id,
+            status: {
+              in: ["submitted", "graded"]
+            }
+          },
           questionId: { in: questionIds }
         },
         orderBy: { updatedAt: "desc" },
@@ -87,7 +133,8 @@ export async function getKnowledgeNode(userId: string, nodeId: string, db = pris
     }
   }
 
-  const stats = recentAnswers.reduce(
+  const latestAnswers = [...answerByQuestion.values()];
+  const stats = latestAnswers.reduce(
     (acc, answer) => {
       acc.total += 1;
       acc.correct += answer.isCorrect ? 1 : 0;
@@ -138,6 +185,8 @@ export async function getKnowledgeNode(userId: string, nodeId: string, db = pris
     accuracy: stats.total > 0 ? Math.round((stats.correct / stats.total) * 100) : 0,
     recentTotal: stats.total,
     recentCorrect: stats.correct,
+    newQuestionCount: questionIds.filter((id) => !answerByQuestion.has(id)).length,
+    practicedQuestionCount: answerByQuestion.size,
     pendingWrongNotes: pendingWrong,
     commonErrors: wrongNoteQuestions.map((wn) => wn.question.versions[0]?.stem ?? wn.question.stem),
     note: noteRecord
@@ -147,13 +196,13 @@ export async function getKnowledgeNode(userId: string, nodeId: string, db = pris
           updatedAt: noteRecord.updatedAt
         }
       : null,
-    relatedQuestions: node.questionBindings.map((binding) => {
-      const lastAnswer = answerByQuestion.get(binding.questionId);
+    relatedQuestions: relatedQuestions.slice(0, 20).map((question) => {
+      const lastAnswer = answerByQuestion.get(question.id);
       return {
-        id: binding.question.id,
-        kind: binding.question.kind,
-        stem: binding.question.stem.length > 80 ? binding.question.stem.slice(0, 80) + "..." : binding.question.stem,
-        difficulty: binding.question.difficulty ?? null,
+        id: question.id,
+        kind: question.kind,
+        stem: question.stem.length > 80 ? question.stem.slice(0, 80) + "..." : question.stem,
+        difficulty: question.difficulty ?? null,
         recentAnswerCorrect: lastAnswer ? (lastAnswer.isCorrect ?? null) : null
       };
     })
@@ -181,6 +230,8 @@ export type KnowledgeNodeView = {
   recentTotal: number;
   recentCorrect: number;
   accuracy: number;
+  newQuestionCount: number;
+  practicedQuestionCount: number;
   pendingWrongNotes: number;
   commonErrors: string[];
   note: {
@@ -197,7 +248,7 @@ export async function getKnowledgeDashboard(userId: string, db = prisma): Promis
     return { status: "no_goal" };
   }
 
-  const [nodes, answers, wrongNotes, notes] = await Promise.all([
+  const [nodes, practiceableQuestions, answers, wrongNotes, notes] = await Promise.all([
     db.knowledgeNode.findMany({
       where: buildKnowledgeNodeWhere(goal),
       include: {
@@ -218,27 +269,31 @@ export async function getKnowledgeDashboard(userId: string, db = prisma): Promis
             }
           }
         },
-        questionBindings: {
-          select: {
-            questionId: true
-          }
-        }
+        questionBindings: true
       },
       orderBy: [{ code: "asc" }, { title: "asc" }]
+    }),
+    db.question.findMany({
+      where: buildPracticeQuestionWhere(userId, goal),
+      include: {
+        knowledgeBindings: true
+      }
     }),
     db.attemptAnswer.findMany({
       where: {
         attempt: {
           userId,
-          goalId: goal.id
-        }
-      },
-      include: {
-        question: {
-          include: {
-            knowledgeBindings: true
+          goalId: goal.id,
+          status: {
+            in: ["submitted", "graded"]
           }
         }
+      },
+      select: {
+        id: true,
+        questionId: true,
+        isCorrect: true,
+        updatedAt: true
       },
       orderBy: [{ updatedAt: "desc" }],
       take: 300
@@ -247,13 +302,7 @@ export async function getKnowledgeDashboard(userId: string, db = prisma): Promis
       where: {
         userId,
         mastered: false,
-        question: {
-          knowledgeBindings: {
-            some: {
-              knowledgeNode: buildKnowledgeNodeWhere(goal)
-            }
-          }
-        }
+        question: buildPracticeQuestionWhere(userId, goal)
       },
       include: {
         question: {
@@ -274,32 +323,27 @@ export async function getKnowledgeDashboard(userId: string, db = prisma): Promis
     })
   ]);
   const noteByNode = new Map(notes.map((note) => [note.knowledgeNodeId, note]));
-  const stats = new Map<string, { total: number; correct: number }>();
-  const pendingWrong = new Map<string, { count: number; errors: string[] }>();
+  const treeNodes = nodes.map((node) => ({ id: node.id, parentId: node.parentId, code: node.code, title: node.title }));
+  const directQuestionIdsByNode = new Map<string, Set<string>>();
+  const latestAnswerByQuestion = new Map<string, (typeof answers)[number]>();
+  const wrongNoteByQuestion = new Map(wrongNotes.map((wrongNote) => [wrongNote.questionId, wrongNote]));
+  const nodeIds = new Set(nodes.map((node) => node.id));
 
-  for (const answer of answers) {
-    for (const binding of answer.question.knowledgeBindings) {
-      const current = stats.get(binding.knowledgeNodeId) ?? { total: 0, correct: 0 };
+  for (const question of practiceableQuestions) {
+    for (const binding of question.knowledgeBindings) {
+      if (!nodeIds.has(binding.knowledgeNodeId)) {
+        continue;
+      }
 
-      current.total += 1;
-      current.correct += answer.isCorrect ? 1 : 0;
-      stats.set(binding.knowledgeNodeId, current);
+      const current = directQuestionIdsByNode.get(binding.knowledgeNodeId) ?? new Set<string>();
+      current.add(question.id);
+      directQuestionIdsByNode.set(binding.knowledgeNodeId, current);
     }
   }
 
-  for (const wrongNote of wrongNotes) {
-    const stem = wrongNote.question.versions[0]?.stem ?? wrongNote.question.stem;
-
-    for (const binding of wrongNote.question.knowledgeBindings) {
-      const current = pendingWrong.get(binding.knowledgeNodeId) ?? { count: 0, errors: [] };
-
-      current.count += 1;
-
-      if (current.errors.length < 3) {
-        current.errors.push(stem);
-      }
-
-      pendingWrong.set(binding.knowledgeNodeId, current);
+  for (const answer of answers) {
+    if (!latestAnswerByQuestion.has(answer.questionId)) {
+      latestAnswerByQuestion.set(answer.questionId, answer);
     }
   }
 
@@ -308,8 +352,15 @@ export async function getKnowledgeDashboard(userId: string, db = prisma): Promis
     goal,
     goalPath: formatGoalPath(goal),
     nodes: nodes.map((node) => {
-      const nodeStats = stats.get(node.id) ?? { total: 0, correct: 0 };
-      const wrong = pendingWrong.get(node.id) ?? { count: 0, errors: [] };
+      const subtreeNodeIds = collectSubtreeNodeIds(node.id, treeNodes);
+      const questionIds = collectQuestionIdsForNodes(subtreeNodeIds, directQuestionIdsByNode);
+      const practicedQuestionIds = questionIds.filter((questionId) => latestAnswerByQuestion.has(questionId));
+      const recentCorrect = practicedQuestionIds.filter((questionId) => latestAnswerByQuestion.get(questionId)?.isCorrect === true).length;
+      const wrongNotesForNode = questionIds.flatMap((questionId) => {
+        const wrongNote = wrongNoteByQuestion.get(questionId);
+        return wrongNote ? [wrongNote] : [];
+      });
+      const commonErrors = wrongNotesForNode.slice(0, 3).map((wrongNote) => wrongNote.question.versions[0]?.stem ?? wrongNote.question.stem);
       const note = noteByNode.get(node.id);
 
       return {
@@ -320,12 +371,14 @@ export async function getKnowledgeDashboard(userId: string, db = prisma): Promis
         description: node.description,
         examExpectation: node.examExpectation,
         subjectPath: formatSubjectPath(node.syllabus.subject),
-        questionCount: node.questionBindings.length,
-        recentTotal: nodeStats.total,
-        recentCorrect: nodeStats.correct,
-        accuracy: nodeStats.total > 0 ? Math.round((nodeStats.correct / nodeStats.total) * 100) : 0,
-        pendingWrongNotes: wrong.count,
-        commonErrors: wrong.errors,
+        questionCount: questionIds.length,
+        recentTotal: practicedQuestionIds.length,
+        recentCorrect,
+        accuracy: practicedQuestionIds.length > 0 ? Math.round((recentCorrect / practicedQuestionIds.length) * 100) : 0,
+        newQuestionCount: questionIds.length - practicedQuestionIds.length,
+        practicedQuestionCount: practicedQuestionIds.length,
+        pendingWrongNotes: wrongNotesForNode.length,
+        commonErrors,
         note: note
           ? {
               note: note.note,
@@ -572,6 +625,52 @@ function buildKnowledgeNodeWhere(goal: NonNullable<PrimaryGoal>): Prisma.Knowled
       }
     }
   };
+}
+
+function collectSubtreeNodeIds(
+  rootNodeId: string,
+  nodes: Array<{ id: string; parentId: string | null; code: string | null; title: string }>
+) {
+  const childrenByParent = new Map<string | null, typeof nodes>();
+
+  for (const node of nodes) {
+    const children = childrenByParent.get(node.parentId) ?? [];
+    children.push(node);
+    childrenByParent.set(node.parentId, children);
+  }
+
+  for (const children of childrenByParent.values()) {
+    children.sort((left, right) => (left.code ?? "").localeCompare(right.code ?? "", "zh-CN") || left.title.localeCompare(right.title, "zh-CN"));
+  }
+
+  const ordered: string[] = [];
+  visitNode(rootNodeId, childrenByParent, ordered);
+
+  return ordered;
+}
+
+function visitNode(
+  nodeId: string,
+  childrenByParent: Map<string | null, Array<{ id: string; parentId: string | null; code: string | null; title: string }>>,
+  ordered: string[]
+) {
+  ordered.push(nodeId);
+
+  for (const child of childrenByParent.get(nodeId) ?? []) {
+    visitNode(child.id, childrenByParent, ordered);
+  }
+}
+
+function collectQuestionIdsForNodes(nodeIds: string[], directQuestionIdsByNode: Map<string, Set<string>>) {
+  const ids = new Set<string>();
+
+  for (const nodeId of nodeIds) {
+    for (const questionId of directQuestionIdsByNode.get(nodeId) ?? []) {
+      ids.add(questionId);
+    }
+  }
+
+  return [...ids];
 }
 
 function formatSubjectPath(subject: {

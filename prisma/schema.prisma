@@ -58,6 +58,13 @@ enum AttemptStatus {
   abandoned
 }
 
+enum PracticeMode {
+  new
+  wrong
+  retry_practiced
+  comprehensive
+}
+
 enum AiProvider {
   openai
   anthropic
@@ -243,6 +250,7 @@ model KnowledgeNode {
   examExpectation  String?
   questionBindings QuestionKnowledgeNode[]
   userNotes        UserKnowledgeNote[]
+  practiceAttempts Attempt[]               @relation("AttemptPracticeKnowledgeNode")
   createdAt        DateTime                @default(now())
   updatedAt        DateTime                @updatedAt
 
@@ -370,25 +378,33 @@ model ExamGoal {
 }
 
 model Attempt {
-  id          String          @id @default(cuid())
-  userId      String
-  user        User            @relation(fields: [userId], references: [id])
-  goalId      String?
-  goal        ExamGoal?       @relation(fields: [goalId], references: [id])
-  paperId     String?
-  paper       Paper?          @relation(fields: [paperId], references: [id])
-  status      AttemptStatus   @default(in_progress)
-  startedAt   DateTime        @default(now())
-  submittedAt DateTime?
-  pausedAt    DateTime?
-  totalScore  Float?
-  maxScore    Float?
-  answers     AttemptAnswer[]
-  pauses      AttemptPause[]
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
+  id                      String          @id @default(cuid())
+  userId                  String
+  user                    User            @relation(fields: [userId], references: [id])
+  goalId                  String?
+  goal                    ExamGoal?       @relation(fields: [goalId], references: [id])
+  paperId                 String?
+  paper                   Paper?          @relation(fields: [paperId], references: [id])
+  status                  AttemptStatus   @default(in_progress)
+  practiceMode            PracticeMode?
+  practiceKnowledgeNodeId String?
+  practiceKnowledgeNode   KnowledgeNode?  @relation("AttemptPracticeKnowledgeNode", fields: [practiceKnowledgeNodeId], references: [id], onDelete: SetNull)
+  practiceMaterialId      String?
+  practiceMaterial        Material?       @relation("AttemptPracticeMaterial", fields: [practiceMaterialId], references: [id], onDelete: SetNull)
+  startedAt               DateTime        @default(now())
+  submittedAt             DateTime?
+  pausedAt                DateTime?
+  totalScore              Float?
+  maxScore                Float?
+  answers                 AttemptAnswer[]
+  pauses                  AttemptPause[]
+  createdAt               DateTime        @default(now())
+  updatedAt               DateTime        @updatedAt
 
   @@index([userId, status])
+  @@index([practiceMode])
+  @@index([practiceKnowledgeNodeId])
+  @@index([practiceMaterialId])
 }
 
 model AttemptPause {
@@ -466,6 +482,7 @@ model Material {
   assets           Asset[]
   candidates       MaterialQuestionCandidate[]
   planTasks        StudyPlanTask[]
+  practiceAttempts Attempt[]                   @relation("AttemptPracticeMaterial")
   createdAt        DateTime                    @default(now())
   updatedAt        DateTime                    @updatedAt
 
