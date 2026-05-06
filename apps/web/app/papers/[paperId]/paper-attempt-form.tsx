@@ -4,6 +4,7 @@ import Link from "next/link";
 import type { Route } from "next";
 import { useEffect, useMemo, useState } from "react";
 import type { PaperAttemptSessionState } from "@openexam/core/papers";
+import { PixelChoice, SubmitButton, TextareaField, TextField } from "@openexam/core/pixel-ui";
 import { autosavePaperAttemptAction, pausePaperAttemptAction, resumePaperAttemptAction, submitPaperAttemptAction } from "../actions";
 
 type ReadyState = Extract<PaperAttemptSessionState, { status: "ready" }>;
@@ -101,17 +102,11 @@ export function PaperAttemptForm({ paper, attempt }: { paper: ReadyPaper; attemp
           </div>
           <div className="flex flex-wrap gap-2">
             {paused ? (
-              <button className="pixel-button bg-white px-4 py-2" formAction={resumePaperAttemptAction} type="submit">
-                恢复
-              </button>
+              <SubmitButton className="bg-white px-4 py-2" formAction={resumePaperAttemptAction} label="恢复" />
             ) : (
-              <button className="pixel-button bg-white px-4 py-2" formAction={pausePaperAttemptAction} type="submit">
-                暂停
-              </button>
+              <SubmitButton className="bg-white px-4 py-2" formAction={pausePaperAttemptAction} label="暂停" />
             )}
-            <button className="pixel-button px-4 py-2" data-action="submit" disabled={paused} type="submit">
-              提交试卷
-            </button>
+            <SubmitButton className="px-4 py-2" data-action="submit" disabled={paused} label="提交试卷" />
           </div>
         </div>
         <nav aria-label="答题卡" className="flex flex-wrap gap-2">
@@ -159,9 +154,7 @@ export function PaperAttemptForm({ paper, attempt }: { paper: ReadyPaper; attemp
         </section>
       ))}
       <div className="pixel-panel flex flex-wrap gap-3 p-5">
-        <button className="pixel-button px-4 py-2" data-action="submit" disabled={paused} type="submit">
-          提交试卷
-        </button>
+        <SubmitButton className="px-4 py-2" data-action="submit" disabled={paused} label="提交试卷" />
         <Link href={"/papers" as Route} className="pixel-button bg-white px-4 py-2">
           返回试卷
         </Link>
@@ -183,12 +176,13 @@ function QuestionAnswerInput({
 }) {
   if (question.kind === "short_answer" || question.kind === "case_analysis") {
     return (
-      <textarea
-        className={`border-3 border-black bg-white p-3 font-bold leading-7 ${question.kind === "case_analysis" ? "min-h-56" : "min-h-32"}`}
+      <TextareaField
         disabled={disabled}
+        label="作答内容"
         name={`control_${question.id}`}
         onChange={(event) => onChange(event.target.value)}
         placeholder="输入作答内容"
+        textareaClassName={question.kind === "case_analysis" ? "min-h-56" : "min-h-32"}
         value={answer}
       />
     );
@@ -196,9 +190,10 @@ function QuestionAnswerInput({
 
   if (question.kind === "blank") {
     return (
-      <input
-        className="border-3 border-black bg-white p-3 font-bold"
+      <TextField
         disabled={disabled}
+        inputClassName="p-3"
+        label="填空答案"
         name={`answer_${question.id}`}
         onChange={(event) => onChange(event.target.value)}
         placeholder="输入填空答案"
@@ -214,18 +209,9 @@ function QuestionAnswerInput({
           { key: "true", text: "正确" },
           { key: "false", text: "错误" }
         ].map((option) => (
-          <label key={option.key} className="flex min-w-0 gap-3 border-2 border-black bg-[var(--surface-subtle)] p-3 font-bold">
-            <input
-              checked={answer === option.key}
-              className="mt-1 h-5 w-5 shrink-0 accent-black"
-              disabled={disabled}
-              name={`control_${question.id}`}
-              onChange={() => onChange(option.key)}
-              type="radio"
-              value={option.key}
-            />
-            <span>{option.text}</span>
-          </label>
+          <PixelChoice key={option.key} checked={answer === option.key} disabled={disabled} name={`control_${question.id}`} onChange={() => onChange(option.key)} type="radio" value={option.key}>
+            {option.text}
+          </PixelChoice>
         ))}
       </div>
     );
@@ -237,30 +223,29 @@ function QuestionAnswerInput({
     return (
       <div className="grid gap-3">
         {question.options.map((option) => (
-          <label key={option.key} className="flex min-w-0 gap-3 border-2 border-black bg-[var(--surface-subtle)] p-3 font-bold">
-            <input
-              checked={selected.has(option.key)}
-              className="mt-1 h-5 w-5 shrink-0 accent-black"
-              disabled={disabled}
-              name={`control_${question.id}`}
-              onChange={(event) => {
-                const next = new Set(selected);
+          <PixelChoice
+            key={option.key}
+            checked={selected.has(option.key)}
+            disabled={disabled}
+            name={`control_${question.id}`}
+            onChange={(event) => {
+              const next = new Set(selected);
 
-                if (event.target.checked) {
-                  next.add(option.key);
-                } else {
-                  next.delete(option.key);
-                }
+              if (event.target.checked) {
+                next.add(option.key);
+              } else {
+                next.delete(option.key);
+              }
 
-                onChange([...next].sort().join(","));
-              }}
-              type="checkbox"
-              value={option.key}
-            />
-            <span className="min-w-0 break-words">
+              onChange([...next].sort().join(","));
+            }}
+            type="checkbox"
+            value={option.key}
+          >
+            <span>
               {option.key}. {option.text}
             </span>
-          </label>
+          </PixelChoice>
         ))}
       </div>
     );
@@ -269,20 +254,11 @@ function QuestionAnswerInput({
   return (
     <div className="grid gap-3">
       {question.options.map((option) => (
-        <label key={option.key} className="flex min-w-0 gap-3 border-2 border-black bg-[var(--surface-subtle)] p-3 font-bold">
-          <input
-            checked={answer === option.key}
-            className="mt-1 h-5 w-5 shrink-0 accent-black"
-            disabled={disabled}
-            name={`control_${question.id}`}
-            onChange={() => onChange(option.key)}
-            type="radio"
-            value={option.key}
-          />
-          <span className="min-w-0 break-words">
+        <PixelChoice key={option.key} checked={answer === option.key} disabled={disabled} name={`control_${question.id}`} onChange={() => onChange(option.key)} type="radio" value={option.key}>
+          <span>
             {option.key}. {option.text}
           </span>
-        </label>
+        </PixelChoice>
       ))}
     </div>
   );

@@ -18,6 +18,7 @@ type PixelSelectProps = {
   className?: string;
   defaultValue?: string;
   name: string;
+  onValueChange?: (value: string) => void;
   required?: boolean;
 };
 
@@ -33,7 +34,7 @@ type OptionProps = {
   value?: string | number;
 };
 
-export function PixelSelect({ children, className = "", defaultValue, name, required = false }: PixelSelectProps) {
+export function PixelSelect({ children, className = "", defaultValue, name, onValueChange, required = false }: PixelSelectProps) {
   const id = useId();
   const rootRef = useRef<HTMLDivElement>(null);
   const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
@@ -99,6 +100,7 @@ export function PixelSelect({ children, className = "", defaultValue, name, requ
     }
 
     setValue(option.value);
+    onValueChange?.(option.value);
     setActiveIndex(index);
     setOpen(false);
   }

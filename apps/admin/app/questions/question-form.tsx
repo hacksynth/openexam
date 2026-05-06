@@ -1,16 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { PixelSelect } from "@openexam/core/pixel-select";
+import { SelectField, SubmitButton, TextareaField, TextField } from "@openexam/core/pixel-ui";
 import {
   adminQuestionKindOptions,
   questionReviewStatusOptions,
   questionSourceTypeOptions,
   questionVisibilityOptions
 } from "@openexam/core/question-admin";
-
-const inputClass = "min-w-0 border-3 border-black bg-white px-3 py-2 text-sm font-bold";
-const labelClass = "grid gap-2 text-sm font-bold";
 
 const visibilityLabels: Record<string, string> = {
   private: "私有",
@@ -96,16 +93,13 @@ export function QuestionForm({
     <form action={action} className="grid gap-4">
       {id ? <input name="id" type="hidden" value={id} /> : null}
       <div className="grid gap-3 lg:grid-cols-[1fr_1fr_1fr]">
-        <label className={labelClass}>
-          题型
-          <select className={inputClass} defaultValue={question?.kind ?? "single_choice"} name="kind" onChange={(e) => setKind(e.target.value)} required>
-            {adminQuestionKindOptions.map((k) => (
-              <option key={k} value={k}>
-                {questionKindLabels[k]}
-              </option>
-            ))}
-          </select>
-        </label>
+        <SelectField defaultValue={question?.kind ?? "single_choice"} label="题型" name="kind" onValueChange={setKind} required>
+          {adminQuestionKindOptions.map((k) => (
+            <option key={k} value={k}>
+              {questionKindLabels[k]}
+            </option>
+          ))}
+        </SelectField>
         <TextField label="难度" name="difficulty" defaultValue={question?.difficulty?.toString() ?? ""} placeholder="1-5" />
         <SelectField label="审核状态" name="reviewStatus" defaultValue={question?.reviewStatus ?? "draft"} required>
           {questionReviewStatusOptions.map((status) => (
@@ -115,16 +109,17 @@ export function QuestionForm({
           ))}
         </SelectField>
       </div>
-      <label className={labelClass}>
-        题干
-        <textarea className={inputClass} defaultValue={question?.stem ?? ""} name="stem" placeholder={isCaseAnalysis ? "输入具体问题" : "输入题干"} required rows={3} />
-      </label>
+      <TextareaField defaultValue={question?.stem ?? ""} label="题干" name="stem" placeholder={isCaseAnalysis ? "输入具体问题" : "输入题干"} required rows={3} />
 
       {isCaseAnalysis ? (
-        <label className={labelClass}>
-          案例材料
-          <textarea className={inputClass} defaultValue={question?.payloadJson ? (() => { try { return JSON.parse(question.payloadJson ?? "{}").caseMaterial ?? ""; } catch { return ""; } })() : ""} name="caseMaterial" placeholder="输入案例背景、场景描述或资料" required rows={5} />
-        </label>
+        <TextareaField
+          defaultValue={question?.payloadJson ? parseCaseMaterial(question.payloadJson) : ""}
+          label="案例材料"
+          name="caseMaterial"
+          placeholder="输入案例背景、场景描述或资料"
+          required
+          rows={5}
+        />
       ) : null}
 
       {needsOptions ? (
@@ -203,24 +198,27 @@ export function QuestionForm({
       </div>
 
       <div className="grid gap-3 lg:grid-cols-2">
-        <label className={labelClass}>
-          payload JSON（{isChoiceType(kind) ? "选择题" : isTrueFalse ? "判断题" : isBlank ? "填空题" : "主观题"}可选）
-          <textarea className={`${inputClass} font-mono`} defaultValue={question?.payloadJson ?? ""} name="payloadJson" placeholder='{}' rows={3} />
-        </label>
-        <label className={labelClass}>
-          rubric JSON（{isSubjective ? "主观题评分标准" : "可选"}）
-          <textarea className={`${inputClass} font-mono`} defaultValue={question?.rubricJson ?? ""} name="rubricJson" placeholder={isSubjective ? '{"referenceAnswer":"...","points":["要点1","要点2"]}' : "{}"} rows={3} />
-        </label>
+        <TextareaField
+          defaultValue={question?.payloadJson ?? ""}
+          label={`payload JSON（${isChoiceType(kind) ? "选择题" : isTrueFalse ? "判断题" : isBlank ? "填空题" : "主观题"}可选）`}
+          name="payloadJson"
+          placeholder="{}"
+          rows={3}
+          textareaClassName="font-mono"
+        />
+        <TextareaField
+          defaultValue={question?.rubricJson ?? ""}
+          label={`rubric JSON（${isSubjective ? "主观题评分标准" : "可选"}）`}
+          name="rubricJson"
+          placeholder={isSubjective ? '{"referenceAnswer":"...","points":["要点1","要点2"]}' : "{}"}
+          rows={3}
+          textareaClassName="font-mono"
+        />
       </div>
 
-      <label className={labelClass}>
-        解析
-        <textarea className={inputClass} defaultValue={question?.explanation ?? ""} name="explanation" placeholder="解释正确答案和关键知识点" rows={3} />
-      </label>
+      <TextareaField defaultValue={question?.explanation ?? ""} label="解析" name="explanation" placeholder="解释正确答案和关键知识点" rows={3} />
 
-      <button className="pixel-button w-fit px-4 py-2" type="submit">
-        {submitLabel}
-      </button>
+      <SubmitButton className="w-fit px-4 py-2" label={submitLabel} />
     </form>
   );
 }
@@ -229,46 +227,11 @@ function isChoiceType(kind: string) {
   return kind === "single_choice" || kind === "multiple_choice";
 }
 
-function TextField({
-  label,
-  name,
-  defaultValue = "",
-  placeholder,
-  required = false
-}: {
-  label: string;
-  name: string;
-  defaultValue?: string;
-  placeholder?: string;
-  required?: boolean;
-}) {
-  return (
-    <label className={labelClass}>
-      {label}
-      <input className={inputClass} defaultValue={defaultValue} name={name} placeholder={placeholder} required={required} />
-    </label>
-  );
-}
-
-function SelectField({
-  label,
-  name,
-  defaultValue,
-  required = false,
-  children
-}: {
-  label: string;
-  name: string;
-  defaultValue?: string;
-  required?: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <label className={labelClass}>
-      {label}
-      <PixelSelect className={inputClass} defaultValue={defaultValue} name={name} required={required}>
-        {children}
-      </PixelSelect>
-    </label>
-  );
+function parseCaseMaterial(payloadJson: string) {
+  try {
+    const parsed = JSON.parse(payloadJson) as { caseMaterial?: unknown };
+    return typeof parsed.caseMaterial === "string" ? parsed.caseMaterial : "";
+  } catch {
+    return "";
+  }
 }

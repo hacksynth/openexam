@@ -5,14 +5,12 @@ import { requireWebSession } from "@/lib/auth";
 import { getLearningAnalysis } from "@openexam/core/analysis";
 import { listKnowledgeHierarchy } from "@openexam/core/exam-core";
 import { listGeneratedQuestionBatches } from "@openexam/core/generated-questions";
+import { FeedbackMessage, SelectField, SubmitButton, TextareaField, TextField } from "@openexam/core/pixel-ui";
 import { confirmGeneratedQuestionCandidateAction, generatePracticeQuestionCandidatesAction, rejectGeneratedQuestionCandidateAction } from "./actions";
 
 type GeneratePracticePageProps = {
   searchParams: Promise<{ error?: string; notice?: string }>;
 };
-
-const labelClass = "grid gap-2 text-sm font-bold";
-const inputClass = "min-w-0 border-3 border-black bg-white px-3 py-2 text-sm font-bold";
 
 export default async function GeneratePracticePage({ searchParams }: GeneratePracticePageProps) {
   const session = await requireWebSession();
@@ -34,7 +32,7 @@ export default async function GeneratePracticePage({ searchParams }: GeneratePra
   return (
     <AppShell section="learner" eyebrow="AI 生成练习题" title="AI 出题">
       <section className="grid gap-5">
-        <Feedback error={params.error} notice={params.notice} />
+        <FeedbackMessage error={params.error} notice={params.notice} />
 
         <section className="pixel-panel grid gap-4 p-5">
           <div>
@@ -50,30 +48,19 @@ export default async function GeneratePracticePage({ searchParams }: GeneratePra
             </div>
           ) : (
             <form action={generatePracticeQuestionCandidatesAction} className="grid gap-3">
-              <label className={labelClass}>
-                出题方向
-                <textarea className={`${inputClass} min-h-24 leading-7`} name="prompt" placeholder="例如：数据库事务隔离级别，偏应用题，覆盖易混概念" required />
-              </label>
+              <TextareaField label="出题方向" name="prompt" placeholder="例如：数据库事务隔离级别，偏应用题，覆盖易混概念" required textareaClassName="min-h-24" />
               <div className="grid gap-3 lg:grid-cols-[1fr_180px]">
-                <label className={labelClass}>
-                  知识点
-                  <select className={inputClass} name="knowledgeNodeId">
-                    <option value="">由 AI 从当前目标中选择</option>
-                    {knowledgeOptions.map((node) => (
-                      <option key={node.id} value={node.id}>
-                        {node.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className={labelClass}>
-                  题数
-                  <input className={inputClass} defaultValue="3" max="8" min="1" name="count" type="number" />
-                </label>
+                <SelectField label="知识点" name="knowledgeNodeId">
+                  <option value="">由 AI 从当前目标中选择</option>
+                  {knowledgeOptions.map((node) => (
+                    <option key={node.id} value={node.id}>
+                      {node.label}
+                    </option>
+                  ))}
+                </SelectField>
+                <TextField defaultValue="3" label="题数" max="8" min="1" name="count" type="number" />
               </div>
-              <button className="pixel-button w-fit px-4 py-2" type="submit">
-                生成候选题
-              </button>
+              <SubmitButton className="w-fit px-4 py-2" label="生成候选题" />
             </form>
           )}
         </section>
@@ -115,26 +102,19 @@ export default async function GeneratePracticePage({ searchParams }: GeneratePra
                         <div className="flex flex-wrap gap-3">
                           <form action={confirmGeneratedQuestionCandidateAction} className="flex flex-wrap items-end gap-3">
                             <input name="candidateId" type="hidden" value={candidate.id} />
-                            <label className={labelClass}>
-                              知识点
-                              <select className={inputClass} defaultValue={candidate.knowledgeNodeId ?? ""} name="knowledgeNodeId">
-                                <option value="">选择知识点</option>
-                                {knowledgeOptions.map((node) => (
-                                  <option key={node.id} value={node.id}>
-                                    {node.label}
-                                  </option>
-                                ))}
-                              </select>
-                            </label>
-                            <button className="pixel-button px-4 py-2" type="submit">
-                              确认入库
-                            </button>
+                            <SelectField defaultValue={candidate.knowledgeNodeId ?? ""} label="知识点" name="knowledgeNodeId">
+                              <option value="">选择知识点</option>
+                              {knowledgeOptions.map((node) => (
+                                <option key={node.id} value={node.id}>
+                                  {node.label}
+                                </option>
+                              ))}
+                            </SelectField>
+                            <SubmitButton className="px-4 py-2" label="确认入库" />
                           </form>
                           <form action={rejectGeneratedQuestionCandidateAction}>
                             <input name="candidateId" type="hidden" value={candidate.id} />
-                            <button className="pixel-button bg-white px-4 py-2" type="submit">
-                              忽略
-                            </button>
+                            <SubmitButton className="bg-white px-4 py-2" label="忽略" />
                           </form>
                         </div>
                       ) : candidate.confirmedQuestionId ? (
@@ -152,14 +132,6 @@ export default async function GeneratePracticePage({ searchParams }: GeneratePra
       </section>
     </AppShell>
   );
-}
-
-function Feedback({ error, notice }: { error?: string; notice?: string }) {
-  if (!error && !notice) {
-    return null;
-  }
-
-  return <p className={`border-3 border-black p-3 text-sm font-bold ${error ? "bg-red-50 text-red-700" : "bg-[var(--primary)] text-black"}`}>{error || notice}</p>;
 }
 
 function statusLabel(value: string) {

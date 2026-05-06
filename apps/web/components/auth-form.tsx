@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
+import { FeedbackMessage, SubmitButton, TextField } from "@openexam/core/pixel-ui";
 
 type AuthFormProps = {
   action: (previousState: string | null, formData: FormData) => Promise<string | null>;
@@ -18,35 +19,17 @@ export function AuthForm({ action, mode }: AuthFormProps) {
         <h1 className="mt-2 text-3xl font-black">{isRegister ? "创建账号" : "登录"}</h1>
       </div>
 
-      {error ? <p className="border-2 border-black bg-red-50 p-3 text-sm font-bold text-red-700">{error}</p> : null}
+      <FeedbackMessage error={error ?? undefined} />
 
       {isRegister ? (
-        <label className="grid gap-2 text-sm font-bold">
-          昵称
-          <input className="border-3 border-black bg-white px-3 py-2" name="name" type="text" autoComplete="name" />
-        </label>
+        <TextField autoComplete="name" label="昵称" name="name" type="text" />
       ) : null}
 
-      <label className="grid gap-2 text-sm font-bold">
-        邮箱
-        <input className="border-3 border-black bg-white px-3 py-2" name="email" type="email" autoComplete="email" required />
-      </label>
+      <TextField autoComplete="email" label="邮箱" name="email" required type="email" />
 
-      <label className="grid gap-2 text-sm font-bold">
-        密码
-        <input
-          className="border-3 border-black bg-white px-3 py-2"
-          name="password"
-          type="password"
-          autoComplete={isRegister ? "new-password" : "current-password"}
-          minLength={8}
-          required
-        />
-      </label>
+      <TextField autoComplete={isRegister ? "new-password" : "current-password"} label="密码" minLength={8} name="password" required type="password" />
 
-      <button className="pixel-button px-4 py-2" disabled={pending} type="submit">
-        {pending ? "处理中..." : isRegister ? "注册并进入学习端" : "登录学习端"}
-      </button>
+      <SubmitButton className="px-4 py-2" disabled={pending} label={pending ? "处理中..." : isRegister ? "注册并进入学习端" : "登录学习端"} />
     </form>
   );
 }

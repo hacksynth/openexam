@@ -1,17 +1,14 @@
 import Link from "next/link";
-import { PixelSelect } from "@openexam/core/pixel-select";
 import type { Route } from "next";
 import { AppShell } from "@/components/app-shell";
 import { requireWebSession } from "@/lib/auth";
 import { formatDateInput, formatGoalPath, getPrimaryExamGoal, listExamHierarchy } from "@openexam/core/exam-core";
+import { DateField, FeedbackMessage, SelectField, SubmitButton, TextField } from "@openexam/core/pixel-ui";
 import { savePrimaryGoalAction } from "./actions";
 
 type GoalsPageProps = {
   searchParams: Promise<{ error?: string; notice?: string }>;
 };
-
-const inputClass = "min-w-0 border-3 border-black bg-white px-3 py-2 text-sm font-bold";
-const labelClass = "grid gap-2 text-sm font-bold";
 
 export default async function GoalsPage({ searchParams }: GoalsPageProps) {
   const session = await requireWebSession();
@@ -24,7 +21,7 @@ export default async function GoalsPage({ searchParams }: GoalsPageProps) {
   return (
     <AppShell section="learner" eyebrow="Exam Core" title="考试目标">
       <section className="grid gap-5">
-        <Feedback error={params.error} notice={params.notice} />
+        <FeedbackMessage error={params.error} notice={params.notice} />
 
         <section className="pixel-panel grid gap-4 p-5">
           <div>
@@ -91,21 +88,10 @@ export default async function GoalsPage({ searchParams }: GoalsPageProps) {
               </SelectField>
             </div>
             <div className="grid gap-3 lg:grid-cols-[1fr_1fr_1fr_auto]">
-              <label className={labelClass}>
-                目标日期
-                <input className={inputClass} defaultValue={formatDateInput(primaryGoal?.targetDate)} name="targetDate" type="date" />
-              </label>
-              <label className={labelClass}>
-                目标分
-                <input className={inputClass} defaultValue={primaryGoal?.targetScore ?? ""} min="0" name="targetScore" placeholder="60" step="0.5" type="number" />
-              </label>
-              <label className={labelClass}>
-                每日学习分钟
-                <input className={inputClass} defaultValue={primaryGoal?.dailyMinutes ?? 60} max="600" min="1" name="dailyMinutes" type="number" />
-              </label>
-              <button className="pixel-button self-end px-4 py-2" type="submit">
-                保存主目标
-              </button>
+              <DateField defaultValue={formatDateInput(primaryGoal?.targetDate)} label="目标日期" name="targetDate" />
+              <TextField defaultValue={primaryGoal?.targetScore ?? ""} label="目标分" min="0" name="targetScore" placeholder="60" step="0.5" type="number" />
+              <TextField defaultValue={primaryGoal?.dailyMinutes ?? 60} label="每日学习分钟" max="600" min="1" name="dailyMinutes" type="number" />
+              <SubmitButton className="px-4 py-2" label="保存主目标" />
             </div>
           </form>
         </section>
@@ -154,40 +140,5 @@ export default async function GoalsPage({ searchParams }: GoalsPageProps) {
         </section>
       </section>
     </AppShell>
-  );
-}
-
-function Feedback({ error, notice }: { error?: string; notice?: string }) {
-  if (!error && !notice) {
-    return null;
-  }
-
-  return (
-    <p className={`border-3 border-black p-3 text-sm font-bold ${error ? "bg-red-50 text-red-700" : "bg-[var(--primary)] text-black"}`}>
-      {error || notice}
-    </p>
-  );
-}
-
-function SelectField({
-  label,
-  name,
-  defaultValue,
-  required = false,
-  children
-}: {
-  label: string;
-  name: string;
-  defaultValue?: string;
-  required?: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <label className={labelClass}>
-      {label}
-      <PixelSelect className={inputClass} defaultValue={defaultValue} name={name} required={required}>
-        {children}
-      </PixelSelect>
-    </label>
   );
 }

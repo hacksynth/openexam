@@ -1,7 +1,7 @@
 import { AppShell } from "@/components/app-shell";
-import { PixelSelect } from "@openexam/core/pixel-select";
 import { requireAdminSession } from "@/lib/auth";
 import { listKnowledgeHierarchy } from "@openexam/core/exam-core";
+import { FeedbackMessage, SelectField, SubmitButton, TextareaField, TextField } from "@openexam/core/pixel-ui";
 import {
   createKnowledgeNodeAction,
   createSyllabusAction,
@@ -12,9 +12,6 @@ import {
 type KnowledgePageProps = {
   searchParams: Promise<{ error?: string; notice?: string }>;
 };
-
-const inputClass = "min-w-0 border-3 border-black bg-white px-3 py-2 text-sm font-bold";
-const labelClass = "grid gap-2 text-sm font-bold";
 
 export default async function AdminKnowledgePage({ searchParams }: KnowledgePageProps) {
   await requireAdminSession();
@@ -30,7 +27,7 @@ export default async function AdminKnowledgePage({ searchParams }: KnowledgePage
   return (
     <AppShell section="admin" eyebrow="Exam Core" title="知识">
       <section className="grid gap-5">
-        <Feedback error={params.error} notice={params.notice} />
+        <FeedbackMessage error={params.error} notice={params.notice} />
 
         <section className="pixel-panel grid gap-4 p-5">
           <div>
@@ -93,14 +90,8 @@ export default async function AdminKnowledgePage({ searchParams }: KnowledgePage
             <TextField label="编码" name="code" placeholder="DS-ALGO-001" />
             <TextField label="标题" name="title" placeholder="算法复杂度" required />
             <SubmitButton label="新增知识点" />
-            <label className={`${labelClass} lg:col-span-2`}>
-              描述
-              <textarea className={inputClass} name="description" placeholder="知识点说明" rows={3} />
-            </label>
-            <label className={`${labelClass} lg:col-span-3`}>
-              考试要求
-              <textarea className={inputClass} name="examExpectation" placeholder="考试中常见考查方式" rows={3} />
-            </label>
+            <TextareaField label="描述" labelClassName="lg:col-span-2" name="description" placeholder="知识点说明" rows={3} />
+            <TextareaField label="考试要求" labelClassName="lg:col-span-3" name="examExpectation" placeholder="考试中常见考查方式" rows={3} />
           </form>
         </section>
 
@@ -138,14 +129,8 @@ export default async function AdminKnowledgePage({ searchParams }: KnowledgePage
                     <TextField label="编码" name="code" defaultValue={node.code ?? ""} />
                     <TextField label="标题" name="title" defaultValue={node.title} required />
                     <SubmitButton label="保存" />
-                    <label className={`${labelClass} lg:col-span-2`}>
-                      描述
-                      <textarea className={inputClass} defaultValue={node.description ?? ""} name="description" rows={3} />
-                    </label>
-                    <label className={`${labelClass} lg:col-span-3`}>
-                      考试要求
-                      <textarea className={inputClass} defaultValue={node.examExpectation ?? ""} name="examExpectation" rows={3} />
-                    </label>
+                    <TextareaField defaultValue={node.description ?? ""} label="描述" labelClassName="lg:col-span-2" name="description" rows={3} />
+                    <TextareaField defaultValue={node.examExpectation ?? ""} label="考试要求" labelClassName="lg:col-span-3" name="examExpectation" rows={3} />
                   </form>
                 ))}
               </div>
@@ -161,68 +146,4 @@ function parentTitle(nodes: { id: string; code: string | null; title: string }[]
   const parent = nodes.find((node) => node.id === parentId);
 
   return parent ? `${parent.code ? `${parent.code} ` : ""}${parent.title}` : "未知父级";
-}
-
-function Feedback({ error, notice }: { error?: string; notice?: string }) {
-  if (!error && !notice) {
-    return null;
-  }
-
-  return (
-    <p className={`border-3 border-black p-3 text-sm font-bold ${error ? "bg-red-50 text-red-700" : "bg-[var(--primary)] text-black"}`}>
-      {error || notice}
-    </p>
-  );
-}
-
-function TextField({
-  label,
-  name,
-  defaultValue = "",
-  placeholder,
-  required = false
-}: {
-  label: string;
-  name: string;
-  defaultValue?: string;
-  placeholder?: string;
-  required?: boolean;
-}) {
-  return (
-    <label className={labelClass}>
-      {label}
-      <input className={inputClass} defaultValue={defaultValue} name={name} placeholder={placeholder} required={required} />
-    </label>
-  );
-}
-
-function SelectField({
-  label,
-  name,
-  defaultValue,
-  required = false,
-  children
-}: {
-  label: string;
-  name: string;
-  defaultValue?: string;
-  required?: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <label className={labelClass}>
-      {label}
-      <PixelSelect className={inputClass} defaultValue={defaultValue} name={name} required={required}>
-        {children}
-      </PixelSelect>
-    </label>
-  );
-}
-
-function SubmitButton({ label }: { label: string }) {
-  return (
-    <button className="pixel-button self-end px-4 py-2 text-sm" type="submit">
-      {label}
-    </button>
-  );
 }

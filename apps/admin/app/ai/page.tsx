@@ -1,16 +1,13 @@
 import { AiProvider, AiTaskType } from "@prisma/client";
-import { PixelSelect } from "@openexam/core/pixel-select";
 import { AppShell } from "@/components/app-shell";
 import { requireAdminSession } from "@/lib/auth";
 import { getAiUsageOverview, listAdminAiProviderPresets } from "@openexam/core/ai";
+import { FeedbackMessage, PixelChoice, SelectField, SubmitButton, TextField } from "@openexam/core/pixel-ui";
 import { disableAiProviderPresetAction, enableAiProviderPresetAction, upsertAiProviderPresetAction } from "./actions";
 
 type AdminAiPageProps = {
   searchParams: Promise<{ error?: string; notice?: string }>;
 };
-
-const inputClass = "min-w-0 border-3 border-black bg-white px-3 py-2 text-sm font-bold";
-const labelClass = "grid gap-2 text-sm font-bold";
 
 const taskLabels: Record<string, string> = {
   explain_question: "题目解析",
@@ -32,7 +29,7 @@ export default async function AdminAiPage({ searchParams }: AdminAiPageProps) {
   return (
     <AppShell section="admin" eyebrow="AI 配置" title="AI">
       <section className="grid gap-5">
-        <Feedback error={params.error} notice={params.notice} />
+        <FeedbackMessage error={params.error} notice={params.notice} />
 
         <section className="grid gap-4 md:grid-cols-4">
           <article className="pixel-panel p-4">
@@ -158,16 +155,9 @@ function PresetForm({
         <legend className="text-sm font-bold">默认任务</legend>
         <div className="flex flex-wrap gap-3">
           {Object.values(AiTaskType).map((taskType) => (
-            <label key={taskType} className="flex items-center gap-2 border-2 border-black bg-white px-3 py-2 text-sm font-bold">
-              <input
-                className="h-4 w-4 accent-black"
-                defaultChecked={defaultForTasks.includes(taskType)}
-                name="defaultForTasks"
-                type="checkbox"
-                value={taskType}
-              />
+            <PixelChoice key={taskType} className="items-center bg-white px-3 py-2 text-sm" defaultChecked={defaultForTasks.includes(taskType)} inputClassName="mt-0 h-4 w-4" name="defaultForTasks" type="checkbox" value={taskType}>
               {taskLabels[taskType] ?? taskType}
-            </label>
+            </PixelChoice>
           ))}
         </div>
       </fieldset>
@@ -175,20 +165,16 @@ function PresetForm({
         <legend className="text-sm font-bold">Capabilities</legend>
         <div className="flex flex-wrap gap-3">
           {["text", "json", "vision", "document", "image"].map((capability) => (
-            <label key={capability} className="flex items-center gap-2 border-2 border-black bg-white px-3 py-2 text-sm font-bold">
-              <input className="h-4 w-4 accent-black" defaultChecked={capabilities.includes(capability)} name="capabilities" type="checkbox" value={capability} />
+            <PixelChoice key={capability} className="items-center bg-white px-3 py-2 text-sm" defaultChecked={capabilities.includes(capability)} inputClassName="mt-0 h-4 w-4" name="capabilities" type="checkbox" value={capability}>
               {capability}
-            </label>
+            </PixelChoice>
           ))}
         </div>
       </fieldset>
-      <label className="flex w-fit items-center gap-2 text-sm font-bold">
-        <input className="h-5 w-5 accent-black" defaultChecked={enabled} name="enabled" type="checkbox" />
+      <PixelChoice className="w-fit items-center border-0 bg-transparent p-0 text-sm" defaultChecked={enabled} inputClassName="mt-0" name="enabled" type="checkbox">
         启用
-      </label>
-      <button className="pixel-button w-fit px-4 py-2" type="submit">
-        {submitLabel}
-      </button>
+      </PixelChoice>
+      <SubmitButton className="w-fit px-4 py-2" label={submitLabel} />
     </form>
   );
 }
@@ -199,72 +185,14 @@ function PresetActions({ presetId, enabled }: { presetId: string; enabled: boole
       {enabled ? (
         <form action={disableAiProviderPresetAction}>
           <input name="id" type="hidden" value={presetId} />
-          <button className="pixel-button bg-white px-3 py-2 text-sm" type="submit">
-            停用预设
-          </button>
+          <SubmitButton className="bg-white px-3 py-2" label="停用预设" />
         </form>
       ) : (
         <form action={enableAiProviderPresetAction}>
           <input name="id" type="hidden" value={presetId} />
-          <button className="pixel-button bg-white px-3 py-2 text-sm" type="submit">
-            启用预设
-          </button>
+          <SubmitButton className="bg-white px-3 py-2" label="启用预设" />
         </form>
       )}
     </div>
-  );
-}
-
-function Feedback({ error, notice }: { error?: string; notice?: string }) {
-  if (!error && !notice) {
-    return null;
-  }
-
-  return (
-    <p className={`border-3 border-black p-3 text-sm font-bold ${error ? "bg-red-50 text-red-700" : "bg-[var(--primary)] text-black"}`}>
-      {error || notice}
-    </p>
-  );
-}
-
-function TextField({
-  label,
-  name,
-  defaultValue = "",
-  placeholder,
-  required = false
-}: {
-  label: string;
-  name: string;
-  defaultValue?: string;
-  placeholder?: string;
-  required?: boolean;
-}) {
-  return (
-    <label className={labelClass}>
-      {label}
-      <input className={inputClass} defaultValue={defaultValue} name={name} placeholder={placeholder} required={required} />
-    </label>
-  );
-}
-
-function SelectField({
-  label,
-  name,
-  defaultValue,
-  children
-}: {
-  label: string;
-  name: string;
-  defaultValue?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <label className={labelClass}>
-      {label}
-      <PixelSelect className={inputClass} defaultValue={defaultValue} name={name}>
-        {children}
-      </PixelSelect>
-    </label>
   );
 }

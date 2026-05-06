@@ -22,6 +22,8 @@
     "./papers": "./src/papers.ts",
     "./practice": "./src/practice.ts",
     "./prisma": "./src/prisma.ts",
+    "./pixel-date-picker": "./src/pixel-date-picker.tsx",
+    "./pixel-ui": "./src/pixel-ui.tsx",
     "./analysis": "./src/analysis.ts",
     "./audit": "./src/audit.ts",
     "./ai": "./src/ai.ts",

@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { Route } from "next";
 import { AppShell } from "@/components/app-shell";
 import { requireWebSession } from "@/lib/auth";
+import { FeedbackMessage, SubmitButton } from "@openexam/core/pixel-ui";
 import { getStudyPlan } from "@openexam/core/study-plan";
 import { setStudyPlanTaskCompletedAction } from "../actions";
 
@@ -48,7 +49,7 @@ export default async function PlanDetailPage({ params, searchParams }: PlanDetai
   return (
     <AppShell section="learner" eyebrow="学习计划" title="计划详情">
       <section className="grid gap-5">
-        <Feedback error={query.error} notice={query.notice} />
+        <FeedbackMessage error={query.error} notice={query.notice} />
 
         <section className="pixel-panel grid gap-4 p-5">
           <div>
@@ -114,9 +115,7 @@ export default async function PlanDetailPage({ params, searchParams }: PlanDetai
                         <form action={setStudyPlanTaskCompletedAction}>
                           <input name="taskId" type="hidden" value={task.id} />
                           <input name="completed" type="hidden" value={task.completedAt ? "false" : "true"} />
-                          <button className="pixel-button px-3 py-2 text-sm" type="submit">
-                            {task.completedAt ? "取消完成" : "标记完成"}
-                          </button>
+                          <SubmitButton className="px-3 py-2" label={task.completedAt ? "取消完成" : "标记完成"} />
                         </form>
                       ) : null}
                     </div>
@@ -129,11 +128,6 @@ export default async function PlanDetailPage({ params, searchParams }: PlanDetai
       </section>
     </AppShell>
   );
-}
-
-function Feedback({ error, notice }: { error?: string; notice?: string }) {
-  if (!error && !notice) return null;
-  return <p className={`border-3 border-black p-3 text-sm font-bold ${error ? "bg-red-50 text-red-700" : "bg-[var(--primary)] text-black"}`}>{error || notice}</p>;
 }
 
 function groupTasksByDay(tasks: NonNullable<Awaited<ReturnType<typeof getStudyPlan>>>["tasks"]) {

@@ -4,6 +4,7 @@ import { AppShell } from "@/components/app-shell";
 import { requireWebSession } from "@/lib/auth";
 import { getLearningAnalysis } from "@openexam/core/analysis";
 import { getLatestLearningDiagnosis } from "@openexam/core/learning-diagnosis";
+import { FeedbackMessage, SubmitButton } from "@openexam/core/pixel-ui";
 import { generateLearningDiagnosisAction } from "./actions";
 
 type AnalysisPageProps = {
@@ -17,7 +18,7 @@ export default async function AnalysisPage({ searchParams }: AnalysisPageProps) 
   return (
     <AppShell section="learner" eyebrow="学习分析" title="学习分析">
       <section className="grid gap-5">
-        <Feedback error={params.error} notice={params.notice} />
+        <FeedbackMessage error={params.error} notice={params.notice} />
         {state.status === "no_goal" ? (
           <EmptyState title="请先设置考试目标" description="学习分析会按当前主目标统计练习、试卷和错题。" href="/goals" action="设置目标" />
         ) : (
@@ -36,9 +37,7 @@ export default async function AnalysisPage({ searchParams }: AnalysisPageProps) 
                   生成计划
                 </Link>
                 <form action={generateLearningDiagnosisAction}>
-                  <button className="pixel-button bg-white px-4 py-2" type="submit">
-                    {diagnosis ? "重新生成诊断" : "生成学习诊断"}
-                  </button>
+                  <SubmitButton className="bg-white px-4 py-2" label={diagnosis ? "重新生成诊断" : "生成学习诊断"} />
                 </form>
               </div>
             </section>
@@ -158,14 +157,6 @@ export default async function AnalysisPage({ searchParams }: AnalysisPageProps) 
       </section>
     </AppShell>
   );
-}
-
-function Feedback({ error, notice }: { error?: string; notice?: string }) {
-  if (!error && !notice) {
-    return null;
-  }
-
-  return <p className={`border-3 border-black p-3 text-sm font-bold ${error ? "bg-red-50 text-red-700" : "bg-[var(--primary)] text-black"}`}>{error || notice}</p>;
 }
 
 function Metric({ label, value }: { label: string; value: string }) {

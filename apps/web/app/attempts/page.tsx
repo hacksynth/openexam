@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { Route } from "next";
 import { AppShell } from "@/components/app-shell";
 import { requireWebSession } from "@/lib/auth";
+import { FeedbackMessage } from "@openexam/core/pixel-ui";
 import { listAttempts } from "@openexam/core/practice";
 
 const statusLabels: Record<string, string> = {
@@ -23,7 +24,7 @@ export default async function AttemptsPage({ searchParams }: AttemptsPageProps) 
   return (
     <AppShell section="learner" eyebrow="练习闭环" title="作答记录">
       <section className="grid gap-5">
-        <Feedback error={params.error} notice={params.notice} />
+        <FeedbackMessage error={params.error} notice={params.notice} />
         <section className="pixel-panel grid gap-4 p-5">
           <div>
             <p className="text-xs font-bold uppercase text-[var(--muted)]">Attempts</p>
@@ -111,18 +112,6 @@ export default async function AttemptsPage({ searchParams }: AttemptsPageProps) 
         )}
       </section>
     </AppShell>
-  );
-}
-
-function Feedback({ error, notice }: { error?: string; notice?: string }) {
-  if (!error && !notice) {
-    return null;
-  }
-
-  return (
-    <p className={`border-3 border-black p-3 text-sm font-bold ${error ? "bg-red-50 text-red-700" : "bg-[var(--primary)] text-black"}`}>
-      {error || notice}
-    </p>
   );
 }
 

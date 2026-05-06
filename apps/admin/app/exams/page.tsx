@@ -1,7 +1,7 @@
 import { AppShell } from "@/components/app-shell";
-import { PixelSelect } from "@openexam/core/pixel-select";
 import { requireAdminSession } from "@/lib/auth";
 import { formatDateInput, listExamHierarchy } from "@openexam/core/exam-core";
+import { DateField, FeedbackMessage, SelectField, SubmitButton, TextField } from "@openexam/core/pixel-ui";
 import {
   createCycleAction,
   createProgramAction,
@@ -17,9 +17,6 @@ type ExamsPageProps = {
   searchParams: Promise<{ error?: string; notice?: string }>;
 };
 
-const inputClass = "min-w-0 border-3 border-black bg-white px-3 py-2 text-sm font-bold";
-const labelClass = "grid gap-2 text-sm font-bold";
-
 export default async function AdminExamsPage({ searchParams }: ExamsPageProps) {
   await requireAdminSession();
   const params = await searchParams;
@@ -30,7 +27,7 @@ export default async function AdminExamsPage({ searchParams }: ExamsPageProps) {
   return (
     <AppShell section="admin" eyebrow="Exam Core" title="考试">
       <section className="grid gap-5">
-        <Feedback error={params.error} notice={params.notice} />
+        <FeedbackMessage error={params.error} notice={params.notice} />
 
         <section className="pixel-panel grid gap-4 p-5">
           <div>
@@ -166,84 +163,5 @@ export default async function AdminExamsPage({ searchParams }: ExamsPageProps) {
         </section>
       </section>
     </AppShell>
-  );
-}
-
-function Feedback({ error, notice }: { error?: string; notice?: string }) {
-  if (!error && !notice) {
-    return null;
-  }
-
-  return (
-    <p className={`border-3 border-black p-3 text-sm font-bold ${error ? "bg-red-50 text-red-700" : "bg-[var(--primary)] text-black"}`}>
-      {error || notice}
-    </p>
-  );
-}
-
-function TextField({
-  label,
-  name,
-  defaultValue = "",
-  placeholder,
-  required = false
-}: {
-  label: string;
-  name: string;
-  defaultValue?: string;
-  placeholder?: string;
-  required?: boolean;
-}) {
-  return (
-    <label className={labelClass}>
-      {label}
-      <input className={inputClass} defaultValue={defaultValue} name={name} placeholder={placeholder} required={required} />
-    </label>
-  );
-}
-
-function DateField({
-  label,
-  name,
-  defaultValue = ""
-}: {
-  label: string;
-  name: string;
-  defaultValue?: string;
-}) {
-  return (
-    <label className={labelClass}>
-      {label}
-      <input className={inputClass} defaultValue={defaultValue} name={name} type="date" />
-    </label>
-  );
-}
-
-function SelectField({
-  label,
-  name,
-  required = false,
-  children
-}: {
-  label: string;
-  name: string;
-  required?: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <label className={labelClass}>
-      {label}
-      <PixelSelect className={inputClass} name={name} required={required}>
-        {children}
-      </PixelSelect>
-    </label>
-  );
-}
-
-function SubmitButton({ label }: { label: string }) {
-  return (
-    <button className="pixel-button self-end px-4 py-2 text-sm" type="submit">
-      {label}
-    </button>
   );
 }

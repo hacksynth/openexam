@@ -3,6 +3,7 @@ import type { Route } from "next";
 import { AppShell } from "@/components/app-shell";
 import { requireWebSession } from "@/lib/auth";
 import { formatGoalPath } from "@openexam/core/exam-core";
+import { FeedbackMessage, PixelChoice, SubmitButton, TextareaField, TextField } from "@openexam/core/pixel-ui";
 import { getAttemptResult, getPracticeQuestion } from "@openexam/core/practice";
 import { AiExplainButton } from "@/components/ai-explain-button";
 import { collectPracticeQuestionAction, confirmPracticeAnswerScoreAction, generatePracticeAnswerAiExplanationAction, submitPracticeAnswerAction } from "./actions";
@@ -46,7 +47,7 @@ export default async function PracticePage({ searchParams }: PracticePageProps) 
   return (
     <AppShell section="learner" eyebrow="练习闭环" title="练习">
       <section className="grid gap-5">
-        {params.error ? <Feedback error={params.error} /> : null}
+        <FeedbackMessage error={params.error} />
         {attemptResult ? <AttemptResultCard materialId={state.status !== "no_goal" ? state.material?.id ?? materialId : materialId} result={attemptResult} /> : null}
 
         {state.status === "no_goal" ? (
@@ -117,9 +118,7 @@ export default async function PracticePage({ searchParams }: PracticePageProps) 
               <input name="retry" type="hidden" value={params.retry ? "true" : "false"} />
               <PracticeAnswerFields question={state.question} />
               <div className="flex flex-wrap gap-3">
-                <button className="pixel-button px-4 py-2" type="submit">
-                  提交答案
-                </button>
+                <SubmitButton className="px-4 py-2" label="提交答案" />
                 <AiExplainButton questionId={state.question.id} />
                 <Link href={"/wrong-notes" as Route} className="pixel-button bg-white px-4 py-2">
                   查看错题本
@@ -181,13 +180,8 @@ function AttemptResultCard({
           <input name="attemptId" type="hidden" value={result.id} />
           <input name="attemptAnswerId" type="hidden" value={result.attemptAnswerId} />
           <input name="materialId" type="hidden" value={materialId ?? ""} />
-          <label className="grid gap-1 text-sm font-bold">
-            确认分
-            <input className="w-32 border-2 border-black bg-white px-2 py-1" defaultValue={String(result.aiSuggestedScore)} max={result.maxScore} min="0" name="score" step="0.5" type="number" />
-          </label>
-          <button className="pixel-button self-end bg-white px-3 py-2 text-sm" type="submit">
-            确认分数
-          </button>
+          <TextField defaultValue={String(result.aiSuggestedScore)} inputClassName="w-32 border-2 px-2 py-1" label="确认分" labelClassName="gap-1" max={result.maxScore} min="0" name="score" step="0.5" type="number" />
+          <SubmitButton className="bg-white px-3 py-2" label="确认分数" />
         </form>
       ) : null}
       {result.aiSuggestedScore !== null && result.userConfirmed ? (
@@ -202,13 +196,8 @@ function AttemptResultCard({
             <span className="status-chip bg-[var(--teal)] px-2 py-1 text-xs">已确认</span>
           </div>
           <div className="flex flex-wrap items-end gap-2">
-            <label className="grid gap-1 text-sm font-bold">
-              调整分
-              <input className="w-32 border-2 border-black bg-white px-2 py-1" defaultValue={String(result.score ?? result.aiSuggestedScore)} max={result.maxScore} min="0" name="score" step="0.5" type="number" />
-            </label>
-            <button className="pixel-button self-end bg-white px-3 py-2 text-sm" type="submit">
-              重新确认
-            </button>
+            <TextField defaultValue={String(result.score ?? result.aiSuggestedScore)} inputClassName="w-32 border-2 px-2 py-1" label="调整分" labelClassName="gap-1" max={result.maxScore} min="0" name="score" step="0.5" type="number" />
+            <SubmitButton className="bg-white px-3 py-2" label="重新确认" />
           </div>
         </form>
       ) : null}
@@ -234,18 +223,14 @@ function AttemptResultCard({
             <input name="attemptId" type="hidden" value={result.id} />
             <input name="attemptAnswerId" type="hidden" value={result.attemptAnswerId} />
             <input name="materialId" type="hidden" value={materialId ?? ""} />
-            <button className="pixel-button bg-white px-4 py-2" type="submit">
-              收藏复习
-            </button>
+            <SubmitButton className="bg-white px-4 py-2" label="收藏复习" />
           </form>
         ) : null}
         <form action={generatePracticeAnswerAiExplanationAction}>
           <input name="attemptId" type="hidden" value={result.id} />
           <input name="attemptAnswerId" type="hidden" value={result.attemptAnswerId} />
           <input name="materialId" type="hidden" value={materialId ?? ""} />
-          <button className="pixel-button bg-white px-4 py-2" type="submit">
-            {result.aiExplanation ? "重新生成本题 AI 解析" : "请求本题 AI 解析"}
-          </button>
+          <SubmitButton className="bg-white px-4 py-2" label={result.aiExplanation ? "重新生成本题 AI 解析" : "请求本题 AI 解析"} />
         </form>
       </div>
     </section>
@@ -259,19 +244,13 @@ function PracticeAnswerFields({
 }) {
   if (question.kind === "short_answer" || question.kind === "case_analysis") {
     return (
-      <label className="grid gap-2 text-sm font-bold">
-        作答内容
-        <textarea className={`border-3 border-black bg-white p-3 text-base font-bold leading-7 ${question.kind === "case_analysis" ? "min-h-56" : "min-h-36"}`} name="answer" placeholder="输入作答内容" required />
-      </label>
+      <TextareaField label="作答内容" name="answer" placeholder="输入作答内容" required textareaClassName={`text-base ${question.kind === "case_analysis" ? "min-h-56" : "min-h-36"}`} />
     );
   }
 
   if (question.kind === "blank") {
     return (
-      <label className="grid gap-2 text-sm font-bold">
-        填空答案
-        <input className="border-3 border-black bg-white p-3 text-base font-bold" name="answer" placeholder="输入填空答案" required />
-      </label>
+      <TextField inputClassName="p-3 text-base" label="填空答案" name="answer" placeholder="输入填空答案" required />
     );
   }
 
@@ -283,10 +262,9 @@ function PracticeAnswerFields({
           { key: "true", text: "正确" },
           { key: "false", text: "错误" }
         ].map((option) => (
-          <label key={option.key} className="flex min-w-0 items-start gap-3 border-3 border-black bg-[var(--surface-subtle)] p-3 font-bold">
-            <input className="mt-1 h-4 w-4 shrink-0 accent-[var(--primary)]" name="answer" required type="radio" value={option.key} />
-            <span>{option.text}</span>
-          </label>
+          <PixelChoice key={option.key} className="border-3" inputClassName="h-4 w-4 accent-[var(--primary)]" name="answer" required type="radio" value={option.key}>
+            {option.text}
+          </PixelChoice>
         ))}
       </fieldset>
     );
@@ -297,13 +275,12 @@ function PracticeAnswerFields({
       <fieldset className="grid gap-3">
         <legend className="sr-only">选择多个答案</legend>
         {question.options.map((option) => (
-          <label key={option.key} className="flex min-w-0 items-start gap-3 border-3 border-black bg-[var(--surface-subtle)] p-3 font-bold">
-            <input className="mt-1 h-4 w-4 shrink-0 accent-[var(--primary)]" name="answer" type="checkbox" value={option.key} />
-            <span className="min-w-0 break-words">
+          <PixelChoice key={option.key} className="border-3" inputClassName="h-4 w-4 accent-[var(--primary)]" name="answer" type="checkbox" value={option.key}>
+            <span>
               <span className="mr-2 font-black">{option.key}.</span>
               {option.text}
             </span>
-          </label>
+          </PixelChoice>
         ))}
       </fieldset>
     );
@@ -313,13 +290,12 @@ function PracticeAnswerFields({
     <fieldset className="grid gap-3">
       <legend className="sr-only">选择答案</legend>
       {question.options.map((option) => (
-        <label key={option.key} className="flex min-w-0 items-start gap-3 border-3 border-black bg-[var(--surface-subtle)] p-3 font-bold">
-          <input className="mt-1 h-4 w-4 shrink-0 accent-[var(--primary)]" name="answer" required type="radio" value={option.key} />
-          <span className="min-w-0 break-words">
+        <PixelChoice key={option.key} className="border-3" inputClassName="h-4 w-4 accent-[var(--primary)]" name="answer" required type="radio" value={option.key}>
+          <span>
             <span className="mr-2 font-black">{option.key}.</span>
             {option.text}
           </span>
-        </label>
+        </PixelChoice>
       ))}
     </fieldset>
   );
@@ -359,8 +335,4 @@ function EmptyState({
       </div>
     </section>
   );
-}
-
-function Feedback({ error }: { error: string }) {
-  return <p className="border-3 border-black bg-red-50 p-3 text-sm font-bold text-red-700">{error}</p>;
 }

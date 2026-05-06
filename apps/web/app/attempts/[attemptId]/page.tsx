@@ -3,6 +3,7 @@ import type { Route } from "next";
 import { AppShell } from "@/components/app-shell";
 import { requireWebSession } from "@/lib/auth";
 import { getAttemptReport } from "@openexam/core/papers";
+import { FeedbackMessage, SubmitButton, TextField } from "@openexam/core/pixel-ui";
 import { collectAttemptQuestionAction, confirmAllAttemptAnswerScoresAction, confirmAttemptAnswerScoreAction, generateAttemptAnswerAiExplanationAction } from "../../papers/actions";
 
 type AttemptReportPageProps = {
@@ -26,7 +27,7 @@ export default async function AttemptReportPage({ params, searchParams }: Attemp
   return (
     <AppShell section="learner" eyebrow="作答分析" title="作答报告">
       <section className="grid gap-5">
-        <Feedback error={query.error} notice={query.notice} />
+        <FeedbackMessage error={query.error} notice={query.notice} />
         {!report ? (
           <section className="pixel-panel grid gap-4 p-5">
             <div>
@@ -85,9 +86,7 @@ export default async function AttemptReportPage({ params, searchParams }: Attemp
             {report.answers.some((a) => a.aiSuggestedScore !== null && !a.userConfirmed) ? (
               <form action={confirmAllAttemptAnswerScoresAction} className="flex justify-end">
                 <input name="attemptId" type="hidden" value={report.id} />
-                <button className="pixel-button bg-[var(--teal)] px-4 py-2 text-sm text-white" type="submit">
-                  确认全部 AI 建议分
-                </button>
+                <SubmitButton className="bg-[var(--teal)] px-4 py-2 text-white" label="确认全部 AI 建议分" />
               </form>
             ) : null}
             <section className="grid gap-4">
@@ -133,26 +132,16 @@ export default async function AttemptReportPage({ params, searchParams }: Attemp
                           <form action={confirmAttemptAnswerScoreAction} className="contents">
                             <input name="attemptId" type="hidden" value={report.id} />
                             <input name="attemptAnswerId" type="hidden" value={answer.id} />
-                            <label className="grid gap-1 text-sm font-bold">
-                              调整分
-                              <input className="w-28 border-2 border-black bg-white px-2 py-1" defaultValue={String(answer.score ?? "")} max={answer.maxScore} min="0" name="score" step="0.5" type="number" />
-                            </label>
-                            <button className="pixel-button bg-white px-3 py-2 text-sm" type="submit">
-                              重新确认
-                            </button>
+                            <TextField defaultValue={String(answer.score ?? "")} inputClassName="w-28 border-2 px-2 py-1" label="调整分" labelClassName="gap-1" max={answer.maxScore} min="0" name="score" step="0.5" type="number" />
+                            <SubmitButton className="bg-white px-3 py-2" label="重新确认" />
                           </form>
                         </div>
                       ) : (
                         <form action={confirmAttemptAnswerScoreAction} className="flex flex-wrap items-end gap-2">
                           <input name="attemptId" type="hidden" value={report.id} />
                           <input name="attemptAnswerId" type="hidden" value={answer.id} />
-                          <label className="grid gap-1 text-sm font-bold">
-                            确认分
-                            <input className="w-28 border-2 border-black bg-white px-2 py-1" defaultValue={String(answer.aiSuggestedScore ?? answer.score ?? "")} max={answer.maxScore} min="0" name="score" step="0.5" type="number" />
-                          </label>
-                          <button className="pixel-button bg-white px-3 py-2 text-sm" type="submit">
-                            确认分数
-                          </button>
+                          <TextField defaultValue={String(answer.aiSuggestedScore ?? answer.score ?? "")} inputClassName="w-28 border-2 px-2 py-1" label="确认分" labelClassName="gap-1" max={answer.maxScore} min="0" name="score" step="0.5" type="number" />
+                          <SubmitButton className="bg-white px-3 py-2" label="确认分数" />
                         </form>
                       )}
                     </div>
@@ -171,18 +160,14 @@ export default async function AttemptReportPage({ params, searchParams }: Attemp
                     <form action={generateAttemptAnswerAiExplanationAction}>
                       <input name="attemptId" type="hidden" value={report.id} />
                       <input name="attemptAnswerId" type="hidden" value={answer.id} />
-                      <button className="pixel-button w-fit bg-white px-4 py-2" type="submit">
-                        {answer.aiExplanation ? "重新生成本题 AI 解析" : "请求本题 AI 解析"}
-                      </button>
+                      <SubmitButton className="w-fit bg-white px-4 py-2" label={answer.aiExplanation ? "重新生成本题 AI 解析" : "请求本题 AI 解析"} />
                     </form>
                     {answer.isCorrect !== false && answer.userAnswer ? (
                       <form action={collectAttemptQuestionAction}>
                         <input name="attemptId" type="hidden" value={report.id} />
                         <input name="attemptAnswerId" type="hidden" value={answer.id} />
                         <input name="questionId" type="hidden" value={answer.questionId} />
-                        <button className="pixel-button w-fit bg-white px-4 py-2" type="submit">
-                          收藏复习
-                        </button>
+                        <SubmitButton className="w-fit bg-white px-4 py-2" label="收藏复习" />
                       </form>
                     ) : null}
                   </div>
@@ -202,18 +187,6 @@ function Metric({ label, value }: { label: string; value: string }) {
       <p className="text-xs font-bold uppercase text-[var(--muted)]">{label}</p>
       <p className="mt-1 text-2xl font-black">{value}</p>
     </article>
-  );
-}
-
-function Feedback({ error, notice }: { error?: string; notice?: string }) {
-  if (!error && !notice) {
-    return null;
-  }
-
-  return (
-    <p className={`border-3 border-black p-3 text-sm font-bold ${error ? "bg-red-50 text-red-700" : "bg-[var(--primary)] text-black"}`}>
-      {error || notice}
-    </p>
   );
 }
 

@@ -1,9 +1,9 @@
 import Link from "next/link";
-import { PixelSelect } from "@openexam/core/pixel-select";
 import type { Route } from "next";
 import { AppShell } from "@/components/app-shell";
 import { requireAdminSession } from "@/lib/auth";
 import { listKnowledgeHierarchy } from "@openexam/core/exam-core";
+import { FeedbackMessage, PixelChoice, SelectField, SubmitButton, TextField } from "@openexam/core/pixel-ui";
 import {
   adminPaperArchiveFilters,
   listAdminPaperQuestionOptions,
@@ -24,9 +24,6 @@ type AdminPapersPageProps = {
     archived?: string;
   }>;
 };
-
-const inputClass = "min-w-0 border-3 border-black bg-white px-3 py-2 text-sm font-bold";
-const labelClass = "grid gap-2 text-sm font-bold";
 
 const visibilityLabels: Record<string, string> = {
   private: "私有",
@@ -59,7 +56,7 @@ export default async function AdminPapersPage({ searchParams }: AdminPapersPageP
   return (
     <AppShell section="admin" eyebrow="试卷治理" title="试卷">
       <section className="grid gap-5">
-        <Feedback error={params.error} notice={params.notice} />
+        <FeedbackMessage error={params.error} notice={params.notice} />
 
         <section className="pixel-panel grid gap-4 p-5">
           <div>
@@ -99,9 +96,7 @@ export default async function AdminPapersPage({ searchParams }: AdminPapersPageP
                 </option>
               ))}
             </SelectField>
-            <button className="pixel-button self-end px-4 py-2" type="submit">
-              查询
-            </button>
+            <SubmitButton className="px-4 py-2" label="查询" />
             <Link href={"/papers" as Route} className="pixel-button self-end bg-white px-4 py-2 text-center">
               重置
             </Link>
@@ -230,9 +225,8 @@ function PaperForm({
 
           return (
             <section key={question.id} className="grid gap-3 border-2 border-black bg-[var(--surface-subtle)] p-3">
-              <label className="flex min-w-0 items-start gap-3 text-sm font-bold">
-                <input className="mt-1 h-5 w-5 accent-black" defaultChecked={Boolean(existing)} name="questionId" type="checkbox" value={question.id} />
-                <span className="min-w-0">
+              <PixelChoice className="border-0 bg-transparent p-0 text-sm" defaultChecked={Boolean(existing)} name="questionId" type="checkbox" value={question.id}>
+                <span>
                   <span className="block break-words text-base font-black">{question.stem}</span>
                   <span className="mt-1 flex flex-wrap gap-2">
                     <span className="status-chip px-2 py-1">{existing ? "已选" : "未选"}</span>
@@ -242,7 +236,7 @@ function PaperForm({
                     {question.publicReady ? <span className="status-chip bg-[var(--teal)] px-2 py-1">可公开</span> : null}
                   </span>
                 </span>
-              </label>
+              </PixelChoice>
               <div className="grid gap-3 lg:grid-cols-[0.7fr_0.7fr_1fr_0.7fr]">
                 <TextField label="题序" name={`order_${question.id}`} defaultValue={String(defaultOrder)} required />
                 <TextField label="题号" name={`number_${question.id}`} defaultValue={existing?.number ?? String(defaultOrder)} required />
@@ -253,9 +247,7 @@ function PaperForm({
           );
         })}
       </div>
-      <button className="pixel-button w-fit px-4 py-2" type="submit">
-        {submitLabel}
-      </button>
+      <SubmitButton className="w-fit px-4 py-2" label={submitLabel} />
     </form>
   );
 }
@@ -266,74 +258,14 @@ function PaperActions({ paperId, archived }: { paperId: string; archived: boolea
       {archived ? (
         <form action={restorePaperAction}>
           <input name="id" type="hidden" value={paperId} />
-          <button className="pixel-button bg-white px-3 py-2 text-sm" type="submit">
-            恢复试卷
-          </button>
+          <SubmitButton className="bg-white px-3 py-2" label="恢复试卷" />
         </form>
       ) : (
         <form action={archivePaperAction}>
           <input name="id" type="hidden" value={paperId} />
-          <button className="pixel-button bg-white px-3 py-2 text-sm" type="submit">
-            隐藏试卷
-          </button>
+          <SubmitButton className="bg-white px-3 py-2" label="隐藏试卷" />
         </form>
       )}
     </div>
-  );
-}
-
-function Feedback({ error, notice }: { error?: string; notice?: string }) {
-  if (!error && !notice) {
-    return null;
-  }
-
-  return (
-    <p className={`border-3 border-black p-3 text-sm font-bold ${error ? "bg-red-50 text-red-700" : "bg-[var(--primary)] text-black"}`}>
-      {error || notice}
-    </p>
-  );
-}
-
-function TextField({
-  label,
-  name,
-  defaultValue = "",
-  placeholder,
-  required = false
-}: {
-  label: string;
-  name: string;
-  defaultValue?: string;
-  placeholder?: string;
-  required?: boolean;
-}) {
-  return (
-    <label className={labelClass}>
-      {label}
-      <input className={inputClass} defaultValue={defaultValue} name={name} placeholder={placeholder} required={required} />
-    </label>
-  );
-}
-
-function SelectField({
-  label,
-  name,
-  defaultValue,
-  required = false,
-  children
-}: {
-  label: string;
-  name: string;
-  defaultValue?: string;
-  required?: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <label className={labelClass}>
-      {label}
-      <PixelSelect className={inputClass} defaultValue={defaultValue} name={name} required={required}>
-        {children}
-      </PixelSelect>
-    </label>
   );
 }

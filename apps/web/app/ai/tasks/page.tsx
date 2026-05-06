@@ -1,6 +1,7 @@
 import { AppShell } from "@/components/app-shell";
 import { requireWebSession } from "@/lib/auth";
 import { listUserAiCalls } from "@openexam/core/ai";
+import { FeedbackMessage, SubmitButton } from "@openexam/core/pixel-ui";
 import { retryAiCallAction } from "./actions";
 
 type AiTasksPageProps = {
@@ -35,7 +36,7 @@ export default async function AiTasksPage({ searchParams }: AiTasksPageProps) {
   return (
     <AppShell section="learner" eyebrow="AI 任务" title="AI 任务">
       <section className="grid gap-5">
-        <Feedback error={params.error} notice={params.notice} />
+        <FeedbackMessage error={params.error} notice={params.notice} />
 
         <section className="pixel-panel grid gap-4 p-5">
           <div>
@@ -67,9 +68,7 @@ export default async function AiTasksPage({ searchParams }: AiTasksPageProps) {
                   {call.status === "failed" && call.taskType === "explain_question" ? (
                     <form action={retryAiCallAction} className="mt-3">
                       <input name="aiCallId" type="hidden" value={call.id} />
-                      <button className="pixel-button bg-white px-3 py-2 text-sm" type="submit">
-                        重试
-                      </button>
+                      <SubmitButton className="bg-white px-3 py-2" label="重试" />
                     </form>
                   ) : null}
                 </article>
@@ -79,18 +78,6 @@ export default async function AiTasksPage({ searchParams }: AiTasksPageProps) {
         </section>
       </section>
     </AppShell>
-  );
-}
-
-function Feedback({ error, notice }: { error?: string; notice?: string }) {
-  if (!error && !notice) {
-    return null;
-  }
-
-  return (
-    <p className={`border-3 border-black p-3 text-sm font-bold ${error ? "bg-red-50 text-red-700" : "bg-[var(--primary)] text-black"}`}>
-      {error || notice}
-    </p>
   );
 }
 

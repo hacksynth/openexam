@@ -1,6 +1,7 @@
 import { AppShell } from "@/components/app-shell";
 import { requireAdminSession } from "@/lib/auth";
 import { listAuditLogs } from "@openexam/core/audit";
+import { SubmitButton, TextField } from "@openexam/core/pixel-ui";
 
 type AdminAuditPageProps = {
   searchParams: Promise<{ action?: string; entityType?: string; entityId?: string; actorId?: string }>;
@@ -20,12 +21,10 @@ export default async function AdminAuditPage({ searchParams }: AdminAuditPagePro
             <h2 className="mt-1 text-xl font-black">事件筛选</h2>
           </div>
           <form className="grid gap-3 lg:grid-cols-[1fr_1fr_1fr_auto]">
-            <input className="border-3 border-black bg-white px-3 py-2 text-sm font-bold" defaultValue={params.action ?? ""} name="action" placeholder="动作" />
-            <input className="border-3 border-black bg-white px-3 py-2 text-sm font-bold" defaultValue={params.entityType ?? ""} name="entityType" placeholder="实体类型" />
-            <input className="border-3 border-black bg-white px-3 py-2 text-sm font-bold" defaultValue={params.entityId ?? ""} name="entityId" placeholder="实体 ID" />
-            <button className="pixel-button px-4 py-2" type="submit">
-              查询
-            </button>
+            <TextField defaultValue={params.action ?? ""} label="动作" name="action" placeholder="动作" />
+            <TextField defaultValue={params.entityType ?? ""} label="实体类型" name="entityType" placeholder="实体类型" />
+            <TextField defaultValue={params.entityId ?? ""} label="实体 ID" name="entityId" placeholder="实体 ID" />
+            <SubmitButton className="px-4 py-2" label="查询" />
           </form>
         </section>
 

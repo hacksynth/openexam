@@ -1,18 +1,15 @@
 import Link from "next/link";
-import { PixelSelect } from "@openexam/core/pixel-select";
 import type { Route } from "next";
 import { AppShell } from "@/components/app-shell";
 import { requireWebSession } from "@/lib/auth";
 import { listKnowledgeHierarchy } from "@openexam/core/exam-core";
 import { listUserMaterials } from "@openexam/core/materials";
+import { FeedbackMessage, SelectField, SubmitButton, TextField } from "@openexam/core/pixel-ui";
 import { uploadMaterialAction } from "./actions";
 
 type MaterialsPageProps = {
   searchParams: Promise<{ error?: string; notice?: string }>;
 };
-
-const inputClass = "min-w-0 border-3 border-black bg-white px-3 py-2 text-sm font-bold";
-const labelClass = "grid gap-2 text-sm font-bold";
 
 export default async function MaterialsPage({ searchParams }: MaterialsPageProps) {
   const session = await requireWebSession();
@@ -25,7 +22,7 @@ export default async function MaterialsPage({ searchParams }: MaterialsPageProps
   return (
     <AppShell section="learner" eyebrow="资料库" title="资料">
       <section className="grid gap-5">
-        <Feedback error={params.error} notice={params.notice} />
+        <FeedbackMessage error={params.error} notice={params.notice} />
 
         <section className="pixel-panel grid gap-4 p-5">
           <div>
@@ -45,13 +42,14 @@ export default async function MaterialsPage({ searchParams }: MaterialsPageProps
                 </option>
               ))}
             </SelectField>
-            <label className={labelClass}>
-              文件
-              <input className={inputClass} name="file" required type="file" accept=".txt,.md,.json,.pdf,.docx,.png,.jpg,.jpeg,.webp,text/plain,text/markdown,application/json,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/png,image/jpeg,image/webp" />
-            </label>
-            <button className="pixel-button w-fit px-4 py-2" type="submit">
-              上传并创建抽题任务
-            </button>
+            <TextField
+              accept=".txt,.md,.json,.pdf,.docx,.png,.jpg,.jpeg,.webp,text/plain,text/markdown,application/json,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/png,image/jpeg,image/webp"
+              label="文件"
+              name="file"
+              required
+              type="file"
+            />
+            <SubmitButton className="w-fit px-4 py-2" label="上传并创建抽题任务" />
           </form>
         </section>
 
@@ -105,38 +103,6 @@ export default async function MaterialsPage({ searchParams }: MaterialsPageProps
         </section>
       </section>
     </AppShell>
-  );
-}
-
-function Feedback({ error, notice }: { error?: string; notice?: string }) {
-  if (!error && !notice) {
-    return null;
-  }
-
-  return (
-    <p className={`border-3 border-black p-3 text-sm font-bold ${error ? "bg-red-50 text-red-700" : "bg-[var(--primary)] text-black"}`}>
-      {error || notice}
-    </p>
-  );
-}
-
-function TextField({ label, name, placeholder }: { label: string; name: string; placeholder?: string }) {
-  return (
-    <label className={labelClass}>
-      {label}
-      <input className={inputClass} name={name} placeholder={placeholder} />
-    </label>
-  );
-}
-
-function SelectField({ label, name, children }: { label: string; name: string; children: React.ReactNode }) {
-  return (
-    <label className={labelClass}>
-      {label}
-      <PixelSelect className={inputClass} name={name}>
-        {children}
-      </PixelSelect>
-    </label>
   );
 }
 

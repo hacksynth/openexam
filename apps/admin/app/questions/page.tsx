@@ -1,9 +1,9 @@
 import Link from "next/link";
-import { PixelSelect } from "@openexam/core/pixel-select";
 import type { Route } from "next";
 import { AppShell } from "@/components/app-shell";
 import { requireAdminSession } from "@/lib/auth";
 import { listKnowledgeHierarchy } from "@openexam/core/exam-core";
+import { FeedbackMessage, SelectField, SubmitButton, TextareaField, TextField } from "@openexam/core/pixel-ui";
 import {
   adminQuestionKindOptions,
   adminQuestionArchiveFilters,
@@ -35,9 +35,6 @@ type QuestionsPageProps = {
     archived?: string;
   }>;
 };
-
-const inputClass = "min-w-0 border-3 border-black bg-white px-3 py-2 text-sm font-bold";
-const labelClass = "grid gap-2 text-sm font-bold";
 
 const visibilityLabels: Record<string, string> = {
   private: "私有",
@@ -114,7 +111,7 @@ export default async function AdminQuestionsPage({ searchParams }: QuestionsPage
   return (
     <AppShell section="admin" eyebrow="题库治理" title="题目">
       <section className="grid gap-5">
-        <Feedback error={params.error} notice={params.notice} />
+        <FeedbackMessage error={params.error} notice={params.notice} />
 
         <section className="pixel-panel grid gap-4 p-5">
           <div>
@@ -171,9 +168,7 @@ export default async function AdminQuestionsPage({ searchParams }: QuestionsPage
                 </option>
               ))}
             </SelectField>
-            <button className="pixel-button self-end px-4 py-2" type="submit">
-              查询
-            </button>
+            <SubmitButton className="px-4 py-2" label="查询" />
             <Link href={"/questions" as Route} className="pixel-button self-end bg-white px-4 py-2 text-center">
               重置
             </Link>
@@ -249,19 +244,15 @@ export default async function AdminQuestionsPage({ searchParams }: QuestionsPage
 function ImportForm() {
   return (
     <form action={importAdminQuestionsAction} className="grid gap-3">
-      <label className={labelClass}>
-        JSON 内容
-        <textarea
-          className={`${inputClass} font-mono`}
-          name="jsonPayload"
-          placeholder='[{"kind":"multiple_choice","stem":"题干","options":{"A":"选项A","B":"选项B","C":"选项C","D":"选项D"},"answer":["A","B"],"knowledgeNodeId":"...","visibility":"private","sourceType":"original","reviewStatus":"draft"}]'
-          required
-          rows={7}
-        />
-      </label>
-      <button className="pixel-button w-fit px-4 py-2" type="submit">
-        导入题目
-      </button>
+      <TextareaField
+        label="JSON 内容"
+        name="jsonPayload"
+        placeholder='[{"kind":"multiple_choice","stem":"题干","options":{"A":"选项A","B":"选项B","C":"选项C","D":"选项D"},"answer":["A","B"],"knowledgeNodeId":"...","visibility":"private","sourceType":"original","reviewStatus":"draft"}]'
+        required
+        rows={7}
+        textareaClassName="font-mono"
+      />
+      <SubmitButton className="w-fit px-4 py-2" label="导入题目" />
     </form>
   );
 }
@@ -299,10 +290,7 @@ function QuestionForm({
           ))}
         </SelectField>
       </div>
-      <label className={labelClass}>
-        题干
-        <textarea className={inputClass} defaultValue={question?.stem ?? ""} name="stem" placeholder="输入题干" required rows={3} />
-      </label>
+      <TextareaField defaultValue={question?.stem ?? ""} label="题干" name="stem" placeholder="输入题干" required rows={3} />
       <div className="grid gap-3 lg:grid-cols-2">
         <TextField label="选项 A（选择题）" name="optionA" defaultValue={question?.optionA ?? ""} />
         <TextField label="选项 B（选择题）" name="optionB" defaultValue={question?.optionB ?? ""} />
@@ -355,22 +343,11 @@ function QuestionForm({
         <TextField label="来源许可" name="sourceLicense" defaultValue={question?.sourceLicense ?? ""} placeholder="原创 / 授权 / CC BY" />
       </div>
       <div className="grid gap-3 lg:grid-cols-2">
-        <label className={labelClass}>
-          payload JSON（非选择题可选）
-          <textarea className={`${inputClass} font-mono`} defaultValue={question?.payloadJson ?? ""} name="payloadJson" placeholder='{"hints":[]}' rows={3} />
-        </label>
-        <label className={labelClass}>
-          rubric JSON（主观题可选）
-          <textarea className={`${inputClass} font-mono`} defaultValue={question?.rubricJson ?? ""} name="rubricJson" placeholder='{"points":["要点1","要点2"]}' rows={3} />
-        </label>
+        <TextareaField defaultValue={question?.payloadJson ?? ""} label="payload JSON（非选择题可选）" name="payloadJson" placeholder='{"hints":[]}' rows={3} textareaClassName="font-mono" />
+        <TextareaField defaultValue={question?.rubricJson ?? ""} label="rubric JSON（主观题可选）" name="rubricJson" placeholder='{"points":["要点1","要点2"]}' rows={3} textareaClassName="font-mono" />
       </div>
-      <label className={labelClass}>
-        解析
-        <textarea className={inputClass} defaultValue={question?.explanation ?? ""} name="explanation" placeholder="解释正确答案和关键知识点" rows={3} />
-      </label>
-      <button className="pixel-button w-fit px-4 py-2" type="submit">
-        {submitLabel}
-      </button>
+      <TextareaField defaultValue={question?.explanation ?? ""} label="解析" name="explanation" placeholder="解释正确答案和关键知识点" rows={3} />
+      <SubmitButton className="w-fit px-4 py-2" label={submitLabel} />
     </form>
   );
 }
@@ -381,9 +358,7 @@ function QuestionActions({ questionId, archived }: { questionId: string; archive
       {archived ? (
         <form action={restoreAdminQuestionAction}>
           <input name="id" type="hidden" value={questionId} />
-          <button className="pixel-button bg-white px-3 py-2 text-sm" type="submit">
-            恢复题目
-          </button>
+          <SubmitButton className="bg-white px-3 py-2" label="恢复题目" />
         </form>
       ) : (
         <>
@@ -391,53 +366,16 @@ function QuestionActions({ questionId, archived }: { questionId: string; archive
             <form key={status} action={updateAdminQuestionReviewStatusAction}>
               <input name="id" type="hidden" value={questionId} />
               <input name="reviewStatus" type="hidden" value={status} />
-              <button className="pixel-button bg-white px-3 py-2 text-sm" type="submit">
-                设为{reviewStatusLabels[status]}
-              </button>
+              <SubmitButton className="bg-white px-3 py-2" label={`设为${reviewStatusLabels[status]}`} />
             </form>
           ))}
           <form action={archiveAdminQuestionAction}>
             <input name="id" type="hidden" value={questionId} />
-            <button className="pixel-button bg-white px-3 py-2 text-sm" type="submit">
-              归档题目
-            </button>
+            <SubmitButton className="bg-white px-3 py-2" label="归档题目" />
           </form>
         </>
       )}
     </div>
-  );
-}
-
-function Feedback({ error, notice }: { error?: string; notice?: string }) {
-  if (!error && !notice) {
-    return null;
-  }
-
-  return (
-    <p className={`border-3 border-black p-3 text-sm font-bold ${error ? "bg-red-50 text-red-700" : "bg-[var(--primary)] text-black"}`}>
-      {error || notice}
-    </p>
-  );
-}
-
-function TextField({
-  label,
-  name,
-  defaultValue = "",
-  placeholder,
-  required = false
-}: {
-  label: string;
-  name: string;
-  defaultValue?: string;
-  placeholder?: string;
-  required?: boolean;
-}) {
-  return (
-    <label className={labelClass}>
-      {label}
-      <input className={inputClass} defaultValue={defaultValue} name={name} placeholder={placeholder} required={required} />
-    </label>
   );
 }
 
@@ -447,27 +385,4 @@ function answerPresetDefault(value: string | undefined) {
 
 function answerTextDefault(value: string | undefined) {
   return value && !answerPresetOptions.includes(value as (typeof answerPresetOptions)[number]) ? value : "";
-}
-
-function SelectField({
-  label,
-  name,
-  defaultValue,
-  required = false,
-  children
-}: {
-  label: string;
-  name: string;
-  defaultValue?: string;
-  required?: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <label className={labelClass}>
-      {label}
-      <PixelSelect className={inputClass} defaultValue={defaultValue} name={name} required={required}>
-        {children}
-      </PixelSelect>
-    </label>
-  );
 }

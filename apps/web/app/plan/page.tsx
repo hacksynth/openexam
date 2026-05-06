@@ -4,6 +4,7 @@ import { AppShell } from "@/components/app-shell";
 import { ConfirmForm } from "@/components/confirm-form";
 import { requireWebSession } from "@/lib/auth";
 import { getLearningAnalysis } from "@openexam/core/analysis";
+import { FeedbackMessage, SubmitButton } from "@openexam/core/pixel-ui";
 import { getCurrentStudyPlan, listStudyPlanHistory } from "@openexam/core/study-plan";
 import { abandonCurrentStudyPlanAction, generateStudyPlanAction, setStudyPlanTaskCompletedAction } from "./actions";
 
@@ -37,7 +38,7 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
   return (
     <AppShell section="learner" eyebrow="学习计划" title="学习计划">
       <section className="grid gap-5">
-        <Feedback error={params.error} notice={params.notice} />
+        <FeedbackMessage error={params.error} notice={params.notice} />
 
         {analysis.status === "no_goal" ? (
           <EmptyState title="请先设置考试目标" description="学习计划会围绕当前主目标生成。" href="/goals" action="设置目标" />
@@ -119,9 +120,7 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
                               <form action={setStudyPlanTaskCompletedAction}>
                                 <input name="taskId" type="hidden" value={task.id} />
                                 <input name="completed" type="hidden" value={task.completedAt ? "false" : "true"} />
-                                <button className="pixel-button px-3 py-2 text-sm" type="submit">
-                                  {task.completedAt ? "取消完成" : "标记完成"}
-                                </button>
+                                <SubmitButton className="px-3 py-2" label={task.completedAt ? "取消完成" : "标记完成"} />
                               </form>
                             </div>
                           </div>
@@ -167,14 +166,6 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
       </section>
     </AppShell>
   );
-}
-
-function Feedback({ error, notice }: { error?: string; notice?: string }) {
-  if (!error && !notice) {
-    return null;
-  }
-
-  return <p className={`border-3 border-black p-3 text-sm font-bold ${error ? "bg-red-50 text-red-700" : "bg-[var(--primary)] text-black"}`}>{error || notice}</p>;
 }
 
 function Metric({ label, value }: { label: string; value: string }) {

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { Route } from "next";
 import { adminRoutes, sectionLabels, type AppSection } from "@openexam/core/routes";
+import { SubmitButton } from "@openexam/core/pixel-ui";
 import { requireAdminSession } from "@/lib/auth";
 import { adminLogoutAction } from "@/app/logout/actions";
 
@@ -38,9 +39,7 @@ export async function AppShell({ section, title, eyebrow, children }: AppShellPr
           <p className="min-w-0 truncate text-xs font-bold text-[var(--muted)]" title={accountTitle}>
             {accountLabel}
           </p>
-          <button className="pixel-button w-full px-3 py-2 text-sm" type="submit">
-            退出登录
-          </button>
+          <SubmitButton className="w-full px-3 py-2" label="退出登录" />
         </form>
       </aside>
 

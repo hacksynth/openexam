@@ -3,6 +3,7 @@ import type { Route } from "next";
 import { AppShell } from "@/components/app-shell";
 import { requireWebSession } from "@/lib/auth";
 import { getKnowledgeDashboard } from "@openexam/core/knowledge";
+import { FeedbackMessage, SubmitButton, TextareaField } from "@openexam/core/pixel-ui";
 import { generateKnowledgeExplanationAction, saveKnowledgeNoteAction } from "./actions";
 
 type KnowledgePageProps = {
@@ -16,7 +17,7 @@ export default async function KnowledgePage({ searchParams }: KnowledgePageProps
   return (
     <AppShell section="learner" eyebrow="知识点" title="知识点">
       <section className="grid gap-5">
-        <Feedback error={params.error} notice={params.notice} />
+        <FeedbackMessage error={params.error} notice={params.notice} />
 
         {state.status === "no_goal" ? (
           <section className="pixel-panel grid gap-4 p-5">
@@ -98,19 +99,12 @@ export default async function KnowledgePage({ searchParams }: KnowledgePageProps
                   <div className="grid gap-3 lg:grid-cols-[1fr_auto]">
                     <form action={saveKnowledgeNoteAction} className="grid gap-2">
                       <input name="knowledgeNodeId" type="hidden" value={node.id} />
-                      <label className="grid gap-2 text-sm font-bold">
-                        我的笔记
-                        <textarea className="border-3 border-black bg-white px-3 py-2" defaultValue={node.note?.note ?? ""} name="note" rows={3} />
-                      </label>
-                      <button className="pixel-button w-fit bg-white px-4 py-2" type="submit">
-                        保存笔记
-                      </button>
+                      <TextareaField defaultValue={node.note?.note ?? ""} label="我的笔记" name="note" rows={3} />
+                      <SubmitButton className="w-fit bg-white px-4 py-2" label="保存笔记" />
                     </form>
                     <form action={generateKnowledgeExplanationAction} className="self-end">
                       <input name="knowledgeNodeId" type="hidden" value={node.id} />
-                      <button className="pixel-button px-4 py-2" type="submit">
-                        生成 AI 解释
-                      </button>
+                      <SubmitButton className="px-4 py-2" label="生成 AI 解释" />
                     </form>
                   </div>
                 </article>
@@ -129,17 +123,5 @@ function Metric({ label, value }: { label: string; value: string }) {
       <p className="text-xs font-bold uppercase text-[var(--muted)]">{label}</p>
       <p className="mt-1 text-2xl font-black">{value}</p>
     </article>
-  );
-}
-
-function Feedback({ error, notice }: { error?: string; notice?: string }) {
-  if (!error && !notice) {
-    return null;
-  }
-
-  return (
-    <p className={`border-3 border-black p-3 text-sm font-bold ${error ? "bg-red-50 text-red-700" : "bg-[var(--primary)] text-black"}`}>
-      {error || notice}
-    </p>
   );
 }

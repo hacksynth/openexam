@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useState, useTransition } from "react";
+import { PixelButton } from "@openexam/core/pixel-ui";
 
 export function AiExplainButton({ questionId }: { questionId: string }) {
   const [explanation, setExplanation] = useState<string | null>(null);
@@ -44,9 +45,9 @@ export function AiExplainButton({ questionId }: { questionId: string }) {
   return (
     <div className="grid gap-3">
       {!explanation ? (
-        <button className="pixel-button bg-white px-4 py-2" disabled={isPending} onClick={handleSubmit} type="button">
+        <PixelButton className="bg-white px-4 py-2" disabled={isPending} onClick={handleSubmit} type="button">
           {isPending ? "AI 解析中..." : "AI 解析本题"}
-        </button>
+        </PixelButton>
       ) : null}
       {error ? <p className="border-2 border-[var(--danger)] bg-red-50 p-3 text-sm font-bold text-[var(--danger)]">{error}</p> : null}
       {explanation ? (

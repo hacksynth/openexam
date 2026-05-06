@@ -1,16 +1,13 @@
 import { AppShell } from "@/components/app-shell";
-import { PixelSelect } from "@openexam/core/pixel-select";
 import { requireAdminSession } from "@/lib/auth";
 import { listKnowledgeHierarchy } from "@openexam/core/exam-core";
 import { listAdminMaterials, listMaterialQuestionCandidates, materialQuestionKinds } from "@openexam/core/materials";
+import { FeedbackMessage, SelectField, SubmitButton, TextareaField, TextField } from "@openexam/core/pixel-ui";
 import { confirmCandidateAction, updateCandidateAction, uploadAdminMaterialAction } from "./actions";
 
 type AdminMaterialsPageProps = {
   searchParams: Promise<{ error?: string; notice?: string }>;
 };
-
-const inputClass = "min-w-0 border-3 border-black bg-white px-3 py-2 text-sm font-bold";
-const labelClass = "grid gap-2 text-sm font-bold";
 
 export default async function AdminMaterialsPage({ searchParams }: AdminMaterialsPageProps) {
   await requireAdminSession();
@@ -31,7 +28,7 @@ export default async function AdminMaterialsPage({ searchParams }: AdminMaterial
   return (
     <AppShell section="admin" eyebrow="资料治理" title="资料">
       <section className="grid gap-5">
-        <Feedback error={params.error} notice={params.notice} />
+        <FeedbackMessage error={params.error} notice={params.notice} />
 
         <section className="pixel-panel grid gap-4 p-5">
           <div>
@@ -51,13 +48,14 @@ export default async function AdminMaterialsPage({ searchParams }: AdminMaterial
                 </option>
               ))}
             </SelectField>
-            <label className={labelClass}>
-              文件
-              <input className={inputClass} name="file" required type="file" accept=".txt,.md,.pdf,.docx,.png,.jpg,.jpeg,.webp,text/plain,text/markdown,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/png,image/jpeg,image/webp" />
-            </label>
-            <button className="pixel-button w-fit px-4 py-2" type="submit">
-              上传并创建抽题任务
-            </button>
+            <TextField
+              accept=".txt,.md,.pdf,.docx,.png,.jpg,.jpeg,.webp,text/plain,text/markdown,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/png,image/jpeg,image/webp"
+              label="文件"
+              name="file"
+              required
+              type="file"
+            />
+            <SubmitButton className="w-fit px-4 py-2" label="上传并创建抽题任务" />
           </form>
         </section>
 
@@ -124,9 +122,7 @@ export default async function AdminMaterialsPage({ searchParams }: AdminMaterial
                     <CandidateEditForm candidate={candidate} knowledgeNodes={knowledgeNodes} />
                     <form action={confirmCandidateAction}>
                       <input name="candidateId" type="hidden" value={candidate.id} />
-                      <button className="pixel-button w-fit px-4 py-2" type="submit">
-                        确认入题库
-                      </button>
+                      <SubmitButton className="w-fit px-4 py-2" label="确认入题库" />
                     </form>
                   </div>
                 ) : null}
@@ -136,38 +132,6 @@ export default async function AdminMaterialsPage({ searchParams }: AdminMaterial
         </section>
       </section>
     </AppShell>
-  );
-}
-
-function Feedback({ error, notice }: { error?: string; notice?: string }) {
-  if (!error && !notice) {
-    return null;
-  }
-
-  return (
-    <p className={`border-3 border-black p-3 text-sm font-bold ${error ? "bg-red-50 text-red-700" : "bg-[var(--primary)] text-black"}`}>
-      {error || notice}
-    </p>
-  );
-}
-
-function TextField({ label, name, placeholder, defaultValue = "" }: { label: string; name: string; placeholder?: string; defaultValue?: string }) {
-  return (
-    <label className={labelClass}>
-      {label}
-      <input className={inputClass} defaultValue={defaultValue} name={name} placeholder={placeholder} />
-    </label>
-  );
-}
-
-function SelectField({ label, name, defaultValue, children }: { label: string; name: string; defaultValue?: string; children: React.ReactNode }) {
-  return (
-    <label className={labelClass}>
-      {label}
-      <PixelSelect className={inputClass} defaultValue={defaultValue} name={name}>
-        {children}
-      </PixelSelect>
-    </label>
   );
 }
 
@@ -192,10 +156,7 @@ function CandidateEditForm({
         <TextField label="答案" name="answer" defaultValue={candidate.answer} placeholder="A 或 A,C" />
         <TextField label="难度" name="difficulty" defaultValue={candidate.difficulty ? String(candidate.difficulty) : ""} placeholder="1-5" />
       </div>
-      <label className={labelClass}>
-        题干
-        <textarea className={inputClass} defaultValue={candidate.stem} name="stem" rows={2} />
-      </label>
+      <TextareaField defaultValue={candidate.stem} label="题干" name="stem" rows={2} />
       <div className="grid gap-3 lg:grid-cols-4">
         <TextField label="选项 A" name="optionA" defaultValue={candidate.options.A} />
         <TextField label="选项 B" name="optionB" defaultValue={candidate.options.B} />
@@ -213,23 +174,12 @@ function CandidateEditForm({
         </SelectField>
         <TextField label="来源位置" name="sourceRef" defaultValue={candidate.sourceRef ?? ""} />
       </div>
-      <label className={labelClass}>
-        解析
-        <textarea className={inputClass} defaultValue={candidate.explanation ?? ""} name="explanation" rows={2} />
-      </label>
+      <TextareaField defaultValue={candidate.explanation ?? ""} label="解析" name="explanation" rows={2} />
       <div className="grid gap-3 lg:grid-cols-2">
-        <label className={labelClass}>
-          Payload JSON
-          <textarea className={`${inputClass} font-mono`} defaultValue={JSON.stringify(candidate.payload, null, 2)} name="payloadJson" rows={4} />
-        </label>
-        <label className={labelClass}>
-          AnswerKey JSON
-          <textarea className={`${inputClass} font-mono`} defaultValue={JSON.stringify(candidate.answerKey, null, 2)} name="answerKeyJson" rows={4} />
-        </label>
+        <TextareaField defaultValue={JSON.stringify(candidate.payload, null, 2)} label="Payload JSON" name="payloadJson" rows={4} textareaClassName="font-mono" />
+        <TextareaField defaultValue={JSON.stringify(candidate.answerKey, null, 2)} label="AnswerKey JSON" name="answerKeyJson" rows={4} textareaClassName="font-mono" />
       </div>
-      <button className="pixel-button w-fit bg-white px-4 py-2" type="submit">
-        保存候选题
-      </button>
+      <SubmitButton className="w-fit bg-white px-4 py-2" label="保存候选题" />
     </form>
   );
 }

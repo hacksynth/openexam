@@ -1,6 +1,6 @@
 # OpenExam Design System
 
-Last updated: 2026-05-05
+Last updated: 2026-05-06
 
 ## Direction
 
@@ -124,5 +124,7 @@ The foundation UI implements the first pass of the design direction in `apps/web
 - Admin AI preset forms with compact model, task-route, temperature, max-token, enable/disable controls, and status chips.
 - Material upload, job queue, candidate-question, and user-usage pages with dense forms, status chips, error panels, and compact action rows.
 - Truncated account labels in sidebars so long names and emails do not cause horizontal overflow.
+- Shared pixel UI form primitives for text inputs, textareas, selects, date pickers, choices, feedback messages, and submit buttons across learner and admin apps.
+- Custom pixel date picker controls with hard outlines, block shadows, yellow accent blocks, and hidden `YYYY-MM-DD` form values instead of native browser date inputs.
 
 Theme switching is not implemented yet. Current colors are CSS custom properties on `:root`; future theme presets should override those tokens without changing layout or density.

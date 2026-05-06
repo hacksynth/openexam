@@ -3,6 +3,7 @@ import type { Route } from "next";
 import { AppShell } from "@/components/app-shell";
 import { requireWebSession } from "@/lib/auth";
 import { getPaperAttemptSession } from "@openexam/core/papers";
+import { FeedbackMessage } from "@openexam/core/pixel-ui";
 import { PaperAttemptForm } from "./paper-attempt-form";
 
 type PaperAttemptPageProps = {
@@ -18,7 +19,7 @@ export default async function PaperAttemptPage({ params, searchParams }: PaperAt
   return (
     <AppShell section="learner" eyebrow="试卷作答" title="试卷">
       <section className="grid gap-5">
-        <Feedback error={query.error} notice={query.notice} />
+        <FeedbackMessage error={query.error} notice={query.notice} />
         {state.status === "no_goal" ? (
           <EmptyState title="请先设置考试目标" description="设置目标后才能进入匹配的公开试卷。" href="/goals" action="设置目标" />
         ) : state.status === "empty" ? (
@@ -42,14 +43,6 @@ export default async function PaperAttemptPage({ params, searchParams }: PaperAt
       </section>
     </AppShell>
   );
-}
-
-function Feedback({ error, notice }: { error?: string; notice?: string }) {
-  if (!error && !notice) {
-    return null;
-  }
-
-  return <p className={`border-3 border-black p-3 text-sm font-bold ${error ? "bg-red-50 text-red-700" : "bg-[var(--primary)] text-black"}`}>{error || notice}</p>;
 }
 
 function EmptyState({ title, description, href, action }: { title: string; description: string; href: string; action: string }) {

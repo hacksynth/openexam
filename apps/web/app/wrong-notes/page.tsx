@@ -3,6 +3,7 @@ import type { Route } from "next";
 import { AppShell } from "@/components/app-shell";
 import { requireWebSession } from "@/lib/auth";
 import { listWrongNotes, summarizeWrongNotes } from "@openexam/core/practice";
+import { FeedbackMessage, SelectField, SubmitButton, TextareaField, TextField } from "@openexam/core/pixel-ui";
 import { listWrongNoteReviewCardViews } from "@openexam/core/wrong-note-images";
 import { generateWrongNoteAiAnalysisAction, queueWrongNoteReviewCardAction, setWrongNoteMasteredAction, updateWrongNoteReflectionAction } from "./actions";
 import { AiAnalysisSubmitButton, ReviewCardSubmitButton } from "./submit-button";
@@ -64,7 +65,7 @@ export default async function WrongNotesPage({ searchParams }: WrongNotesPagePro
   return (
     <AppShell section="learner" eyebrow="练习闭环" title="错题本">
       <section className="grid gap-5">
-        <Feedback error={params.error} notice={params.notice} />
+        <FeedbackMessage error={params.error} notice={params.notice} />
 
         <section className="pixel-panel grid gap-4 p-5">
           <div>
@@ -128,25 +129,17 @@ export default async function WrongNotesPage({ searchParams }: WrongNotesPagePro
           <form className="grid gap-3 md:grid-cols-[1fr_1fr_auto]">
             <input name="filter" type="hidden" value={filter} />
             <input name="knowledgeNodeId" type="hidden" value={knowledgeNodeId} />
-            <label className="grid gap-2 text-sm font-bold">
-              最少错误次数
-              <input className="border-3 border-black bg-white px-3 py-2" defaultValue={minErrorCount} name="minErrorCount" placeholder="例如 2" />
-            </label>
-            <label className="grid gap-2 text-sm font-bold">
-              题型
-              <select className="border-3 border-black bg-white px-3 py-2" defaultValue={questionKind} name="questionKind">
-                <option value="">全部</option>
-                <option value="single_choice">单选</option>
-                <option value="multiple_choice">多选</option>
-                <option value="true_false">判断</option>
-                <option value="blank">填空</option>
-                <option value="short_answer">简答</option>
-                <option value="case_analysis">案例</option>
-              </select>
-            </label>
-            <button className="pixel-button self-end px-4 py-2" type="submit">
-              筛选
-            </button>
+            <TextField defaultValue={minErrorCount} label="最少错误次数" name="minErrorCount" placeholder="例如 2" />
+            <SelectField defaultValue={questionKind} label="题型" name="questionKind">
+              <option value="">全部</option>
+              <option value="single_choice">单选</option>
+              <option value="multiple_choice">多选</option>
+              <option value="true_false">判断</option>
+              <option value="blank">填空</option>
+              <option value="short_answer">简答</option>
+              <option value="case_analysis">案例</option>
+            </SelectField>
+            <SubmitButton className="px-4 py-2" label="筛选" />
           </form>
         </section>
 
@@ -203,9 +196,7 @@ function WrongNoteCard({
             <Link href={`/practice?retry=${note.questionId}` as Route} className="pixel-button whitespace-nowrap bg-white px-4 py-2">
               重练此题
             </Link>
-            <button className="pixel-button whitespace-nowrap px-4 py-2" type="submit">
-              {note.mastered ? "标记未掌握" : "标记已掌握"}
-            </button>
+            <SubmitButton className="whitespace-nowrap px-4 py-2" label={note.mastered ? "标记未掌握" : "标记已掌握"} />
           </div>
         </form>
       </div>
@@ -241,17 +232,9 @@ function WrongNoteCard({
       <form action={updateWrongNoteReflectionAction} className="grid gap-3 border-2 border-black bg-white p-3">
         <input name="wrongNoteId" type="hidden" value={note.id} />
         <input name="returnTo" type="hidden" value={currentHref} />
-        <label className="grid gap-2 text-sm font-bold">
-          错因标签
-          <input className="border-2 border-black bg-white px-3 py-2" defaultValue={note.mistakeTags.join("，")} name="mistakeTags" placeholder="概念混淆，审题失误" />
-        </label>
-        <label className="grid gap-2 text-sm font-bold">
-          我的笔记
-          <textarea className="border-2 border-black bg-white px-3 py-2" defaultValue={note.userNotes ?? ""} name="userNotes" rows={3} />
-        </label>
-        <button className="pixel-button w-fit bg-white px-4 py-2" type="submit">
-          保存标签笔记
-        </button>
+        <TextField defaultValue={note.mistakeTags.join("，")} inputClassName="border-2" label="错因标签" name="mistakeTags" placeholder="概念混淆，审题失误" />
+        <TextareaField defaultValue={note.userNotes ?? ""} label="我的笔记" name="userNotes" rows={3} textareaClassName="border-2" />
+        <SubmitButton className="w-fit bg-white px-4 py-2" label="保存标签笔记" />
       </form>
 
       <div className="grid gap-3 border-2 border-black bg-[var(--surface-subtle)] p-3">
@@ -323,18 +306,6 @@ function listKnowledgeOptions(notes: Awaited<ReturnType<typeof listWrongNotes>>)
   }
 
   return [...counts.values()].sort((left, right) => right.count - left.count || left.title.localeCompare(right.title, "zh-CN"));
-}
-
-function Feedback({ error, notice }: { error?: string; notice?: string }) {
-  if (!error && !notice) {
-    return null;
-  }
-
-  return (
-    <p className={`border-3 border-black p-3 text-sm font-bold ${error ? "bg-red-50 text-red-700" : "bg-[var(--primary)] text-black"}`}>
-      {error || notice}
-    </p>
-  );
 }
 
 function formatDate(value: Date) {

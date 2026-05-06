@@ -3,6 +3,7 @@ import type { Route } from "next";
 import { AppShell } from "@/components/app-shell";
 import { requireAdminSession } from "@/lib/auth";
 import { listJobs } from "@openexam/core/jobs";
+import { FeedbackMessage, SubmitButton } from "@openexam/core/pixel-ui";
 import { processJobAction, processNextJobAction, recoverStaleJobsAction, retryJobAction } from "./actions";
 
 type AdminJobsPageProps = {
@@ -25,7 +26,7 @@ export default async function AdminJobsPage({ searchParams }: AdminJobsPageProps
   return (
     <AppShell section="admin" eyebrow="任务队列" title="任务">
       <section className="grid gap-5">
-        <Feedback error={params.error} notice={params.notice} />
+        <FeedbackMessage error={params.error} notice={params.notice} />
 
         <section className="pixel-panel grid gap-4 p-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -34,14 +35,10 @@ export default async function AdminJobsPage({ searchParams }: AdminJobsPageProps
               <h2 className="mt-1 text-xl font-black">任务处理</h2>
             </div>
             <form action={processNextJobAction}>
-              <button className="pixel-button px-4 py-2" type="submit">
-                处理下一条
-              </button>
+              <SubmitButton className="px-4 py-2" label="处理下一条" />
             </form>
             <form action={recoverStaleJobsAction}>
-              <button className="pixel-button bg-white px-4 py-2" type="submit">
-                恢复超时任务
-              </button>
+              <SubmitButton className="bg-white px-4 py-2" label="恢复超时任务" />
             </form>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -93,17 +90,13 @@ export default async function AdminJobsPage({ searchParams }: AdminJobsPageProps
                   {job.status === "queued" || job.status === "failed" ? (
                     <form action={processJobAction}>
                       <input name="jobId" type="hidden" value={job.id} />
-                      <button className="pixel-button bg-white px-3 py-2 text-sm" type="submit">
-                        立即处理
-                      </button>
+                      <SubmitButton className="bg-white px-3 py-2" label="立即处理" />
                     </form>
                   ) : null}
                   {job.status === "failed" ? (
                     <form action={retryJobAction}>
                       <input name="jobId" type="hidden" value={job.id} />
-                      <button className="pixel-button bg-white px-3 py-2 text-sm" type="submit">
-                        重试
-                      </button>
+                      <SubmitButton className="bg-white px-3 py-2" label="重试" />
                     </form>
                   ) : null}
                 </div>
@@ -122,18 +115,6 @@ function JsonBlock({ label, value }: { label: string; value: unknown }) {
       <p className="text-sm font-bold text-[var(--muted)]">{label}</p>
       <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words text-xs font-bold leading-5">{formatJson(value)}</pre>
     </div>
-  );
-}
-
-function Feedback({ error, notice }: { error?: string; notice?: string }) {
-  if (!error && !notice) {
-    return null;
-  }
-
-  return (
-    <p className={`border-3 border-black p-3 text-sm font-bold ${error ? "bg-red-50 text-red-700" : "bg-[var(--primary)] text-black"}`}>
-      {error || notice}
-    </p>
   );
 }
 

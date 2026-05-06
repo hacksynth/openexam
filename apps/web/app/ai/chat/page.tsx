@@ -3,6 +3,7 @@ import type { Route } from "next";
 import { AppShell } from "@/components/app-shell";
 import { requireWebSession } from "@/lib/auth";
 import { getContextChatThread, listContextChatThreads } from "@openexam/core/context-chat";
+import { FeedbackMessage, SubmitButton, TextareaField } from "@openexam/core/pixel-ui";
 import { sendContextChatMessageAction } from "./actions";
 
 type ChatPageProps = {
@@ -21,7 +22,7 @@ export default async function ContextChatPage({ searchParams }: ChatPageProps) {
   return (
     <AppShell section="learner" eyebrow="上下文 AI 对话" title="AI 对话">
       <section className="grid gap-5">
-        <Feedback error={params.error} notice={params.notice} />
+        <FeedbackMessage error={params.error} notice={params.notice} />
 
         <section className="pixel-panel grid gap-4 p-5">
           <div className="flex flex-wrap items-start justify-between gap-3">
@@ -55,13 +56,8 @@ export default async function ContextChatPage({ searchParams }: ChatPageProps) {
               <input name="threadId" type="hidden" value={activeThread?.id ?? ""} />
               <input name="contextType" type="hidden" value={activeThread?.contextType ?? params.contextType ?? ""} />
               <input name="contextId" type="hidden" value={activeThread?.contextId ?? params.contextId ?? ""} />
-              <label className="grid gap-2 text-sm font-bold">
-                问题
-                <textarea className="min-h-28 border-3 border-black bg-white p-3 text-base font-bold leading-7" name="message" placeholder="围绕当前上下文提问" required />
-              </label>
-              <button className="pixel-button w-fit px-4 py-2" type="submit">
-                发送
-              </button>
+              <TextareaField label="问题" name="message" placeholder="围绕当前上下文提问" required textareaClassName="min-h-28 text-base" />
+              <SubmitButton className="w-fit px-4 py-2" label="发送" />
             </form>
           ) : null}
         </section>
@@ -88,12 +84,4 @@ export default async function ContextChatPage({ searchParams }: ChatPageProps) {
       </section>
     </AppShell>
   );
-}
-
-function Feedback({ error, notice }: { error?: string; notice?: string }) {
-  if (!error && !notice) {
-    return null;
-  }
-
-  return <p className={`border-3 border-black p-3 text-sm font-bold ${error ? "bg-red-50 text-red-700" : "bg-[var(--primary)] text-black"}`}>{error || notice}</p>;
 }
