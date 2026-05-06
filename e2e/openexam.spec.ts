@@ -570,10 +570,11 @@ async function practiceConfirmedMaterialQuestion(page: Page) {
   await page.locator('input[name="answer"][value="A"]').check();
   await page.getByRole("button", { name: "提交答案" }).click();
   await expect(page.getByText("回答正确")).toBeVisible();
-  await expect(page).toHaveURL(new RegExp(`/practice\\?material=${materialId}&attempt=`));
+  await expect(page).toHaveURL(new RegExp(`/practice\\?(?:mode=new&)?material=${materialId}&attempt=`));
   await page.getByRole("link", { name: "再练一题" }).click();
-  await expect(page).toHaveURL(new RegExp(`/practice\\?material=${materialId}&skip=`));
-  await expect(page.locator("body")).toContainText(extractedQuestionStem);
+  await expect(page).toHaveURL(new RegExp(`/practice\\?(?:mode=new&)?material=${materialId}&skip=`));
+  await expect(page.locator("body")).toContainText("已练完");
+  await expect(page.getByRole("link", { name: "重练已练题" })).toBeVisible();
 }
 
 async function reviewAnalysisAndGeneratePlan(page: Page) {
