@@ -4,30 +4,34 @@ import { formatGoalPath, getPrimaryExamGoal, type PrimaryGoal } from "./exam-cor
 import { buildPracticeQuestionWhere } from "./practice";
 import { prisma } from "./prisma";
 
-type ActionResult<T = undefined> = T extends undefined
-  ? { ok: true } | { ok: false; error: string }
-  : { ok: true; data: T } | { ok: false; error: string };
-
-export type KnowledgeNodeDetail = {
+export type KnowledgeTreeRecord = {
   id: string;
   parentId: string | null;
   code: string | null;
   title: string;
-  description: string | null;
-  examExpectation: string | null;
-  subjectPath: string;
-  accuracy: number;
-  recentTotal: number;
-  recentCorrect: number;
-  newQuestionCount: number;
-  practicedQuestionCount: number;
-  pendingWrongNotes: number;
-  commonErrors: string[];
-  note: {
-    note: string;
-    aiExplanation: string | null;
-    updatedAt: Date;
-  } | null;
+};
+
+export type KnowledgeTreePathSegment = {
+  id: string;
+  code: string | null;
+  title: string;
+};
+
+export type KnowledgeTreeItem<T extends KnowledgeTreeRecord> = T & {
+  children: KnowledgeTreeItem<T>[];
+  depth: number;
+  directChildCount: number;
+  descendantCount: number;
+  path: KnowledgeTreePathSegment[];
+};
+
+type ActionResult<T = undefined> = T extends undefined
+  ? { ok: true } | { ok: false; error: string }
+  : { ok: true; data: T } | { ok: false; error: string };
+
+export type KnowledgeNodeDetail = KnowledgeNodeView & {
+  knowledgePath: string;
+  subtree: KnowledgeTreeItem<KnowledgeNodeView>;
   relatedQuestions: {
     id: string;
     kind: string;
@@ -37,53 +41,83 @@ export type KnowledgeNodeDetail = {
   }[];
 };
 
+export function buildKnowledgeTree<T extends KnowledgeTreeRecord>(nodes: readonly T[]): KnowledgeTreeItem<T>[] {
+  const itemById = new Map<string, KnowledgeTreeItem<T>>();
+  const roots: KnowledgeTreeItem<T>[] = [];
+
+  for (const node of nodes) {
+    itemById.set(node.id, {
+      ...node,
+      children: [],
+      depth: 0,
+      directChildCount: 0,
+      descendantCount: 0,
+      path: []
+    });
+  }
+
+  for (const node of nodes) {
+    const item = itemById.get(node.id);
+
+    if (!item) {
+      continue;
+    }
+
+    const parent = node.parentId ? itemById.get(node.parentId) : null;
+
+    if (parent && parent.id !== item.id) {
+      parent.children.push(item);
+    } else {
+      roots.push(item);
+    }
+  }
+
+  for (const root of roots) {
+    assignKnowledgeTreeMetadata(root, 0, []);
+  }
+
+  return roots;
+}
+
+export function flattenKnowledgeTree<T extends KnowledgeTreeRecord>(tree: readonly KnowledgeTreeItem<T>[]): KnowledgeTreeItem<T>[] {
+  const flattened: KnowledgeTreeItem<T>[] = [];
+
+  for (const item of tree) {
+    flattened.push(item, ...flattenKnowledgeTree(item.children));
+  }
+
+  return flattened;
+}
+
+export function findKnowledgeTreeItem<T extends KnowledgeTreeRecord>(tree: readonly KnowledgeTreeItem<T>[], id: string): KnowledgeTreeItem<T> | null {
+  for (const item of tree) {
+    if (item.id === id) {
+      return item;
+    }
+
+    const child = findKnowledgeTreeItem(item.children, id);
+
+    if (child) {
+      return child;
+    }
+  }
+
+  return null;
+}
+
 export async function getKnowledgeNode(userId: string, nodeId: string, db = prisma): Promise<KnowledgeNodeDetail | null> {
   const goal = await getPrimaryExamGoal(userId);
 
   if (!goal) return null;
 
-  const node = await db.knowledgeNode.findFirst({
-    where: {
-      AND: [
-        { id: nodeId.trim() },
-        buildKnowledgeNodeWhere(goal)
-      ]
-    },
-    include: {
-      syllabus: {
-        include: {
-          subject: {
-            include: {
-              cycle: {
-                include: {
-                  track: {
-                    include: { program: true }
-                  }
-                }
-              }
-            }
-          }
-        }
-      },
-      userNotes: {
-        where: { userId },
-        take: 1
-      }
-    }
-  });
+  const normalizedNodeId = nodeId.trim();
+  const dashboard = await buildKnowledgeDashboard(userId, goal, db);
+  const node = dashboard.nodes.find((candidate) => candidate.id === normalizedNodeId);
+  const subtree = findKnowledgeTreeItem(dashboard.tree, normalizedNodeId);
 
-  if (!node) return null;
+  if (!node || !subtree) return null;
 
-  const treeNodes = await db.knowledgeNode.findMany({
-    where: buildKnowledgeNodeWhere(goal),
-    select: {
-      id: true,
-      parentId: true,
-      code: true,
-      title: true
-    },
-    orderBy: [{ code: "asc" }, { title: "asc" }]
-  });
+  const treeNodes = dashboard.nodes.map((item) => ({ id: item.id, parentId: item.parentId, code: item.code, title: item.title }));
   const subtreeNodeIds = collectSubtreeNodeIds(node.id, treeNodes);
   const relatedQuestions = subtreeNodeIds.length > 0
     ? await db.question.findMany({
@@ -133,69 +167,10 @@ export async function getKnowledgeNode(userId: string, nodeId: string, db = pris
     }
   }
 
-  const latestAnswers = [...answerByQuestion.values()];
-  const stats = latestAnswers.reduce(
-    (acc, answer) => {
-      acc.total += 1;
-      acc.correct += answer.isCorrect ? 1 : 0;
-      return acc;
-    },
-    { total: 0, correct: 0 }
-  );
-
-  const pendingWrong = await db.wrongNote.count({
-    where: {
-      userId,
-      mastered: false,
-      questionId: { in: questionIds }
-    }
-  });
-
-  const wrongNoteQuestions = pendingWrong > 0
-    ? await db.wrongNote.findMany({
-        where: {
-          userId,
-          mastered: false,
-          questionId: { in: questionIds }
-        },
-        include: {
-          question: {
-            include: {
-              versions: {
-                orderBy: { version: "desc" },
-                take: 1
-              }
-            }
-          }
-        },
-        take: 3
-      })
-    : [];
-
-  const noteRecord = node.userNotes[0] ?? null;
-
   return {
-    id: node.id,
-    parentId: node.parentId,
-    code: node.code,
-    title: node.title,
-    description: node.description,
-    examExpectation: node.examExpectation,
-    subjectPath: formatSubjectPath(node.syllabus.subject),
-    accuracy: stats.total > 0 ? Math.round((stats.correct / stats.total) * 100) : 0,
-    recentTotal: stats.total,
-    recentCorrect: stats.correct,
-    newQuestionCount: questionIds.filter((id) => !answerByQuestion.has(id)).length,
-    practicedQuestionCount: answerByQuestion.size,
-    pendingWrongNotes: pendingWrong,
-    commonErrors: wrongNoteQuestions.map((wn) => wn.question.versions[0]?.stem ?? wn.question.stem),
-    note: noteRecord
-      ? {
-          note: noteRecord.note,
-          aiExplanation: noteRecord.aiExplanation,
-          updatedAt: noteRecord.updatedAt
-        }
-      : null,
+    ...node,
+    knowledgePath: formatKnowledgePath(subtree.path),
+    subtree,
     relatedQuestions: relatedQuestions.slice(0, 20).map((question) => {
       const lastAnswer = answerByQuestion.get(question.id);
       return {
@@ -216,6 +191,7 @@ export type KnowledgeDashboardState =
       goal: NonNullable<PrimaryGoal>;
       goalPath: string;
       nodes: KnowledgeNodeView[];
+      tree: KnowledgeTreeItem<KnowledgeNodeView>[];
     };
 
 export type KnowledgeNodeView = {
@@ -248,6 +224,17 @@ export async function getKnowledgeDashboard(userId: string, db = prisma): Promis
     return { status: "no_goal" };
   }
 
+  const dashboard = await buildKnowledgeDashboard(userId, goal, db);
+
+  return {
+    status: "ready",
+    goal,
+    goalPath: formatGoalPath(goal),
+    ...dashboard
+  };
+}
+
+async function buildKnowledgeDashboard(userId: string, goal: NonNullable<PrimaryGoal>, db: typeof prisma) {
   const [nodes, practiceableQuestions, answers, wrongNotes, notes] = await Promise.all([
     db.knowledgeNode.findMany({
       where: buildKnowledgeNodeWhere(goal),
@@ -347,47 +334,47 @@ export async function getKnowledgeDashboard(userId: string, db = prisma): Promis
     }
   }
 
-  return {
-    status: "ready",
-    goal,
-    goalPath: formatGoalPath(goal),
-    nodes: nodes.map((node) => {
-      const subtreeNodeIds = collectSubtreeNodeIds(node.id, treeNodes);
-      const questionIds = collectQuestionIdsForNodes(subtreeNodeIds, directQuestionIdsByNode);
-      const practicedQuestionIds = questionIds.filter((questionId) => latestAnswerByQuestion.has(questionId));
-      const recentCorrect = practicedQuestionIds.filter((questionId) => latestAnswerByQuestion.get(questionId)?.isCorrect === true).length;
-      const wrongNotesForNode = questionIds.flatMap((questionId) => {
-        const wrongNote = wrongNoteByQuestion.get(questionId);
-        return wrongNote ? [wrongNote] : [];
-      });
-      const commonErrors = wrongNotesForNode.slice(0, 3).map((wrongNote) => wrongNote.question.versions[0]?.stem ?? wrongNote.question.stem);
-      const note = noteByNode.get(node.id);
+  const views = nodes.map((node) => {
+    const subtreeNodeIds = collectSubtreeNodeIds(node.id, treeNodes);
+    const questionIds = collectQuestionIdsForNodes(subtreeNodeIds, directQuestionIdsByNode);
+    const practicedQuestionIds = questionIds.filter((questionId) => latestAnswerByQuestion.has(questionId));
+    const recentCorrect = practicedQuestionIds.filter((questionId) => latestAnswerByQuestion.get(questionId)?.isCorrect === true).length;
+    const wrongNotesForNode = questionIds.flatMap((questionId) => {
+      const wrongNote = wrongNoteByQuestion.get(questionId);
+      return wrongNote ? [wrongNote] : [];
+    });
+    const commonErrors = wrongNotesForNode.slice(0, 3).map((wrongNote) => wrongNote.question.versions[0]?.stem ?? wrongNote.question.stem);
+    const note = noteByNode.get(node.id);
 
-      return {
-        id: node.id,
-        parentId: node.parentId,
-        code: node.code,
-        title: node.title,
-        description: node.description,
-        examExpectation: node.examExpectation,
-        subjectPath: formatSubjectPath(node.syllabus.subject),
-        questionCount: questionIds.length,
-        recentTotal: practicedQuestionIds.length,
-        recentCorrect,
-        accuracy: practicedQuestionIds.length > 0 ? Math.round((recentCorrect / practicedQuestionIds.length) * 100) : 0,
-        newQuestionCount: questionIds.length - practicedQuestionIds.length,
-        practicedQuestionCount: practicedQuestionIds.length,
-        pendingWrongNotes: wrongNotesForNode.length,
-        commonErrors,
-        note: note
-          ? {
-              note: note.note,
-              aiExplanation: note.aiExplanation,
-              updatedAt: note.updatedAt
-            }
-          : null
-      };
-    })
+    return {
+      id: node.id,
+      parentId: node.parentId,
+      code: node.code,
+      title: node.title,
+      description: node.description,
+      examExpectation: node.examExpectation,
+      subjectPath: formatSubjectPath(node.syllabus.subject),
+      questionCount: questionIds.length,
+      recentTotal: practicedQuestionIds.length,
+      recentCorrect,
+      accuracy: practicedQuestionIds.length > 0 ? Math.round((recentCorrect / practicedQuestionIds.length) * 100) : 0,
+      newQuestionCount: questionIds.length - practicedQuestionIds.length,
+      practicedQuestionCount: practicedQuestionIds.length,
+      pendingWrongNotes: wrongNotesForNode.length,
+      commonErrors,
+      note: note
+        ? {
+            note: note.note,
+            aiExplanation: note.aiExplanation,
+            updatedAt: note.updatedAt
+          }
+        : null
+    };
+  });
+
+  return {
+    nodes: views,
+    tree: buildKnowledgeTree(views)
   };
 }
 
@@ -467,6 +454,23 @@ export async function generateKnowledgeExplanation(
     return { ok: false, error: "知识点不存在。" };
   }
 
+  const syllabusNodes = await db.knowledgeNode.findMany({
+    where: {
+      syllabusId: node.syllabusId
+    },
+    select: {
+      id: true,
+      parentId: true,
+      code: true,
+      title: true,
+      description: true,
+      examExpectation: true
+    },
+    orderBy: [{ code: "asc" }, { title: "asc" }]
+  });
+  const syllabusTree = buildKnowledgeTree(syllabusNodes);
+  const subtree = findKnowledgeTreeItem(syllabusTree, node.id);
+  const subtreeLines = subtree ? formatPromptSubtree(subtree).slice(0, 24) : [];
   const presetResult = await resolveKnowledgePreset(db);
 
   if (!presetResult.ok) {
@@ -475,13 +479,14 @@ export async function generateKnowledgeExplanation(
 
   const preset = presetResult.data;
   const prompt = {
-    instructions: "你是 OpenExam 的知识点讲解助手。只根据给定知识点、大纲要求和用户笔记解释，用简体中文，输出短段落。",
+    instructions: "你是 OpenExam 的知识点范围讲解助手。只根据给定知识点、子树结构、大纲要求和用户笔记解释，用简体中文，输出短段落。",
     input: [
-      `知识点：${node.code ? `${node.code} ` : ""}${node.title}`,
+      `当前范围：${node.code ? `${node.code} ` : ""}${node.title}`,
       `描述：${node.description || "暂无"}`,
       `考试要求：${node.examExpectation || "暂无"}`,
       `用户笔记：${node.userNotes[0]?.note || "暂无"}`,
-      "请给出：核心概念、考试常见问法、易错点、一个复习动作。"
+      `子树结构：\n${subtreeLines.length > 1 ? subtreeLines.join("\n") : "无更细子项"}`,
+      "请给出：核心概念、子树学习顺序、考试常见问法、易错点、一个复习动作。"
     ].join("\n")
   };
   const aiCall = await db.aiCall.create({
@@ -490,7 +495,7 @@ export async function generateKnowledgeExplanation(
       provider: preset.provider,
       model: preset.model,
       taskType: AiTaskType.chat_with_context,
-      promptVersion: "knowledge-node-explain-v1",
+      promptVersion: "knowledge-node-explain-v2",
       inputContextSource: `knowledge_node:${node.id}`,
       tokenEstimate: Math.ceil(prompt.input.length / 4),
       status: "running"
@@ -647,6 +652,38 @@ function collectSubtreeNodeIds(
   visitNode(rootNodeId, childrenByParent, ordered);
 
   return ordered;
+}
+
+function assignKnowledgeTreeMetadata<T extends KnowledgeTreeRecord>(
+  item: KnowledgeTreeItem<T>,
+  depth: number,
+  parentPath: KnowledgeTreePathSegment[]
+) {
+  item.depth = depth;
+  item.path = [...parentPath, { id: item.id, code: item.code, title: item.title }];
+  item.directChildCount = item.children.length;
+  item.descendantCount = 0;
+
+  for (const child of item.children) {
+    assignKnowledgeTreeMetadata(child, depth + 1, item.path);
+    item.descendantCount += 1 + child.descendantCount;
+  }
+}
+
+function formatKnowledgePath(path: KnowledgeTreePathSegment[]) {
+  return path.map((segment) => `${segment.code ? `${segment.code} ` : ""}${segment.title}`).join(" / ");
+}
+
+function formatPromptSubtree<T extends KnowledgeTreeRecord & { description?: string | null; examExpectation?: string | null }>(root: KnowledgeTreeItem<T>) {
+  const rootDepth = root.depth;
+
+  return flattenKnowledgeTree([root]).map((item) => {
+    const indent = "  ".repeat(Math.max(0, item.depth - rootDepth));
+    const label = `${item.code ? `${item.code} ` : ""}${item.title}`;
+    const detail = item.description || item.examExpectation;
+
+    return `${indent}- ${label}${detail ? `：${detail.slice(0, 80)}` : ""}`;
+  });
 }
 
 function visitNode(

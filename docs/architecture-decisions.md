@@ -227,9 +227,24 @@ Rules:
 - Each practiceable question should have at least one main knowledge node.
 - Imported unknown questions may start in an uncategorized node.
 - Knowledge trees belong to syllabi and are isolated by syllabus.
+- `parentId = null` defines a top-level knowledge area. Top-level nodes are valid learner-facing practice scopes even when they have no children.
+- A selected knowledge-node scope always means the selected node plus its full descendant subtree.
+- Parent and child node statistics use the same subtree scope as practice. Total question count, new-question count, practiced-question count, accuracy, and pending wrong-note count must include descendants and deduplicate by `Question.id`.
+- Questions directly bound to a parent node are counted in that parent scope, but the learner UI does not expose a separate "direct parent only" practice scope.
+- Knowledge-tree helpers should live in `packages/core` so learner pages, detail pages, and admin pages share the same ordering, depth, child-count, and descendant-count semantics.
+- Admin parent selection must stay within the same syllabus and must prevent selecting the current node or any of its descendants as parent.
+- Knowledge-node AI explanations are stored on the current node's `UserKnowledgeNote.aiExplanation`. The generation context should describe the current node as a range and include child-node summaries when descendants exist.
 - AI may suggest classifications, but public-bank classification requires review.
 - Knowledge-node dashboards should expose new-question, unmastered wrong-note, and practiced-question counts so the learner can understand why a practice action is available or exhausted.
 - Parent knowledge-node counts include descendants and are deduplicated by `Question.id`, not by `QuestionKnowledgeNode` binding count.
+
+Acceptance criteria:
+
+- `/knowledge` renders top-level nodes as major cards and treats each major-card action as a subtree practice entry.
+- `/knowledge/[nodeId]` shows the full ancestor path, the current node as the subtree root, full descendant rows, and subtree-scoped related questions.
+- A node with no practiceable questions remains visible, but learner practice actions are omitted for that node scope.
+- AI explanation prompts for non-leaf nodes include child-node context and save the result back to the selected node.
+- `/admin/knowledge` displays each syllabus' knowledge nodes as a tree, provides one create form per syllabus, and filters parent options to valid same-syllabus non-descendant nodes.
 
 ## Wrong Notes And Retry Semantics
 

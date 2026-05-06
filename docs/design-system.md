@@ -98,6 +98,23 @@ Every theme must keep:
 - Reduced motion support for optional effects.
 - No horizontal overflow at 390px mobile width.
 
+## Knowledge Tree Views
+
+Knowledge-point views use a tree-card pattern:
+
+- Learner list pages must use top-level knowledge nodes as major hard-edge cards.
+- A major card may show its direct child nodes as compact rows, not nested cards. Rows should carry code, title, total question count, new/practiced state, accuracy, wrong-note state, and short actions.
+- Learner list pages should show only two levels: major card plus direct child rows. Third-level and deeper descendants should be summarized with a child-count chip and opened through the detail page.
+- Major cards default to expanded child rows. When a major card has more than eight direct child nodes, show the first eight and use a detail link for the remainder.
+- Major cards should show `description` as a short summary. `examExpectation`, notes, AI explanations, common errors, and full related-question lists belong on the detail page.
+- Accuracy with no practiced questions should read as "未练", not `0%`.
+- Wrong-note pressure should use a red status chip only. The whole card must not change to a danger background.
+- Nodes with no practiceable questions stay visible, but their practice buttons are hidden.
+- Mobile child rows must put title and chips above actions; action buttons may wrap onto a new line.
+- Knowledge detail pages should use a compact indented tree list for the selected node and all descendants. The current node appears as the first root row and should not show a redundant detail button.
+- Admin knowledge management should show each syllabus' nodes as an always-expanded tree with inline editing. Parent selectors should use tree indentation and show only valid parents for that node.
+- Admin knowledge creation should happen inside each syllabus section; avoid a global knowledge-node create form whose parent selector spans multiple syllabi.
+
 ## Implementation Note
 
 The design system is the source of truth for UI implementation. Any future prototype should follow this document and should not introduce separate visual rules without updating this file.
@@ -127,5 +144,6 @@ The foundation UI implements the first pass of the design direction in `apps/web
 - Shared pixel UI form primitives for text inputs, textareas, selects, date pickers, choices, feedback messages, and submit buttons across learner and admin route groups.
 - Custom pixel date picker controls with hard outlines, block shadows, yellow accent blocks, and hidden `YYYY-MM-DD` form values instead of native browser date inputs.
 - The learner homepage uses the same hard-edge panels and compact status chips for exam program cards. Exam detail pages use matching cards for administrator-configured open and planned directions or subjects.
+- Knowledge pages use top-level knowledge cards with compact child rows, subtree-scoped statistics, detail-page tree lists, and admin tree editing.
 
 Theme switching is not implemented yet. Current colors are CSS custom properties on `:root`; future theme presets should override those tokens without changing layout or density.
