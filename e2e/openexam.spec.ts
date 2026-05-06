@@ -465,13 +465,18 @@ async function processMaterialJobAndConfirmQuestion(page: Page) {
   await page.goto(`${adminUrl}/jobs?status=queued`);
   await expect(page.getByRole("heading", { name: "任务", exact: true })).toBeVisible();
   const queuedMaterialJob = page.locator("article").filter({ hasText: materialTitle }).first();
+  let handledFromAdminPage = false;
 
   if (await queuedMaterialJob.isVisible().catch(() => false)) {
     await queuedMaterialJob.getByRole("button", { name: "立即处理" }).click();
-    await expect(page).toHaveURL(/\/jobs\?/);
+    await expect(page).toHaveURL(/\/admin\/jobs\?(?:notice|error)=/);
+    handledFromAdminPage = true;
   }
 
-  await processMaterialExtractionJobForE2e();
+  if (!handledFromAdminPage) {
+    await processMaterialExtractionJobForE2e();
+  }
+
   await waitForExtractedMaterialQuestion();
   await page.goto(`${adminUrl}/materials`);
   await expect(page.getByRole("heading", { name: "资料", exact: true })).toBeVisible();
