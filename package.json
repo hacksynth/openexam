@@ -62,7 +62,7 @@
     "@types/node": "^24.10.1",
     "@types/react": "^19.2.6",
     "@types/react-dom": "^19.2.3",
-    "postcss": "^8.5.13",
+    "postcss": "^8.5.14",
     "prisma": "^6.19.0",
     "tailwindcss": "^4.1.17",
     "tsx": "^4.20.6",
