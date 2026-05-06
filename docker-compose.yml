@@ -2,7 +2,7 @@ x-app-environment: &app-environment
   DATABASE_URL: "${DOCKER_DATABASE_URL:-postgresql://openexam:openexam@postgres:5432/openexam?schema=public}"
   NEXT_PUBLIC_APP_NAME: "${NEXT_PUBLIC_APP_NAME:-OpenExam}"
   NEXT_PUBLIC_WEB_URL: "${NEXT_PUBLIC_WEB_URL:-http://127.0.0.1:3000}"
-  NEXT_PUBLIC_ADMIN_URL: "${NEXT_PUBLIC_ADMIN_URL:-http://127.0.0.1:3001}"
+  NEXT_PUBLIC_ADMIN_URL: "${NEXT_PUBLIC_ADMIN_URL:-http://127.0.0.1:3000/admin}"
   STORAGE_DRIVER: "${STORAGE_DRIVER:-local}"
   LOCAL_STORAGE_DIR: "${DOCKER_LOCAL_STORAGE_DIR:-/app/storage}"
   S3_REGION: "${S3_REGION:-us-east-1}"
@@ -39,6 +39,9 @@ services:
       dockerfile: Dockerfile.web
     environment:
       <<: *app-environment
+      ADMIN_EMAIL: "${ADMIN_EMAIL:-}"
+      ADMIN_PASSWORD: "${ADMIN_PASSWORD:-}"
+      ADMIN_NAME: "${ADMIN_NAME:-}"
     volumes:
       - openexam-storage:/app/storage
     ports:
@@ -48,28 +51,6 @@ services:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3000/api/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-
-  admin:
-    build:
-      context: .
-      dockerfile: Dockerfile.admin
-    environment:
-      <<: *app-environment
-      ADMIN_EMAIL: "${ADMIN_EMAIL:-}"
-      ADMIN_PASSWORD: "${ADMIN_PASSWORD:-}"
-      ADMIN_NAME: "${ADMIN_NAME:-}"
-    volumes:
-      - openexam-storage:/app/storage
-    ports:
-      - "${ADMIN_PORT:-3001}:3001"
-    depends_on:
-      postgres:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3001/api/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
       interval: 10s
       timeout: 5s
       retries: 10

@@ -4,12 +4,12 @@ Release date: 2026-05-05
 
 ## Release Goal
 
-`v0.1.0` is the first self-hostable OpenExam release candidate. It should let a maintainer run the split learner/admin stack locally or in Docker, exercise the Ruankao Software Designer learning loop, and accept focused community contributions without relying on private setup knowledge.
+`v0.1.0` is the first self-hostable OpenExam release candidate. It should let a maintainer run the unified web app locally or in Docker, exercise the Ruankao Software Designer learning loop, and accept focused community contributions without relying on private setup knowledge.
 
 ## Scope
 
-- Learner app: registration, login, dashboard, goal selection, practice, paper attempts, reports, wrong notes, BYOK AI settings, material uploads, analysis, study plans, and context chat.
-- Admin app: login, dashboard metrics, exam hierarchy, knowledge nodes, questions, papers, materials, jobs, AI presets, users, and audit events.
+- Web app: learner registration, login, dashboard, goal selection, practice, paper attempts, reports, wrong notes, BYOK AI settings, material uploads, analysis, study plans, context chat, and `/admin` role routes.
+- Admin role routes: login, dashboard metrics, exam hierarchy, knowledge nodes, questions, papers, materials, jobs, AI presets, users, and audit events.
 - Worker: database-backed material extraction and wrong-note review-card jobs with stale-job recovery.
 - Storage: local or S3-compatible private asset storage for uploads and generated images.
 - Data: Prisma migrations and seed data for the first Ruankao Software Designer sample track.
@@ -36,7 +36,6 @@ docker compose run --rm seed
 docker compose up -d --build
 docker compose ps
 curl -f http://127.0.0.1:3000/api/health
-curl -f http://127.0.0.1:3001/api/health
 ```
 
 Then exercise the release-critical flows in a browser:

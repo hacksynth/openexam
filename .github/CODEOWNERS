@@ -1,2 +1,10 @@
 # Default ownership for repository changes.
 * @hacksynth
+
+/.github/ @hacksynth
+/docs/ @hacksynth
+/prisma/ @hacksynth
+/packages/core/ @hacksynth
+/apps/web/ @hacksynth
+/Dockerfile.* @hacksynth
+/docker-compose.yml @hacksynth

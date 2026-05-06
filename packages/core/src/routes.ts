@@ -151,7 +151,7 @@ export const learnerRoutes: RouteItem[] = [
 export const adminRoutes: RouteItem[] = [
   {
     id: "admin",
-    href: "/",
+    href: "/admin",
     label: "管理台",
     description: "内容、任务、AI 用量、用户和审计事件概览。",
     section: "admin",
@@ -159,7 +159,7 @@ export const adminRoutes: RouteItem[] = [
   },
   {
     id: "admin-exams",
-    href: "/exams",
+    href: "/admin/exams",
     label: "考试",
     description: "考试项目、方向、批次、科目、大纲和知识树。",
     section: "admin",
@@ -167,7 +167,7 @@ export const adminRoutes: RouteItem[] = [
   },
   {
     id: "admin-knowledge",
-    href: "/knowledge",
+    href: "/admin/knowledge",
     label: "知识",
     description: "知识节点治理、权重、分类和未归类内容。",
     section: "admin",
@@ -175,7 +175,7 @@ export const adminRoutes: RouteItem[] = [
   },
   {
     id: "admin-questions",
-    href: "/questions",
+    href: "/admin/questions",
     label: "题目",
     description: "单选题创建、JSON 导入、编辑、知识点绑定、来源、可见性和审核状态。",
     section: "admin",
@@ -183,7 +183,7 @@ export const adminRoutes: RouteItem[] = [
   },
   {
     id: "admin-papers",
-    href: "/papers",
+    href: "/admin/papers",
     label: "试卷",
     description: "试卷创建、筛选、归档隐藏、题目绑定、题序、分区、分值和公开状态。",
     section: "admin",
@@ -191,7 +191,7 @@ export const adminRoutes: RouteItem[] = [
   },
   {
     id: "admin-materials",
-    href: "/materials",
+    href: "/admin/materials",
     label: "资料",
     description: "上传资产、抽取任务、来源引用和处理错误。",
     section: "admin",
@@ -199,7 +199,7 @@ export const adminRoutes: RouteItem[] = [
   },
   {
     id: "admin-ai",
-    href: "/ai",
+    href: "/admin/ai",
     label: "AI",
     description: "模型预设、任务路由、限制、提示词版本和用量日志。",
     section: "admin",
@@ -207,7 +207,7 @@ export const adminRoutes: RouteItem[] = [
   },
   {
     id: "admin-jobs",
-    href: "/jobs",
+    href: "/admin/jobs",
     label: "任务",
     description: "数据库队列状态、重试、失败和进度追踪。",
     section: "admin",
@@ -215,7 +215,7 @@ export const adminRoutes: RouteItem[] = [
   },
   {
     id: "admin-users",
-    href: "/users",
+    href: "/admin/users",
     label: "用户",
     description: "用户角色、使用限制、AI 调用量和账号状态。",
     section: "admin",
@@ -223,7 +223,7 @@ export const adminRoutes: RouteItem[] = [
   },
   {
     id: "admin-audit",
-    href: "/audit",
+    href: "/admin/audit",
     label: "审计",
     description: "可见性、来源、模型和管理设置变更的追加式事件。",
     section: "admin",

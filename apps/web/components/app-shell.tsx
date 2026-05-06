@@ -1,8 +1,9 @@
 import Link from "next/link";
 import type { Route } from "next";
-import { learnerRoutes, sectionLabels, type AppSection } from "@openexam/core/routes";
+import { adminRoutes, learnerRoutes, sectionLabels, type AppSection } from "@openexam/core/routes";
 import { SubmitButton } from "@openexam/core/pixel-ui";
-import { requireWebSession } from "@/lib/auth";
+import { requireAdminSession, requireWebSession } from "@/lib/auth";
+import { adminLogoutAction } from "@/app/admin/logout/actions";
 import { logoutAction } from "@/app/logout/actions";
 
 type AppShellProps = {
@@ -13,17 +14,20 @@ type AppShellProps = {
 };
 
 export async function AppShell({ section, title, eyebrow, children }: AppShellProps) {
-  const session = await requireWebSession();
+  const isAdmin = section === "admin";
+  const session = isAdmin ? await requireAdminSession() : await requireWebSession();
   const accountLabel = session.user.name?.trim() || session.user.email;
   const accountTitle = session.user.name ? `${session.user.name} <${session.user.email}>` : session.user.email;
-  const navigationRoutes = learnerRoutes.filter((route) => !route.href.includes("["));
+  const navigationRoutes = (isAdmin ? adminRoutes : learnerRoutes).filter((route) => !route.href.includes("["));
+  const homeHref = isAdmin ? "/admin" : "/";
+  const logout = isAdmin ? adminLogoutAction : logoutAction;
 
   return (
     <main className="mx-auto grid min-h-screen w-full max-w-7xl gap-6 px-4 py-5 md:grid-cols-[240px_1fr] md:px-6">
       <aside className="pixel-panel h-fit p-4">
-        <Link href="/" className="mb-5 block border-b-3 border-black pb-4">
+        <Link href={homeHref as Route} className="mb-5 block border-b-3 border-black pb-4">
           <span className="block text-xs font-bold uppercase text-[var(--muted)]">OpenExam</span>
-          <span className="block text-xl font-black">学习端</span>
+          <span className="block text-xl font-black">{sectionLabels[section]}</span>
         </Link>
         <nav aria-label={`${sectionLabels[section]}导航`} className="grid gap-2">
           {navigationRoutes.map((route) => (
@@ -36,7 +40,7 @@ export async function AppShell({ section, title, eyebrow, children }: AppShellPr
             </Link>
           ))}
         </nav>
-        <form action={logoutAction} className="mt-5 grid min-w-0 gap-3 border-t-3 border-black pt-4">
+        <form action={logout} className="mt-5 grid min-w-0 gap-3 border-t-3 border-black pt-4">
           <p className="min-w-0 truncate text-xs font-bold text-[var(--muted)]" title={accountTitle}>
             {accountLabel}
           </p>

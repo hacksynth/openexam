@@ -27,19 +27,18 @@
     "ruankao"
   ],
   "workspaces": [
-    "apps/*",
+    "apps/web",
     "packages/*"
   ],
   "scripts": {
     "dev:web": "npm --workspace @openexam/web run dev",
-    "dev:admin": "npm --workspace @openexam/admin run dev",
-    "build": "npm run build:web && npm run build:admin",
+    "dev": "npm run dev:web",
+    "build": "npm run build:web",
     "build:web": "npm --workspace @openexam/web run build",
-    "build:admin": "npm --workspace @openexam/admin run build",
     "start:web": "npm --workspace @openexam/web run start",
-    "start:admin": "npm --workspace @openexam/admin run start",
+    "start": "npm run start:web",
     "worker": "tsx packages/core/src/worker.ts",
-    "lint": "npm run lint:root && npm --workspace @openexam/web run lint && npm --workspace @openexam/admin run lint",
+    "lint": "npm run lint:root && npm --workspace @openexam/web run lint",
     "lint:root": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",

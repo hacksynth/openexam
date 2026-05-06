@@ -5,7 +5,6 @@ FROM node:24-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY apps/web/package.json apps/web/package.json
-COPY apps/admin/package.json apps/admin/package.json
 COPY packages/core/package.json packages/core/package.json
 RUN --mount=type=cache,target=/root/.npm npm ci --prefer-offline --no-audit --fund=false
 
@@ -14,7 +13,7 @@ FROM node:24-alpine AS builder
 WORKDIR /app
 ENV DATABASE_URL="postgresql://openexam:openexam@localhost:5432/openexam?schema=public"
 ENV NEXT_PUBLIC_WEB_URL="http://127.0.0.1:3000"
-ENV NEXT_PUBLIC_ADMIN_URL="http://127.0.0.1:3001"
+ENV NEXT_PUBLIC_ADMIN_URL="http://127.0.0.1:3000/admin"
 ENV STORAGE_DRIVER="local"
 ENV LOCAL_STORAGE_DIR="./storage"
 ENV SESSION_SECRET="openexam-local-session-secret"
@@ -37,4 +36,4 @@ COPY --from=builder /app ./
 RUN mkdir -p apps/web/.next/standalone/apps/web/.next \
   && cp -R apps/web/.next/static apps/web/.next/standalone/apps/web/.next/static
 EXPOSE 3000
-CMD ["sh", "-c", "npx prisma migrate deploy && if [ -f apps/web/.next/standalone/apps/web/server.js ]; then exec node apps/web/.next/standalone/apps/web/server.js; fi; exec node apps/web/.next/standalone/server.js"]
+CMD ["sh", "-c", "npx prisma migrate deploy && npm run db:bootstrap-admin && if [ -f apps/web/.next/standalone/apps/web/server.js ]; then exec node apps/web/.next/standalone/apps/web/server.js; fi; exec node apps/web/.next/standalone/server.js"]

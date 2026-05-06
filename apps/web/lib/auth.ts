@@ -5,16 +5,25 @@ import {
   createSession,
   deleteSessionByToken,
   getSessionByToken,
+  userHasRole,
   type AuthSession
 } from "@openexam/core/auth";
 
 export const webSessionCookieName = "openexam_web_session";
+export const adminSessionCookieName = "openexam_admin_session";
 
 export async function getWebSession() {
   const cookieStore = await cookies();
   const token = cookieStore.get(webSessionCookieName)?.value;
 
   return getSessionByToken(token, "web");
+}
+
+export async function getAdminSession() {
+  const cookieStore = await cookies();
+  const token = cookieStore.get(adminSessionCookieName)?.value;
+
+  return getSessionByToken(token, "admin");
 }
 
 export async function requireWebSession() {
@@ -27,11 +36,33 @@ export async function requireWebSession() {
   return session;
 }
 
+export async function requireAdminSession() {
+  const session = await getAdminSession();
+
+  if (!session) {
+    redirect("/admin/login" as Route);
+  }
+
+  if (!userHasRole(session.user, "admin")) {
+    redirect("/admin/login?error=forbidden" as Route);
+  }
+
+  return session;
+}
+
 export async function redirectAuthenticatedWebUser() {
   const session = await getWebSession();
 
   if (session) {
     redirect("/dashboard" as Route);
+  }
+}
+
+export async function redirectAuthenticatedAdminUser() {
+  const session = await getAdminSession();
+
+  if (session && userHasRole(session.user, "admin")) {
+    redirect("/admin" as Route);
   }
 }
 
@@ -70,12 +101,27 @@ export async function setWebSessionCookie(userId: string) {
   cookieStore.set(webSessionCookieName, token, sessionCookieOptions(session.expiresAt));
 }
 
+export async function setAdminSessionCookie(userId: string) {
+  const { token, session } = await createSession({ userId, app: "admin" });
+  const cookieStore = await cookies();
+
+  cookieStore.set(adminSessionCookieName, token, sessionCookieOptions(session.expiresAt));
+}
+
 export async function clearWebSessionCookie() {
   const cookieStore = await cookies();
   const token = cookieStore.get(webSessionCookieName)?.value;
 
   await deleteSessionByToken(token, "web");
   cookieStore.delete(webSessionCookieName);
+}
+
+export async function clearAdminSessionCookie() {
+  const cookieStore = await cookies();
+  const token = cookieStore.get(adminSessionCookieName)?.value;
+
+  await deleteSessionByToken(token, "admin");
+  cookieStore.delete(adminSessionCookieName);
 }
 
 function sessionCookieOptions(expiresAt: AuthSession["expiresAt"]) {

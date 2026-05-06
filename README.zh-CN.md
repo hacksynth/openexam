@@ -19,7 +19,7 @@ OpenExam 是一个面向个人学习者的自托管 AI 备考平台。MVP 首先
 
 ## 当前状态
 
-OpenExam 已准备为 `v0.1.0` 发布候选版本。学习端、管理端、共享 core 包、Prisma/PostgreSQL schema、认证和会话层、考试体系管理、多题型客观题练习、试卷作答、错题本、学习分析、14 天学习计划、OpenAI/Claude/Gemini BYOK、AI 调用日志、资料上传、AI 辅助抽题、常驻 worker、错题复习卡图片生成等能力已经具备。
+OpenExam 已准备为 `v0.1.0` 发布候选版本。单个 Next.js 应用同时提供学习端流程和 `/admin` 下的管理端角色路由，共享 core 包、Prisma/PostgreSQL schema、认证和会话层、考试体系管理、多题型客观题练习、试卷作答、错题本、学习分析、14 天学习计划、OpenAI/Claude/Gemini BYOK、AI 调用日志、资料上传、AI 辅助抽题、常驻 worker、错题复习卡图片生成等能力已经具备。
 
 关键学习闭环已由 Vitest 单元/API 测试和 Playwright 浏览器流程覆盖。独立 OCR、更丰富的文件解析、更深入的主观题评阅、解题图生成、审计加固和高级练习模式仍属于后续工作。产品和架构事实源在 `docs/`。
 
@@ -27,8 +27,8 @@ OpenExam 已准备为 `v0.1.0` 发布候选版本。学习端、管理端、共�
 
 ## v0.1.0 亮点
 
-- 拆分的学习端/管理端 Next.js 应用，带认证私有路由和独立健康检查 API。
-- PostgreSQL schema、Prisma migrations、seed data，以及 web、admin、worker、database 的 Docker Compose 服务。
+- 单个 Next.js 应用，带学习端私有路由和 `/admin` 下的管理端角色路由。
+- PostgreSQL schema、Prisma migrations、seed data，以及 web、worker、database 的 Docker Compose 服务。
 - 围绕考试目标的练习、公开试卷作答、答案自动保存、报告、错题入库、错题重练和薄弱点摘要。
 - BYOK AI 设置、provider 调用日志、管理端模型预设、资料抽题任务、上下文对话、学习诊断和 14 天学习计划。
 - 生成错题复习卡的私有资产服务。
@@ -62,28 +62,21 @@ OpenExam 已准备为 `v0.1.0` 发布候选版本。学习端、管理端、共�
 
 ## 本地开发
 
-安装依赖并生成 Prisma Client：
+安装依赖并启动本地 web app：
 
 ```sh
 npm install
 npm run prisma:generate
-```
-
-分别启动学习端和管理端：
-
-```sh
 npm run dev:web
-npm run dev:admin
 ```
 
-学习端默认运行在 `3000`，管理端默认运行在 `3001`。
+web app 默认运行在 `3000`，管理端位于 `http://127.0.0.1:3000/admin`。
 
 常用命令：
 
 ```sh
 npm run build
 npm run build:web
-npm run build:admin
 npm run lint
 npm test
 npm run test:e2e
@@ -105,11 +98,11 @@ npm run test:e2e
 
 复制 `.env.example` 为 `.env`，并在迁移或 seed 前更新 `DATABASE_URL`、`SESSION_SECRET`、`NEXT_PUBLIC_WEB_URL` 和 `NEXT_PUBLIC_ADMIN_URL`。
 
-设置 `ADMIN_EMAIL` 和 `ADMIN_PASSWORD` 可初始化或更新管理员账号。Docker 管理端服务会在 migration 后自动 bootstrap；本地开发可运行 `npm run db:bootstrap-admin` 或 `npm run db:seed`。
+设置 `ADMIN_EMAIL` 和 `ADMIN_PASSWORD` 可初始化或更新管理员账号。Docker web 服务会在 migration 后自动 bootstrap；本地开发可运行 `npm run db:bootstrap-admin` 或 `npm run db:seed`。
 
 设置 `AI_KEY_ENCRYPTION_SECRET` 后才能保存 BYOK provider key。`OPENAI_API_KEY`、`ANTHROPIC_API_KEY` 和 `GEMINI_API_KEY` 是可选平台 fallback；用户未保存个人 key 时会使用平台 key。使用兼容网关时可设置 provider base URL。
 
-资料上传和生成的错题复习卡图片默认使用 `STORAGE_DRIVER=local` 与 `LOCAL_STORAGE_DIR`，也可使用 `STORAGE_DRIVER=s3` 连接 S3 兼容服务，例如自托管 MinIO。`npm run worker` 处理抽题和图片生成队列；管理端 `/jobs` 提供手动处理、重试、恢复和任务详情。
+资料上传和生成的错题复习卡图片默认使用 `STORAGE_DRIVER=local` 与 `LOCAL_STORAGE_DIR`，也可使用 `STORAGE_DRIVER=s3` 连接 S3 兼容服务，例如自托管 MinIO。`npm run worker` 处理抽题和图片生成队列；管理端 `/admin/jobs` 提供手动处理、重试、恢复和任务详情。
 
 Playwright 会在 `127.0.0.1:8317` 启动本地 OpenAI 兼容 mock server，因此 `npm run test:e2e` 会测试真实 Responses 和 Images API adapter，但不会调用外部模型。
 
@@ -121,7 +114,7 @@ npm run db:migrate
 set -a; . ./.env; set +a; npm run db:seed
 ```
 
-拆分容器部署：
+容器部署：
 
 ```sh
 docker compose build seed
@@ -150,7 +143,7 @@ OpenExam 欢迎能强化自托管学习闭环的聚焦 issue 和 pull request。
 ## 项目结构
 
 - `apps/web/`：学习端 Next.js 应用。
-- `apps/admin/`：管理端 Next.js 应用。
+- `apps/web/app/admin/`：同一个 Next.js 应用内的管理端角色路由。
 - `packages/core/`：共享领域 helper、校验 schema、路由元数据、环境变量解析和 Prisma client。
 - `prisma/`：数据库 schema 和 seed 脚本。
 - `tests/`：Vitest 单元测试。

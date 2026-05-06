@@ -8,7 +8,7 @@ body:
     id: problem
     attributes:
       label: Problem
-      description: What learner, admin, or self-hosting problem should this solve?
+      description: What learner route, admin route, or self-hosting problem should this solve?
     validations:
       required: true
   - type: textarea
@@ -23,12 +23,13 @@ body:
     attributes:
       label: Area
       options:
+        - Learner workflow
+        - /admin governance
         - Practice loop
         - Wrong notes
         - Analysis and plans
         - Materials/import
         - AI providers
-        - Admin governance
         - Deployment
         - Documentation
     validations:

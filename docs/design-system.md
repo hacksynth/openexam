@@ -104,7 +104,7 @@ The design system is the source of truth for UI implementation. Any future proto
 
 ## Current Implementation
 
-The foundation UI implements the first pass of the design direction in `apps/web/app/globals.css`, `apps/admin/app/globals.css`, and the shell components in each app:
+The foundation UI implements the first pass of the design direction in `apps/web/app/globals.css` and the shared shell components used by learner routes and `/admin` role routes:
 
 - Light gray-blue pixel grid background.
 - White hard-edge panels.
@@ -124,7 +124,7 @@ The foundation UI implements the first pass of the design direction in `apps/web
 - Admin AI preset forms with compact model, task-route, temperature, max-token, enable/disable controls, and status chips.
 - Material upload, job queue, candidate-question, and user-usage pages with dense forms, status chips, error panels, and compact action rows.
 - Truncated account labels in sidebars so long names and emails do not cause horizontal overflow.
-- Shared pixel UI form primitives for text inputs, textareas, selects, date pickers, choices, feedback messages, and submit buttons across learner and admin apps.
+- Shared pixel UI form primitives for text inputs, textareas, selects, date pickers, choices, feedback messages, and submit buttons across learner and admin route groups.
 - Custom pixel date picker controls with hard outlines, block shadows, yellow accent blocks, and hidden `YYYY-MM-DD` form values instead of native browser date inputs.
 - The learner homepage uses the same hard-edge panels and compact status chips for exam program cards. Exam detail pages use matching cards for administrator-configured open and planned directions or subjects.
 

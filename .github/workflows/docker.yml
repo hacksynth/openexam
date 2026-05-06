@@ -11,18 +11,21 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: docker-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     name: Build ${{ matrix.name }} image
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
         include:
           - name: web
             file: Dockerfile.web
-          - name: admin
-            file: Dockerfile.admin
           - name: worker
             file: Dockerfile.worker
     steps:

@@ -1,6 +1,6 @@
 # OpenExam Product Requirements
 
-Last updated: 2026-05-05
+Last updated: 2026-05-06
 
 ## Product Positioning
 
@@ -40,9 +40,9 @@ The MVP must complete this learning loop:
 
 Current implementation status:
 
-- The repository now has separate runnable learner and admin apps with health APIs, shared core helpers, Prisma/PostgreSQL persistence, worker-backed jobs, Vitest coverage, and Playwright browser workflows.
+- The repository now has one runnable web app with learner workflows, `/admin` role routes, a health API, shared core helpers, Prisma/PostgreSQL persistence, worker-backed jobs, Vitest coverage, and Playwright browser workflows.
 - The `v0.1.0` release candidate covers the release-critical MVP learning loop for the first Ruankao Software Designer sample track.
-- Email/password authentication, database-backed sessions, and route protection are implemented for the learner and admin apps.
+- Email/password authentication, database-backed sessions, and route protection are implemented for learner routes and `/admin` role routes.
 - Admin exam hierarchy and knowledge-tree management are started as a minimal CRUD workflow.
 - Learners can save a primary exam goal and see it on the dashboard.
 - The practice workflow is implemented with goal-scoped question retrieval, repeat avoidance, single-choice/multiple-choice/true-false/blank objective grading, subjective answer capture, paper attempts, attempt reports, wrong-note auto-collection, wrong-note knowledge filters/retry, mastery toggles, and database-backed dashboard summaries.
@@ -249,7 +249,7 @@ Image styles are limited to:
 
 The text provider may generate the image prompt. The image provider is configured separately, with OpenAI Images as the preferred first implementation.
 
-Implementation note: wrong-note review-card images are generated asynchronously by the job worker using OpenAI Images. The default image model is `gpt-image-1.5` unless an enabled admin preset is set for `generate_image`. Generated files are stored under `review-cards/{userId}/` as private `Asset` records and served through authenticated `/assets/[assetId]`; owner or admin access is required. Failed image jobs store an error summary and do not create placeholder images. The worker claims jobs with conditional status updates, requeues stale running jobs by `OPENEXAM_JOB_STALE_MS`, and admin `/jobs` exposes payload, result, timestamps, retry, and recovery controls.
+Implementation note: wrong-note review-card images are generated asynchronously by the job worker using OpenAI Images. The default image model is `gpt-image-1.5` unless an enabled admin preset is set for `generate_image`. Generated files are stored under `review-cards/{userId}/` as private `Asset` records and served through authenticated `/assets/[assetId]`; owner or admin access is required. Failed image jobs store an error summary and do not create placeholder images. The worker claims jobs with conditional status updates, requeues stale running jobs by `OPENEXAM_JOB_STALE_MS`, and admin `/admin/jobs` exposes payload, result, timestamps, retry, and recovery controls.
 
 ## AI Diagnosis And Plans
 

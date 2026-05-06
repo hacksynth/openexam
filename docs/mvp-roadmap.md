@@ -1,6 +1,6 @@
 # OpenExam MVP Roadmap
 
-Last updated: 2026-05-05
+Last updated: 2026-05-06
 
 The MVP roadmap follows this sequence:
 
@@ -11,7 +11,7 @@ Foundation -> Exam Core -> Practice Loop -> AI Core -> Materials
 
 Current progress:
 
-- Split foundation scaffold is complete enough to run, build, and test the web and admin apps independently.
+- Single-app foundation scaffold is complete enough to run, build, and test learner workflows and `/admin` role routes together.
 - Email/password auth, database-backed sessions, route protection, live PostgreSQL migration validation, and Docker image builds are complete for the foundation slice.
 - Exam core schema exists in Prisma, and the first admin CRUD slice now manages exam hierarchy and knowledge trees.
 - Learners can save a primary exam goal and see that goal on the dashboard.
@@ -28,14 +28,14 @@ Status: mostly complete.
 
 Deliverables:
 
-- Next.js App Router projects for learner and admin. Completed.
+- Next.js App Router project for learner routes and `/admin` role routes. Completed.
 - TypeScript strict configuration. Completed.
 - Tailwind CSS base styling. Completed.
 - shadcn/ui base components. Started with local Button, Input, Textarea, Select, Card, Tabs, and Dialog primitives styled through the existing pixel tokens.
 - Prisma with PostgreSQL schema and local compose configuration. Completed.
 - Auth and session layer. Completed for email/password and database sessions.
 - `user` and `admin` roles in schema. Completed.
-- Base layout for learner and admin routes in separate apps. Completed.
+- Base layout for learner and admin routes in one app. Completed.
 - Local asset storage adapter. Started for material uploads and private review-card images.
 - Basic environment configuration. Completed.
 - Test setup with Vitest and Playwright. Completed for the current core and browser workflow slice.
@@ -43,10 +43,10 @@ Deliverables:
 Acceptance:
 
 - A user can register, sign in, and reach `/dashboard`. Completed.
-- An admin can reach the admin app root `/` on the admin service. Completed with seeded admin credentials.
+- An admin can reach `/admin`. Completed with seeded admin credentials.
 - PostgreSQL migrations run cleanly. Completed against local Docker PostgreSQL.
 - Private routes reject anonymous users. Completed for learner and admin routes.
-- Docker images for `web` and `admin` build successfully. Completed with app health checks in Compose and runtime standalone static assets copied into the image output.
+- The Docker image for `web` builds successfully. Completed with app health checks in Compose and runtime standalone static assets copied into the image output.
 
 ## 2. Exam Core
 
@@ -212,7 +212,7 @@ Deliverables:
 
 - Database-backed job queue. Started for material extraction and wrong-note review cards, with atomic claim and stale running-job recovery.
 - Worker process. Started with `npm run worker` and a `docker-compose` worker service.
-- Job status UI. Started in admin `/jobs` with payload/result/timestamp details, and learner wrong-note cards.
+- Job status UI. Started in admin `/admin/jobs` with payload/result/timestamp details, and learner wrong-note cards.
 - AI image provider adapter. Started with OpenAI Images.
 - Wrong-note review-card generation. Started.
 - Problem-solving diagram generation.

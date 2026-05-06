@@ -1,6 +1,6 @@
 # OpenExam Architecture Decisions
 
-Last updated: 2026-05-05
+Last updated: 2026-05-06
 
 This document records confirmed architecture decisions for the OpenExam MVP.
 
@@ -31,15 +31,15 @@ MVP stack:
 - Vitest for unit and API tests.
 - Playwright for critical browser workflow tests.
 
-Admin and learner UI are separate Next.js applications in the same monorepo. They are deployed as separate containers and share only explicit packages such as `packages/core`.
+Admin and learner UI run in one Next.js application. Learner workflows keep their existing routes, while admin workflows live under `/admin` and require the `admin` role.
 
-The first UI locale is `zh-CN`. Product-facing copy should be written in Simplified Chinese. Learner and admin apps expose a `/zh-CN` URL skeleton through middleware while internally reusing the current route tree.
+The first UI locale is `zh-CN`. Product-facing copy should be written in Simplified Chinese. The app exposes a `/zh-CN` URL skeleton through middleware while internally reusing the current route tree.
 
 Current implementation status:
 
-- The foundation web and admin apps are scaffolded with Next.js App Router, TypeScript strict mode, Tailwind CSS, Prisma, PostgreSQL configuration, and Vitest.
+- The foundation web app is scaffolded with Next.js App Router, TypeScript strict mode, Tailwind CSS, Prisma, PostgreSQL configuration, and Vitest.
 - `package.json` exposes stable scripts for development, build, TypeScript checks, tests, Prisma validation/generation, migrations, and seeding.
-- `docker-compose.yml` defines separate `web`, `admin`, and `postgres` services with health checks.
+- `docker-compose.yml` defines `web`, `worker`, and `postgres` services with health checks.
 - Database-backed email/password auth and separate learner/admin session cookies are implemented.
 - The first Exam Core workflow is implemented with admin exam hierarchy and knowledge-tree management, learner primary goal selection, and a dashboard goal read path.
 - The first Practice Loop workflow is implemented for multi-kind objective practice, subjective answer capture, paper attempts, graded attempts, attempt reports, answer-card submission, wrong-note auto-collection, filters, retry, mastery toggles, and database-backed dashboard summaries.
@@ -53,8 +53,7 @@ The MVP targets self-hosted web deployment.
 
 Included:
 
-- Learner web application container.
-- Admin application container.
+- Web application container with learner routes and `/admin` role routes.
 - PostgreSQL.
 - Local file storage adapter. Started for material uploads under `LOCAL_STORAGE_DIR`.
 - Optional S3-compatible storage adapter.
@@ -82,26 +81,26 @@ Learner routes:
 - `/ai/tasks`
 - `/profile`
 
-Admin app routes, rooted at the admin service or admin domain:
+Admin role routes:
 
-- `/`
-- `/exams`
-- `/knowledge`
-- `/questions`
-- `/papers`
-- `/materials`
-- `/ai`
-- `/jobs`
-- `/users`
-- `/audit`
+- `/admin`
+- `/admin/exams`
+- `/admin/knowledge`
+- `/admin/questions`
+- `/admin/papers`
+- `/admin/materials`
+- `/admin/ai`
+- `/admin/jobs`
+- `/admin/users`
+- `/admin/audit`
 
-Admin APIs live inside the admin app under `/api/...`. If a reverse proxy mounts the admin app under `/admin`, that prefix is infrastructure-level routing, not an in-app route requirement.
+Admin pages live inside the web app under `/admin/...`. Shared API routes, such as `/api/health`, stay at the app root unless a feature requires an admin-specific API route.
 
 Implementation note:
 
-- `apps/web` includes a route shell for every learner route above; `/goals`, `/dashboard`, `/practice`, `/papers`, `/attempts`, `/attempts/[attemptId]`, and `/wrong-notes` now use database-backed workflow data.
-- `apps/admin` includes a route shell for every admin route above; `/exams`, `/knowledge`, `/questions`, and `/papers` now contain the first minimal CRUD workflows.
-- Both apps expose `/api/health` for foundation health checks.
+- `apps/web` includes route shells for every learner route above and admin route shells under `apps/web/app/admin`; `/goals`, `/dashboard`, `/practice`, `/papers`, `/attempts`, `/attempts/[attemptId]`, and `/wrong-notes` now use database-backed workflow data.
+- `/admin/exams`, `/admin/knowledge`, `/admin/questions`, and `/admin/papers` contain the first minimal CRUD workflows.
+- The app exposes `/api/health` for foundation health checks.
 - Admin business APIs are not implemented yet.
 
 ## Core Exam Model
@@ -272,9 +271,9 @@ Implementation rules:
 
 - Passwords are hashed with Node `crypto.scrypt`; plaintext passwords are never stored.
 - Session cookies store only random tokens; the database stores token hashes.
-- Learner and admin apps use separate cookies: `openexam_web_session` and `openexam_admin_session`.
-- The learner app allows registration and login.
-- The admin app allows login only; admin users are created through seed/bootstrap configuration.
+- Learner and admin route groups use separate cookies: `openexam_web_session` and `openexam_admin_session`.
+- Learner routes allow registration and login.
+- Admin routes allow login only; admin users are created through seed/bootstrap configuration.
 - The first version does not include email verification or password reset.
 
 ## AI Provider Architecture
@@ -488,7 +487,7 @@ Required controls:
 - User daily/monthly call limits. Started with `OPENEXAM_DAILY_AI_CALL_LIMIT`.
 - Image generation limits.
 - Upload size limits. Started with `OPENEXAM_UPLOAD_MAX_BYTES`.
-- Admin usage view. Started in `/users` and `/ai`.
+- Admin usage view. Started in `/admin/users` and `/admin/ai`.
 - Platform-key budget protection. Started with `OPENEXAM_DAILY_PLATFORM_TOKEN_LIMIT`.
 
 The learner UI shows usage and limits, not exact cost. BYOK users are told provider billing belongs to their provider account.

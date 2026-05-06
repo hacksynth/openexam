@@ -2,17 +2,16 @@
 
 ## Project Structure & Module Organization
 
-This repository contains a split Next.js foundation scaffold plus planning documentation. Keep source-of-truth product and architecture notes in `docs/`, including `product-requirements.md`, `architecture-decisions.md`, `mvp-roadmap.md`, and `design-system.md`.
+This repository contains a single Next.js app foundation plus planning documentation. Keep source-of-truth product and architecture notes in `docs/`, including `product-requirements.md`, `architecture-decisions.md`, `mvp-roadmap.md`, and `design-system.md`.
 
-Top-level paths are `apps/web/` for the learner app, `apps/admin/` for the admin app, `packages/core/` for shared domain helpers and schemas, `prisma/` for schema and seed data, `tests/` for Vitest coverage, and `docs/` for product and architecture decisions. Add `e2e/` when Playwright workflows are introduced.
+Top-level paths are `apps/web/` for the learner app and `/admin` role routes, `packages/core/` for shared domain helpers and schemas, `prisma/` for schema and seed data, `tests/` for Vitest coverage, and `docs/` for product and architecture decisions. Add `e2e/` when Playwright workflows are introduced.
 
 ## Build, Test, and Development Commands
 
 - `npm run dev:web`: start the learner app on port `3000`.
-- `npm run dev:admin`: start the admin app on port `3001`.
-- `npm run build`: build both apps.
-- `npm run build:web`: build only the learner app.
-- `npm run build:admin`: build only the admin app.
+- `npm run dev`: start the unified web app on port `3000`.
+- `npm run build`: build the unified web app.
+- `npm run build:web`: build only the web workspace.
 - `npm run lint`: run TypeScript checks.
 - `npm test`: run Vitest unit tests.
 - `npm run test:e2e`: run Playwright browser workflow tests once e2e specs exist.

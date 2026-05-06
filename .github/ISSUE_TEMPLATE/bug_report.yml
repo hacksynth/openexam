@@ -43,8 +43,9 @@ body:
     attributes:
       label: Area
       options:
-        - Learner app
-        - Admin app
+        - Learner routes
+        - Admin /admin routes
+        - Web app shell/routing
         - Worker/jobs
         - AI providers
         - Materials/import
@@ -60,6 +61,12 @@ body:
       placeholder: v0.1.0 or commit SHA
     validations:
       required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Browser, Node.js version, Docker version, or deployment target when relevant.
+      placeholder: Chrome 124, Node 22, Docker Compose v2, local Postgres
   - type: textarea
     id: logs
     attributes:

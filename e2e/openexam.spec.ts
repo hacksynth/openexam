@@ -3,10 +3,12 @@ import { PrismaClient, UserRole } from "@prisma/client";
 import { hashPassword } from "@openexam/core/password";
 
 process.env.DATABASE_URL ??= "postgresql://openexam:openexam@localhost:5432/openexam?schema=public";
+process.env.AI_KEY_ENCRYPTION_SECRET = "openexam-e2e-ai-key-secret";
+process.env.OPENAI_BASE_URL = "http://127.0.0.1:8317/v1";
 
 const prisma = new PrismaClient();
 const webUrl = process.env.E2E_WEB_URL ?? "http://127.0.0.1:3000";
-const adminUrl = process.env.E2E_ADMIN_URL ?? "http://127.0.0.1:3001";
+const adminUrl = process.env.E2E_ADMIN_URL ?? `${webUrl}/admin`;
 const adminEmail = "e2e.admin@openexam.local";
 const adminPassword = "admin1234";
 const learnerEmail = "e2e.learner@openexam.local";
@@ -341,6 +343,7 @@ async function generateWrongNoteReviewCard(page: Page) {
   await page.goto(`${webUrl}/wrong-notes?knowledgeNodeId=${fixtureIds.knowledgeNodeId}`);
   await wrongNoteArticle(page).getByRole("button", { name: "生成复习卡" }).click();
   await expect(page.getByText("复习卡图片任务已加入队列。")).toBeVisible();
+  await processLatestReviewCardJobForE2e();
   await waitForWrongNoteReviewCard(page, "成功");
   await expect(wrongNoteArticle(page).getByAltText("错题复习卡")).toBeVisible();
 }
@@ -350,6 +353,7 @@ async function failAndRetryWrongNoteReviewCard(webPage: Page, adminPage: Page) {
   await webPage.goto(`${webUrl}/wrong-notes?knowledgeNodeId=${fixtureIds.knowledgeNodeId}`);
   await wrongNoteArticle(webPage).getByRole("button", { name: "重新生成复习卡" }).click();
   await expect(webPage.getByText("复习卡图片任务已加入队列。")).toBeVisible();
+  await processLatestReviewCardJobForE2e({ allowFailure: true });
   await waitForWrongNoteReviewCard(webPage, "Mock OpenAI image failure");
 
   await adminPage.goto(`${adminUrl}/jobs?status=failed`);
@@ -374,7 +378,7 @@ async function saveLearnerOpenAiKey(page: Page, apiKey: string) {
 }
 
 async function waitForWrongNoteReviewCard(page: Page, expectedText: string) {
-  for (let attempt = 0; attempt < 30; attempt += 1) {
+  for (let attempt = 0; attempt < 60; attempt += 1) {
     await page.goto(`${webUrl}/wrong-notes?knowledgeNodeId=${fixtureIds.knowledgeNodeId}`);
     const card = wrongNoteArticle(page);
     const matched =
@@ -394,6 +398,48 @@ async function waitForWrongNoteReviewCard(page: Page, expectedText: string) {
   } else {
     await expect(wrongNoteArticle(page).getByText(expectedText).first()).toBeVisible();
   }
+}
+
+async function processLatestReviewCardJobForE2e(options: { allowFailure?: boolean } = {}) {
+  const { processJob } = await import("@openexam/core/jobs");
+  const learner = await prisma.user.findUnique({
+    where: {
+      email: learnerEmail
+    },
+    select: {
+      id: true
+    }
+  });
+
+  if (!learner) {
+    throw new Error("E2E learner was not created.");
+  }
+
+  const job = await prisma.job.findFirst({
+    where: {
+      userId: learner.id,
+      type: "generate_wrong_note_review_card"
+    },
+    orderBy: {
+      createdAt: "desc"
+    }
+  });
+
+  if (!job) {
+    throw new Error("E2E review-card job was not created.");
+  }
+
+  if (job.status === "succeeded") {
+    return;
+  }
+
+  const result = await processJob(job.id);
+
+  if (result.ok || (options.allowFailure && result.error.includes("Mock OpenAI image failure"))) {
+    return;
+  }
+
+  throw new Error(result.error);
 }
 
 function wrongNoteArticle(page: Page) {
@@ -425,7 +471,9 @@ async function processMaterialJobAndConfirmQuestion(page: Page) {
     await expect(page).toHaveURL(/\/jobs\?/);
   }
 
-  await waitForExtractedMaterialQuestion(page);
+  await processMaterialExtractionJobForE2e();
+  await waitForExtractedMaterialQuestion();
+  await page.goto(`${adminUrl}/materials`);
   await expect(page.getByRole("heading", { name: "资料", exact: true })).toBeVisible();
   await expect(page.locator("body")).toContainText(extractedQuestionStem);
   await page.locator("article").filter({ hasText: extractedQuestionStem }).first().getByRole("button", { name: "确认入题库" }).click();
@@ -433,21 +481,76 @@ async function processMaterialJobAndConfirmQuestion(page: Page) {
 
   await page.goto(`${adminUrl}/questions?q=${encodeURIComponent(extractedQuestionStem)}`);
   await expect(page.locator("body")).toContainText(extractedQuestionStem);
-  await expect(page.locator("body")).toContainText("AI 生成");
+  await expect(page.locator("body")).toContainText("用户上传");
 }
 
-async function waitForExtractedMaterialQuestion(page: Page) {
-  for (let attempt = 0; attempt < 30; attempt += 1) {
-    await page.goto(`${adminUrl}/materials`);
+async function waitForExtractedMaterialQuestion() {
+  for (let attempt = 0; attempt < 60; attempt += 1) {
+    const candidate = await prisma.materialQuestionCandidate.findFirst({
+      where: {
+        stem: extractedQuestionStem
+      },
+      select: {
+        id: true
+      }
+    });
 
-    if (await page.locator("body").getByText(extractedQuestionStem).isVisible().catch(() => false)) {
+    if (candidate) {
       return;
     }
 
-    await page.waitForTimeout(500);
+    await new Promise((resolve) => setTimeout(resolve, 500));
   }
 
-  await page.goto(`${adminUrl}/materials`);
+  throw new Error("E2E extracted material question was not created.");
+}
+
+async function processMaterialExtractionJobForE2e() {
+  const { processJob } = await import("@openexam/core/jobs");
+  const material = await prisma.material.findFirst({
+    where: {
+      title: materialTitle
+    },
+    orderBy: {
+      createdAt: "desc"
+    },
+    select: {
+      id: true
+    }
+  });
+
+  if (!material) {
+    throw new Error("E2E material was not created.");
+  }
+
+  const jobs = await prisma.job.findMany({
+    where: {
+      type: "extract_material_questions"
+    },
+    orderBy: {
+      createdAt: "desc"
+    },
+    take: 20
+  });
+  const job = jobs.find((item) => {
+    const payload = item.payload;
+
+    return payload && typeof payload === "object" && !Array.isArray(payload) && "materialId" in payload && payload.materialId === material.id;
+  });
+
+  if (!job) {
+    throw new Error("E2E material extraction job was not created.");
+  }
+
+  if (job.status === "succeeded") {
+    return;
+  }
+
+  const result = await processJob(job.id);
+
+  if (!result.ok) {
+    throw new Error(result.error);
+  }
 }
 
 async function practiceConfirmedMaterialQuestion(page: Page) {

@@ -11,7 +11,7 @@ OpenExam support happens in public project channels unless the topic includes se
 ## Where To Ask
 
 - Reproducible bugs: open a bug report with exact steps, version or commit, expected behavior, actual behavior, and non-sensitive logs.
-- Feature requests: open a feature request with the learner, admin, or self-hosting problem and the smallest useful proposal.
+- Feature requests: open a feature request with the learner route, admin route, or self-hosting problem and the smallest useful proposal.
 - Security reports: use GitHub private security advisories when available. Do not disclose vulnerabilities publicly before coordination.
 
 ## Maintainer Expectations

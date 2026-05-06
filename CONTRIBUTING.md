@@ -14,7 +14,7 @@ Read these files first:
 
 ## Working Locally
 
-OpenExam is a split Next.js monorepo with a learner app, admin app, shared core package, Prisma schema, worker process, Vitest tests, and Playwright workflows.
+OpenExam is a Next.js monorepo with one web app for learner routes and `/admin` role routes, a shared core package, Prisma schema, worker process, Vitest tests, and Playwright workflows.
 
 Install dependencies and generate Prisma Client:
 
@@ -31,18 +31,16 @@ npm run db:migrate
 npm run db:seed
 ```
 
-Run the apps in separate terminals:
+Run the web app:
 
 ```sh
 npm run dev:web
-npm run dev:admin
 ```
 
 Use stable script names in `package.json`:
 
 ```sh
 npm run dev:web
-npm run dev:admin
 npm run prisma:validate
 npm run build
 npm run lint

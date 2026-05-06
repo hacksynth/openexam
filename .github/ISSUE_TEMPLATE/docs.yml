@@ -1,0 +1,37 @@
+name: Documentation Issue
+description: Report missing, stale, or confusing OpenExam documentation.
+title: "docs: "
+labels:
+  - documentation
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What documentation needs to change?
+    validations:
+      required: true
+  - type: input
+    id: page
+    attributes:
+      label: Page Or Path
+      placeholder: docs/product-requirements.md
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What is missing, incorrect, stale, or hard to follow?
+    validations:
+      required: true
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: Suggested Update
+      description: Optional wording, examples, or links that would resolve the issue.
+  - type: input
+    id: version
+    attributes:
+      label: Version Or Commit
+      placeholder: v0.1.0 or commit SHA

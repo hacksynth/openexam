@@ -2,6 +2,15 @@
 
 -
 
+## Scope
+
+- [ ] Web app routes
+- [ ] `/admin` role routes
+- [ ] Core domain, Prisma, or seed data
+- [ ] Worker jobs or AI providers
+- [ ] Docker, GitHub Actions, or release infrastructure
+- [ ] Documentation only
+
 ## Test Results
 
 - [ ] `npm run prisma:validate`
@@ -9,6 +18,7 @@
 - [ ] `npm test`
 - [ ] `npm run build`
 - [ ] `npm run test:e2e`
+- [ ] `docker compose config --services` when deployment infrastructure changed
 
 ## Release Notes
 

@@ -3,3 +3,6 @@ contact_links:
   - name: Security reports
     url: https://github.com/hacksynth/openexam/security/advisories/new
     about: Please use a private security advisory or the safest available maintainer contact. Do not disclose vulnerabilities publicly before coordination.
+  - name: Documentation
+    url: https://github.com/hacksynth/openexam/tree/main/docs
+    about: Check the product, architecture, roadmap, and design notes before opening a question.
