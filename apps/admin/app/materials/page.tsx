@@ -9,6 +9,11 @@ type AdminMaterialsPageProps = {
   searchParams: Promise<{ error?: string; notice?: string }>;
 };
 
+const libraryScopeLabels: Record<string, string> = {
+  personal: "用户资料",
+  platform: "平台资料"
+};
+
 export default async function AdminMaterialsPage({ searchParams }: AdminMaterialsPageProps) {
   await requireAdminSession();
   const [params, materials, candidates, subjects] = await Promise.all([searchParams, listAdminMaterials(), listMaterialQuestionCandidates(undefined), listKnowledgeHierarchy()]);
@@ -76,6 +81,8 @@ export default async function AdminMaterialsPage({ searchParams }: AdminMaterial
                   <span className="status-chip px-2 py-1">{stateLabel(material.extractionState)}</span>
                   <span className="status-chip px-2 py-1">{formatBytes(material.sizeBytes)}</span>
                   <span className="status-chip px-2 py-1">候选 {material.candidateCount}</span>
+                  <span className="status-chip px-2 py-1">入库 {material.confirmedCandidateCount}</span>
+                  <span className="status-chip px-2 py-1">{libraryScopeLabels[material.libraryScope] ?? material.libraryScope}</span>
                   {material.extractionMethod ? <span className="status-chip px-2 py-1">{methodLabel(material.extractionMethod)}</span> : null}
                   <span className="status-chip px-2 py-1">{material.ownerEmail}</span>
                   {material.latestJob ? <span className="status-chip px-2 py-1">任务 {jobStatusLabel(material.latestJob.status)}</span> : null}
@@ -104,6 +111,7 @@ export default async function AdminMaterialsPage({ searchParams }: AdminMaterial
                 <div className="flex flex-wrap gap-2">
                   <span className="status-chip px-2 py-1">{candidate.status === "confirmed" ? "已确认" : "待确认"}</span>
                   <span className="status-chip px-2 py-1">{candidate.materialTitle}</span>
+                  <span className="status-chip px-2 py-1">{libraryScopeLabels[candidate.materialScope] ?? candidate.materialScope}</span>
                   <span className="status-chip px-2 py-1">{candidate.kind}</span>
                   <span className="status-chip px-2 py-1">答案 {candidate.answer}</span>
                   {candidate.difficulty ? <span className="status-chip px-2 py-1">难度 {candidate.difficulty}</span> : null}

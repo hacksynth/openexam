@@ -47,7 +47,8 @@ describe("context chat", () => {
       args: {
         where: {
           id: "material_1",
-          ownerId: "user_1"
+          ownerId: "user_1",
+          libraryScope: "personal"
         },
         select: {
           id: true,

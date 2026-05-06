@@ -60,6 +60,11 @@ const reviewStatusLabels: Record<string, string> = {
   takedown: "已下架"
 };
 
+const ownershipLabels: Record<string, string> = {
+  platform: "平台题库",
+  user_private: "用户私有"
+};
+
 const questionKindLabels: Record<string, string> = {
   single_choice: "单选",
   multiple_choice: "多选",
@@ -214,12 +219,14 @@ export default async function AdminQuestionsPage({ searchParams }: QuestionsPage
               <section key={question.id} className="pixel-panel grid gap-4 p-5">
                 <div>
                   <div className="mb-3 flex flex-wrap gap-2">
+                    <span className="status-chip px-2 py-1">{ownershipLabels[question.ownership]}</span>
                     <span className="status-chip px-2 py-1">{visibilityLabels[question.visibility]}</span>
                     <span className="status-chip px-2 py-1">{sourceTypeLabels[question.sourceType]}</span>
                     <span className="status-chip px-2 py-1">{reviewStatusLabels[question.reviewStatus]}</span>
                     <span className="status-chip px-2 py-1">{questionKindLabels[question.kind]}</span>
                     {question.archived ? <span className="status-chip bg-[var(--danger)] px-2 py-1 text-white">已归档</span> : null}
                     <span className="status-chip px-2 py-1">V{question.currentVersion}</span>
+                    {question.ownerEmail ? <span className="status-chip px-2 py-1">{question.ownerEmail}</span> : null}
                   </div>
                   <h2 className="break-words text-xl font-black leading-8">{question.stem}</h2>
                   <p className="mt-1 break-words text-sm font-bold text-[var(--muted)]">{question.knowledgePath}</p>

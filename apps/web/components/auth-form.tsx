@@ -6,9 +6,10 @@ import { FeedbackMessage, SubmitButton, TextField } from "@openexam/core/pixel-u
 type AuthFormProps = {
   action: (previousState: string | null, formData: FormData) => Promise<string | null>;
   mode: "login" | "register";
+  redirectTo?: string;
 };
 
-export function AuthForm({ action, mode }: AuthFormProps) {
+export function AuthForm({ action, mode, redirectTo }: AuthFormProps) {
   const [error, formAction, pending] = useActionState(action, null);
   const isRegister = mode === "register";
 
@@ -20,6 +21,8 @@ export function AuthForm({ action, mode }: AuthFormProps) {
       </div>
 
       <FeedbackMessage error={error ?? undefined} />
+
+      {redirectTo ? <input name="redirectTo" type="hidden" value={redirectTo} /> : null}
 
       {isRegister ? (
         <TextField autoComplete="name" label="昵称" name="name" type="text" />

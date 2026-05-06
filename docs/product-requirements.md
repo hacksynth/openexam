@@ -75,7 +75,7 @@ After login, the first screen is a learner dashboard, not a marketing page. It s
 - Recent AI/import job status.
 - Quick entries for practice, papers, materials, wrong notes, plans, and analysis.
 
-The unauthenticated landing page stays lightweight: product introduction, learner entry, open-source, and self-hosting notes.
+The unauthenticated landing page stays lightweight: product introduction, learner entry, open-source, and self-hosting notes. It shows exam program cards, then sends users to an exam detail page to choose the configured direction or subject. Programs can choose a front-end selection level: track mode uses administrator-configured exam directions, while subject mode uses administrator-configured subjects under one default track/cycle. The current open entry is Ruankao Software Designer; future exams should be added through the admin exam hierarchy before being shown on the homepage.
 
 Implementation note: the current `/dashboard` page is authenticated and reads the user's primary exam goal, active plan tasks, derived review tasks, pending wrong-note and weak knowledge-node summaries, recent jobs, recent AI calls, and active AI task count from the database.
 
@@ -92,7 +92,7 @@ Each goal records:
 
 AI plans and diagnoses are generated for one goal at a time.
 
-Implementation note: `/goals` now supports creating or updating the current primary goal from available exam hierarchy data. The app enforces one primary goal per user in application logic.
+Implementation note: `/goals` now supports creating or updating the current primary goal from available exam hierarchy data. It also accepts homepage prefill query parameters for exam program and track selection. The app enforces one primary goal per user in application logic.
 
 ### Practice
 
@@ -196,11 +196,12 @@ Required workflow:
 2. Extract text or OCR.
 3. Use AI to extract candidate questions, answers, explanations, knowledge nodes, difficulty, and source page references.
 4. Require manual confirmation before candidate questions become practiceable.
-5. Add confirmed questions to the user's private question bank.
-6. Allow materials to be used as AI chat context.
-7. Track import status, source, and processing errors.
+5. Add learner-uploaded confirmed questions to the user's private question bank.
+6. Add admin-uploaded confirmed questions to the platform question bank as private pending-review uploaded questions.
+7. Allow personal materials to be used as AI chat context.
+8. Track import status, source, and processing errors.
 
-Implementation note: TXT, Markdown, JSON, DOCX, PDF, and image uploads use the configured storage driver. TXT/Markdown/JSON/DOCX and text-based PDFs are read locally from storage; scanned PDFs and images are passed to the configured AI provider as document/image input for extraction and context chat. A standalone OCR service remains outside the MVP.
+Implementation note: TXT, Markdown, JSON, DOCX, PDF, and image uploads use the configured storage driver. TXT/Markdown/JSON/DOCX and text-based PDFs are read locally from storage; scanned PDFs and images are passed to the configured AI provider as document/image input for extraction and context chat. Material extraction sets question source to `user_uploaded`; AI is the extraction method, not the question source. Learner uploads remain personal, while admin uploads enter the platform review queue. A standalone OCR service remains outside the MVP.
 
 The MVP does not include full vector search, automatic copyright determination, knowledge graph fusion, video parsing, or large-scale batch-processing UI.
 
@@ -284,7 +285,7 @@ The MVP ships:
 
 - Small original sample questions for demos.
 - Generic importers for administrator-provided JSON/CSV question data. JSON single-choice import is implemented first.
-- Material upload and AI-assisted extraction for user-private content.
+- Material upload and AI-assisted extraction for user-private and platform-review content.
 
 Public question-bank content must be one of:
 

@@ -799,7 +799,8 @@ export async function getMaterialPracticeScope(userId: string, materialId: strin
   const material = await db.material.findFirst({
     where: {
       id,
-      ownerId: userId
+      ownerId: userId,
+      libraryScope: "personal"
     },
     select: {
       id: true,
@@ -851,7 +852,8 @@ export async function questionBelongsToMaterialPracticeScope(
       status: "confirmed",
       confirmedQuestionId: normalizedQuestionId,
       material: {
-        ownerId: userId
+        ownerId: userId,
+        libraryScope: "personal"
       }
     },
     select: {

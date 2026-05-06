@@ -92,6 +92,22 @@ enum JobStatus {
   canceled
 }
 
+enum HomepageStatus {
+  open
+  planned
+  hidden
+}
+
+enum HomepageSelectionLevel {
+  track
+  subject
+}
+
+enum MaterialLibraryScope {
+  personal
+  platform
+}
+
 model User {
   id               String                   @id @default(cuid())
   email            String                   @unique
@@ -133,29 +149,34 @@ model Session {
 }
 
 model ExamProgram {
-  id          String      @id @default(cuid())
-  name        String
-  slug        String      @unique
-  description String?
-  tracks      ExamTrack[]
-  goals       ExamGoal[]
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  id                     String                 @id @default(cuid())
+  name                   String
+  slug                   String                 @unique
+  description            String?
+  homepageSelectionLevel HomepageSelectionLevel @default(track)
+  tracks                 ExamTrack[]
+  goals                  ExamGoal[]
+  createdAt              DateTime               @default(now())
+  updatedAt              DateTime               @updatedAt
 }
 
 model ExamTrack {
-  id        String      @id @default(cuid())
-  programId String
-  program   ExamProgram @relation(fields: [programId], references: [id])
-  name      String
-  slug      String
-  level     String?
-  cycles    ExamCycle[]
-  goals     ExamGoal[]
-  createdAt DateTime    @default(now())
-  updatedAt DateTime    @updatedAt
+  id                  String         @id @default(cuid())
+  programId           String
+  program             ExamProgram    @relation(fields: [programId], references: [id])
+  name                String
+  slug                String
+  level               String?
+  homepageStatus      HomepageStatus @default(hidden)
+  homepageOrder       Int            @default(100)
+  homepageDescription String?
+  cycles              ExamCycle[]
+  goals               ExamGoal[]
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
 
   @@unique([programId, slug])
+  @@index([homepageStatus, homepageOrder])
 }
 
 model ExamCycle {
@@ -176,20 +197,24 @@ model ExamCycle {
 }
 
 model Subject {
-  id          String          @id @default(cuid())
-  cycleId     String
-  cycle       ExamCycle       @relation(fields: [cycleId], references: [id])
-  name        String
-  slug        String
-  description String?
-  syllabi     Syllabus[]
-  papers      Paper[]
-  goals       ExamGoal[]
-  planTasks   StudyPlanTask[]
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
+  id                  String          @id @default(cuid())
+  cycleId             String
+  cycle               ExamCycle       @relation(fields: [cycleId], references: [id])
+  name                String
+  slug                String
+  description         String?
+  homepageStatus      HomepageStatus  @default(hidden)
+  homepageOrder       Int             @default(100)
+  homepageDescription String?
+  syllabi             Syllabus[]
+  papers              Paper[]
+  goals               ExamGoal[]
+  planTasks           StudyPlanTask[]
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
 
   @@unique([cycleId, slug])
+  @@index([homepageStatus, homepageOrder])
 }
 
 model Syllabus {
@@ -427,6 +452,7 @@ model Material {
   id               String                      @id @default(cuid())
   ownerId          String
   owner            User                        @relation(fields: [ownerId], references: [id])
+  libraryScope     MaterialLibraryScope        @default(personal)
   title            String
   mimeType         String
   sizeBytes        Int
@@ -444,6 +470,7 @@ model Material {
   updatedAt        DateTime                    @updatedAt
 
   @@index([ownerId])
+  @@index([libraryScope])
 }
 
 model MaterialQuestionCandidate {

@@ -1,16 +1,23 @@
 import Link from "next/link";
 import type { Route } from "next";
 import { AuthForm } from "@/components/auth-form";
-import { redirectAuthenticatedWebUser } from "@/lib/auth";
+import { normalizeWebRedirectPath, redirectAuthenticatedWebUserTo } from "@/lib/auth";
 import { registerAction } from "./actions";
 
-export default async function RegisterPage() {
-  await redirectAuthenticatedWebUser();
+type RegisterPageProps = {
+  searchParams: Promise<{ redirectTo?: string }>;
+};
+
+export default async function RegisterPage({ searchParams }: RegisterPageProps) {
+  const params = await searchParams;
+  const redirectTo = normalizeWebRedirectPath(params.redirectTo);
+
+  await redirectAuthenticatedWebUserTo(redirectTo);
 
   return (
     <main className="mx-auto grid min-h-screen content-center justify-items-center gap-4 px-4 py-10">
-      <AuthForm action={registerAction} mode="register" />
-      <Link href={"/login" as Route} className="font-bold underline">
+      <AuthForm action={registerAction} mode="register" redirectTo={redirectTo} />
+      <Link href={`/login?redirectTo=${encodeURIComponent(redirectTo)}` as Route} className="font-bold underline">
         已有账号？登录学习端
       </Link>
     </main>

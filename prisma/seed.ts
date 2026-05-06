@@ -389,12 +389,14 @@ async function main() {
     where: { slug: "ruankao" },
     update: {
       name: "软考",
-      description: "中国计算机技术与软件专业技术资格"
+      description: "中国计算机技术与软件专业技术资格",
+      homepageSelectionLevel: "track"
     },
     create: {
       name: "软考",
       slug: "ruankao",
-      description: "中国计算机技术与软件专业技术资格"
+      description: "中国计算机技术与软件专业技术资格",
+      homepageSelectionLevel: "track"
     }
   });
 
@@ -402,13 +404,19 @@ async function main() {
     where: { programId_slug: { programId: program.id, slug: "software-designer" } },
     update: {
       name: "软件设计师",
-      level: "中级"
+      level: "中级",
+      homepageStatus: "open",
+      homepageOrder: 10,
+      homepageDescription: "当前完整备考方向，覆盖基础知识与应用技术。"
     },
     create: {
       programId: program.id,
       name: "软件设计师",
       slug: "software-designer",
-      level: "中级"
+      level: "中级",
+      homepageStatus: "open",
+      homepageOrder: 10,
+      homepageDescription: "当前完整备考方向，覆盖基础知识与应用技术。"
     }
   });
 

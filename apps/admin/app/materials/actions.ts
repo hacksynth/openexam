@@ -19,6 +19,7 @@ export async function uploadAdminMaterialAction(formData: FormData) {
     title: value(formData, "title"),
     subjectId: value(formData, "subjectId"),
     sourceLicense: value(formData, "sourceLicense"),
+    libraryScope: "platform",
     file
   });
 

@@ -124,6 +124,8 @@ Examples:
 
 The first Prisma schema implements this hierarchy with `ExamProgram`, `ExamTrack`, `ExamCycle`, `Subject`, `Syllabus`, `KnowledgeNode`, `Question`, `Paper`, and `Attempt` models. Migrations have been validated against local PostgreSQL. Minimal CRUD exists for the exam hierarchy, knowledge trees, single-choice questions, and ordered papers.
 
+`ExamProgram` owns the front-end selection level through `homepageSelectionLevel` (`track` or `subject`). In `track` mode, `ExamTrack` owns lightweight homepage display configuration: `homepageStatus` (`open`, `planned`, or `hidden`), `homepageOrder`, and `homepageDescription`. In `subject` mode, `Subject` owns the same homepage display fields. The learner homepage aggregates configured directions or subjects into exam-program cards, and `/exams/[programSlug]` shows the selectable directions or subjects while keeping layout and homepage copy fixed in code.
+
 ## Question Model
 
 MVP question kinds:
@@ -237,6 +239,7 @@ Constraints:
 - `public` requires source type `original`, `authorized`, or `public_domain_or_open`.
 - `unknown` can never be public.
 - `ai_generated` is private by default and cannot become public without manual source clarification.
+- Material-extracted questions use `user_uploaded` source because AI is the extraction method, not the content source.
 - Public visibility changes write audit logs.
 - `takedown` immediately removes public availability.
 
@@ -248,6 +251,7 @@ Rules:
 
 - Uploaded materials, private questions, wrong notes, AI chats, plans, and AI outputs are private by default.
 - User content is not automatically converted to public question-bank content.
+- Admin-uploaded materials are separated from personal materials and confirm into platform-owned private pending-review questions.
 - User content is not used for model training by default.
 - AI requests must clearly indicate that content is sent to the selected provider.
 - Users can delete API keys, uploaded materials, and AI history.
@@ -300,7 +304,7 @@ Implementation note:
 - `/wrong-notes` can synchronously generate or regenerate a plain-text AI analysis for one wrong note and stores it in `WrongNote.aiAnalysis`.
 - `/ai/tasks` lists the user's recent `AiCall` records with model, status, prompt version, duration, token usage, error summary, and retry for failed wrong-note explanations.
 - Admin `/ai` manages provider model presets, default task routing, temperature, max tokens, and enabled state.
-- Material extraction jobs use text, document, or vision-capable provider adapters and write Zod-validated pending `MaterialQuestionCandidate` records before admin confirmation creates private questions.
+- Material extraction jobs use text, document, or vision-capable provider adapters and write Zod-validated pending `MaterialQuestionCandidate` records before confirmation creates private questions. Personal materials create owner-bound approved private questions; platform materials create ownerless pending-review private questions.
 - `/analysis` can generate persisted `LearningDiagnosis` records from current statistics.
 - `/ai/chat` stores context-bound chat threads and messages for question, wrong-note, knowledge-node, plan, attempt, and material contexts.
 - `/practice/generate` creates private AI-generated question candidates that require confirmation before becoming practiceable private questions.

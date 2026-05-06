@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import path from "node:path";
-import { Prisma, QuestionKind, ReviewStatus, SourceType, Visibility } from "@prisma/client";
+import { Prisma, QuestionKind, ReviewStatus, SourceType, Visibility, type MaterialLibraryScope } from "@prisma/client";
 import mammoth from "mammoth";
 import { PDFParse } from "pdf-parse";
 import { extractJsonObject, materialQuestionExtractionSchema } from "./ai-output-schemas";
@@ -27,6 +27,7 @@ export type UploadMaterialInput = {
   title?: string | null;
   subjectId?: string | null;
   sourceLicense?: string | null;
+  libraryScope?: MaterialLibraryScope | string | null;
   file: UploadedMaterialFile;
 };
 
@@ -59,6 +60,7 @@ export const supportedMaterialMimeTypes = [
   "image/webp"
 ] as const;
 export const materialQuestionKinds = ["single_choice", "multiple_choice", "true_false", "blank", "short_answer", "case_analysis"] as const;
+export const materialLibraryScopes = ["personal", "platform"] as const;
 
 export type ExtractedMaterialQuestion = {
   kind?: string | null;
@@ -94,6 +96,7 @@ export async function uploadMaterial(userId: string, input: UploadMaterialInput,
 
   const subjectId = optionalText(input.subjectId);
   const bindingScope = subjectId ? `subject:${subjectId}` : null;
+  const libraryScope = parseMaterialLibraryScope(input.libraryScope);
 
   if (subjectId) {
     const subject = await db.subject.findUnique({ where: { id: subjectId }, select: { id: true } });
@@ -115,6 +118,7 @@ export async function uploadMaterial(userId: string, input: UploadMaterialInput,
       const material = await tx.material.create({
         data: {
           ownerId: userId,
+          libraryScope,
           title,
           mimeType,
           sizeBytes: bytes.length,
@@ -161,7 +165,7 @@ export async function uploadMaterial(userId: string, input: UploadMaterialInput,
 
 export async function listUserMaterials(userId: string, db: MaterialDatabase = prisma) {
   const materials = await db.material.findMany({
-    where: { ownerId: userId },
+    where: { ownerId: userId, libraryScope: "personal" },
     include: {
       candidates: true
     },
@@ -186,6 +190,7 @@ export async function listAdminMaterials(db: MaterialDatabase = prisma) {
 
   return materials.map((material) => ({
     ...toMaterialView(material, jobs.get(material.id)),
+    libraryScope: material.libraryScope,
     ownerEmail: material.owner.email,
     ownerName: material.owner.name
   }));
@@ -209,6 +214,7 @@ export async function listMaterialQuestionCandidates(materialId: string | undefi
     id: candidate.id,
     materialId: candidate.materialId,
     materialTitle: candidate.material.title,
+    materialScope: candidate.material.libraryScope,
     ownerEmail: candidate.material.owner.email,
     kind: candidate.kind,
     stem: candidate.stem,
@@ -290,18 +296,18 @@ export async function confirmMaterialQuestionCandidate(candidateId: string, db: 
     const question = await db.$transaction(async (tx) => {
       const created = await tx.question.create({
         data: {
-          ownerId: candidate.material.ownerId,
+          ownerId: candidate.material.libraryScope === "platform" ? null : candidate.material.ownerId,
           kind: candidate.kind,
           stem: candidate.stem,
           payload: candidate.payload as Prisma.InputJsonValue,
           answerKey: candidate.answerKey as Prisma.InputJsonValue,
           explanation: candidate.explanation,
           difficulty: candidate.difficulty,
-          sourceType: SourceType.ai_generated,
+          sourceType: SourceType.user_uploaded,
           sourceTitle: formatMaterialSourceTitle(candidate.material.title, candidate.sourceRef),
           sourceLicense: candidate.material.sourceLicense,
           visibility: Visibility.private,
-          reviewStatus: ReviewStatus.approved,
+          reviewStatus: candidate.material.libraryScope === "platform" ? ReviewStatus.pending_review : ReviewStatus.approved,
           currentVersion: 1,
           knowledgeBindings: {
             create: {
@@ -317,9 +323,9 @@ export async function confirmMaterialQuestionCandidate(candidateId: string, db: 
               payload: candidate.payload as Prisma.InputJsonValue,
               answerKey: candidate.answerKey as Prisma.InputJsonValue,
               explanation: candidate.explanation,
-              sourceType: SourceType.ai_generated,
+              sourceType: SourceType.user_uploaded,
               visibility: Visibility.private,
-              reviewStatus: ReviewStatus.approved
+              reviewStatus: candidate.material.libraryScope === "platform" ? ReviewStatus.pending_review : ReviewStatus.approved
             }
           }
         }
@@ -887,6 +893,7 @@ function toMaterialView(
     sourceLicense: material.sourceLicense,
     candidateCount: material.candidates.length,
     pendingCandidateCount: material.candidates.filter((candidate) => candidate.status === "pending").length,
+    confirmedCandidateCount: material.candidates.filter((candidate) => candidate.status === "confirmed" && candidate.confirmedQuestionId).length,
     createdAt: material.createdAt,
     updatedAt: material.updatedAt,
     latestJob: job
@@ -960,6 +967,10 @@ function optionalText(value: string | null | undefined) {
   const text = value?.trim();
 
   return text || null;
+}
+
+function parseMaterialLibraryScope(value: MaterialLibraryScope | string | null | undefined): MaterialLibraryScope {
+  return value === "platform" ? "platform" : "personal";
 }
 
 function formatBytes(value: number) {

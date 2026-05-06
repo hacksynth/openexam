@@ -43,6 +43,14 @@ export const learnerRoutes: RouteItem[] = [
     status: "foundation"
   },
   {
+    id: "question-bank",
+    href: "/questions",
+    label: "我的题库",
+    description: "查看学习者自己确认入库的私有题，按来源筛选并进入单题练习。",
+    section: "learner",
+    status: "foundation"
+  },
+  {
     id: "papers",
     href: "/papers",
     label: "试卷",

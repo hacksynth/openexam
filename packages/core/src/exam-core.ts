@@ -2,6 +2,23 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
 
 const slugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+export const homepageStatusOptions = ["open", "planned", "hidden"] as const;
+export const homepageStatusLabels = {
+  open: "开放",
+  planned: "规划中",
+  hidden: "隐藏"
+} as const;
+export const homepageSelectionLevelOptions = ["track", "subject"] as const;
+export const homepageSelectionLevelLabels = {
+  track: "方向",
+  subject: "科目"
+} as const;
+export const examTrackHomepageStatusOptions = homepageStatusOptions;
+export const examTrackHomepageStatusLabels = homepageStatusLabels;
+
+export type HomepageStatus = (typeof homepageStatusOptions)[number];
+export type HomepageSelectionLevel = (typeof homepageSelectionLevelOptions)[number];
+export type ExamTrackHomepageStatus = HomepageStatus;
 
 type ActionResult<T = undefined> = T extends undefined
   ? { ok: true } | { ok: false; error: string }
@@ -20,6 +37,68 @@ type ParsedGoalInput = {
   targetDate: Date | null;
   targetScore: number | null;
   dailyMinutes: number;
+};
+
+type ExamTrackHomepageInput = {
+  homepageStatus?: string | null;
+  homepageOrder?: string | number | null;
+  homepageDescription?: string | null;
+};
+type ExamSubjectHomepageInput = ExamTrackHomepageInput;
+type ExamProgramHomepageInput = {
+  homepageSelectionLevel?: string | null;
+};
+
+type ExamProgramHierarchy = Awaited<ReturnType<typeof listExamHierarchy>>[number];
+type ExamTrackHierarchy = ExamProgramHierarchy["tracks"][number];
+type ExamCycleHierarchy = ExamTrackHierarchy["cycles"][number];
+type ExamSubjectHierarchy = ExamCycleHierarchy["subjects"][number];
+
+export type HomepageExamItem =
+  | {
+      kind: "track";
+      id: string;
+      programId: string;
+      trackId: string;
+      name: string;
+      status: HomepageStatus;
+      order: number;
+      description: string | null;
+      level: string | null;
+      cycles: ExamCycleHierarchy[];
+    }
+  | {
+      kind: "subject";
+      id: string;
+      programId: string;
+      trackId: string;
+      cycleId: string;
+      name: string;
+      status: HomepageStatus;
+      order: number;
+      description: string | null;
+      trackName: string;
+      cycleName: string;
+    };
+
+export type HomepageExamProgram = {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  selectionLevel: HomepageSelectionLevel;
+  status: Exclude<HomepageStatus, "hidden">;
+  order: number;
+  itemLabel: string;
+  openCount: number;
+  plannedCount: number;
+  openItemNames: string[];
+};
+
+export type HomepageExamProgramDetail = HomepageExamProgram & {
+  items: HomepageExamItem[];
+  defaultTrackName?: string;
+  defaultCycleName?: string;
 };
 
 export type ExamHierarchy = Awaited<ReturnType<typeof listExamHierarchy>>;
@@ -83,6 +162,60 @@ export async function listExamHierarchy() {
   });
 }
 
+export async function listHomepageExamPrograms() {
+  const hierarchy = await listExamHierarchy();
+
+  return hierarchy.map(buildHomepageProgram).filter((program): program is HomepageExamProgram => Boolean(program)).sort(compareHomepagePrograms);
+}
+
+export async function getHomepageExamProgramDetail(slug: string) {
+  const normalizedSlug = normalizeSlug(slug);
+  const program = await prisma.examProgram.findUnique({
+    where: { slug: normalizedSlug },
+    include: {
+      tracks: {
+        orderBy: [{ name: "asc" }],
+        include: {
+          cycles: {
+            orderBy: [{ name: "desc" }],
+            include: {
+              subjects: {
+                orderBy: [{ name: "asc" }]
+              }
+            }
+          }
+        }
+      }
+    }
+  });
+
+  if (!program) {
+    return null;
+  }
+
+  return buildHomepageProgramDetail(program);
+}
+
+export async function listHomepageExamTracks() {
+  return prisma.examTrack.findMany({
+    where: {
+      homepageStatus: { not: "hidden" }
+    },
+    orderBy: [{ homepageOrder: "asc" }, { name: "asc" }],
+    include: {
+      program: true,
+      cycles: {
+        orderBy: [{ name: "desc" }],
+        include: {
+          subjects: {
+            orderBy: [{ name: "asc" }]
+          }
+        }
+      }
+    }
+  });
+}
+
 export async function listKnowledgeHierarchy() {
   return prisma.subject.findMany({
     orderBy: [{ name: "asc" }],
@@ -121,18 +254,24 @@ export async function getPrimaryExamGoal(userId: string) {
   });
 }
 
-export async function createExamProgram(input: { name: string; slug: string; description?: string | null }) {
+export async function createExamProgram(input: { name: string; slug: string; description?: string | null } & ExamProgramHomepageInput) {
   const parsed = parseNamedSlug(input.name, input.slug);
+  const homepage = parseProgramHomepageInput(input);
 
   if (!parsed.ok) {
     return parsed;
+  }
+
+  if (!homepage.ok) {
+    return homepage;
   }
 
   try {
     await prisma.examProgram.create({
       data: {
         ...parsed.data,
-        description: optionalText(input.description)
+        description: optionalText(input.description),
+        ...homepage.data
       }
     });
     return { ok: true } satisfies ActionResult;
@@ -141,11 +280,16 @@ export async function createExamProgram(input: { name: string; slug: string; des
   }
 }
 
-export async function updateExamProgram(input: { id: string; name: string; slug: string; description?: string | null }) {
+export async function updateExamProgram(input: { id: string; name: string; slug: string; description?: string | null } & ExamProgramHomepageInput) {
   const parsed = parseNamedSlug(input.name, input.slug);
+  const homepage = parseProgramHomepageInput(input);
 
   if (!parsed.ok) {
     return parsed;
+  }
+
+  if (!homepage.ok) {
+    return homepage;
   }
 
   try {
@@ -153,7 +297,8 @@ export async function updateExamProgram(input: { id: string; name: string; slug:
       where: { id: input.id },
       data: {
         ...parsed.data,
-        description: optionalText(input.description)
+        description: optionalText(input.description),
+        ...homepage.data
       }
     });
     return { ok: true } satisfies ActionResult;
@@ -162,11 +307,18 @@ export async function updateExamProgram(input: { id: string; name: string; slug:
   }
 }
 
-export async function createExamTrack(input: { programId: string; name: string; slug: string; level?: string | null }) {
+export async function createExamTrack(
+  input: { programId: string; name: string; slug: string; level?: string | null } & ExamTrackHomepageInput
+) {
   const parsed = parseNamedSlug(input.name, input.slug);
+  const homepage = parseTrackHomepageInput(input);
 
   if (!parsed.ok) {
     return parsed;
+  }
+
+  if (!homepage.ok) {
+    return homepage;
   }
 
   if (!requiredId(input.programId)) {
@@ -178,7 +330,8 @@ export async function createExamTrack(input: { programId: string; name: string; 
       data: {
         programId: input.programId,
         ...parsed.data,
-        level: optionalText(input.level)
+        level: optionalText(input.level),
+        ...homepage.data
       }
     });
     return { ok: true } satisfies ActionResult;
@@ -187,11 +340,18 @@ export async function createExamTrack(input: { programId: string; name: string; 
   }
 }
 
-export async function updateExamTrack(input: { id: string; name: string; slug: string; level?: string | null }) {
+export async function updateExamTrack(
+  input: { id: string; name: string; slug: string; level?: string | null } & ExamTrackHomepageInput
+) {
   const parsed = parseNamedSlug(input.name, input.slug);
+  const homepage = parseTrackHomepageInput(input);
 
   if (!parsed.ok) {
     return parsed;
+  }
+
+  if (!homepage.ok) {
+    return homepage;
   }
 
   try {
@@ -199,7 +359,8 @@ export async function updateExamTrack(input: { id: string; name: string; slug: s
       where: { id: input.id },
       data: {
         ...parsed.data,
-        level: optionalText(input.level)
+        level: optionalText(input.level),
+        ...homepage.data
       }
     });
     return { ok: true } satisfies ActionResult;
@@ -293,11 +454,16 @@ export async function createSubject(input: {
   name: string;
   slug: string;
   description?: string | null;
-}) {
+} & ExamSubjectHomepageInput) {
   const parsed = parseNamedSlug(input.name, input.slug);
+  const homepage = parseHomepageDisplayInput(input);
 
   if (!parsed.ok) {
     return parsed;
+  }
+
+  if (!homepage.ok) {
+    return homepage;
   }
 
   if (!requiredId(input.cycleId)) {
@@ -309,7 +475,8 @@ export async function createSubject(input: {
       data: {
         cycleId: input.cycleId,
         ...parsed.data,
-        description: optionalText(input.description)
+        description: optionalText(input.description),
+        ...homepage.data
       }
     });
     return { ok: true } satisfies ActionResult;
@@ -323,11 +490,16 @@ export async function updateSubject(input: {
   name: string;
   slug: string;
   description?: string | null;
-}) {
+} & ExamSubjectHomepageInput) {
   const parsed = parseNamedSlug(input.name, input.slug);
+  const homepage = parseHomepageDisplayInput(input);
 
   if (!parsed.ok) {
     return parsed;
+  }
+
+  if (!homepage.ok) {
+    return homepage;
   }
 
   try {
@@ -335,7 +507,8 @@ export async function updateSubject(input: {
       where: { id: input.id },
       data: {
         ...parsed.data,
-        description: optionalText(input.description)
+        description: optionalText(input.description),
+        ...homepage.data
       }
     });
     return { ok: true } satisfies ActionResult;
@@ -577,6 +750,211 @@ function parseNamedSlug(nameValue: string, slugValue: string) {
   return { ok: true, data: { name: name.value, slug: slug.slug } } as const;
 }
 
+function buildHomepageProgramDetail(program: ExamProgramHierarchy): HomepageExamProgramDetail | null {
+  const display = buildHomepageItemsForProgram(program);
+  const summary = buildHomepageProgramFromItems(program, display.items);
+
+  if (!summary) {
+    return null;
+  }
+
+  return {
+    ...summary,
+    items: display.items,
+    defaultTrackName: display.defaultTrackName,
+    defaultCycleName: display.defaultCycleName
+  };
+}
+
+function buildHomepageProgram(program: ExamProgramHierarchy): HomepageExamProgram | null {
+  return buildHomepageProgramFromItems(program, buildHomepageItemsForProgram(program).items);
+}
+
+function buildHomepageProgramFromItems(program: ExamProgramHierarchy, items: HomepageExamItem[]): HomepageExamProgram | null {
+  if (items.length === 0) {
+    return null;
+  }
+
+  const openItems = items.filter((item) => item.status === "open");
+  const plannedItems = items.filter((item) => item.status === "planned");
+  const selectionLevel = program.homepageSelectionLevel as HomepageSelectionLevel;
+
+  return {
+    id: program.id,
+    name: program.name,
+    slug: program.slug,
+    description: program.description,
+    selectionLevel,
+    status: openItems.length > 0 ? "open" : "planned",
+    order: Math.min(...items.map((item) => item.order)),
+    itemLabel: homepageSelectionLevelLabels[selectionLevel],
+    openCount: openItems.length,
+    plannedCount: plannedItems.length,
+    openItemNames: openItems.slice(0, 3).map((item) => item.name)
+  };
+}
+
+function buildHomepageItemsForProgram(program: ExamProgramHierarchy) {
+  const selectionLevel = program.homepageSelectionLevel as HomepageSelectionLevel;
+
+  if (selectionLevel === "subject") {
+    return buildSubjectHomepageItems(program);
+  }
+
+  return {
+    defaultTrackName: undefined,
+    defaultCycleName: undefined,
+    items: program.tracks
+      .filter((track) => isVisibleHomepageStatus(track.homepageStatus as HomepageStatus))
+      .sort(compareTrackHomepageOrder)
+      .map((track) => ({
+        kind: "track" as const,
+        id: track.id,
+        programId: program.id,
+        trackId: track.id,
+        name: track.name,
+        status: track.homepageStatus as HomepageStatus,
+        order: track.homepageOrder,
+        description: track.homepageDescription,
+        level: track.level,
+        cycles: track.cycles
+      }))
+  };
+}
+
+function buildSubjectHomepageItems(program: ExamProgramHierarchy) {
+  const group = selectHomepageSubjectCycle(program);
+
+  if (!group) {
+    return { defaultTrackName: undefined, defaultCycleName: undefined, items: [] };
+  }
+
+  return {
+    defaultTrackName: group.track.name,
+    defaultCycleName: group.cycle.name,
+    items: group.subjects.sort(compareSubjectHomepageOrder).map((subject) => ({
+      kind: "subject" as const,
+      id: subject.id,
+      programId: program.id,
+      trackId: group.track.id,
+      cycleId: group.cycle.id,
+      name: subject.name,
+      status: subject.homepageStatus as HomepageStatus,
+      order: subject.homepageOrder,
+      description: subject.homepageDescription,
+      trackName: group.track.name,
+      cycleName: group.cycle.name
+    }))
+  };
+}
+
+function selectHomepageSubjectCycle(program: ExamProgramHierarchy) {
+  const candidates = program.tracks.flatMap((track) =>
+    track.cycles.flatMap((cycle) => {
+      const subjects = cycle.subjects.filter((subject) => isVisibleHomepageStatus(subject.homepageStatus as HomepageStatus));
+
+      return subjects.length > 0
+        ? [
+            {
+              track,
+              cycle,
+              subjects,
+              hasOpen: subjects.some((subject) => subject.homepageStatus === "open"),
+              minOrder: Math.min(...subjects.map((subject) => subject.homepageOrder))
+            }
+          ]
+        : [];
+    })
+  );
+
+  return candidates.sort((a, b) => {
+    if (a.hasOpen !== b.hasOpen) {
+      return a.hasOpen ? -1 : 1;
+    }
+
+    if (a.minOrder !== b.minOrder) {
+      return a.minOrder - b.minOrder;
+    }
+
+    const cycleCompare = b.cycle.name.localeCompare(a.cycle.name, "zh-CN");
+
+    if (cycleCompare !== 0) {
+      return cycleCompare;
+    }
+
+    return a.track.name.localeCompare(b.track.name, "zh-CN");
+  })[0];
+}
+
+function compareHomepagePrograms(a: HomepageExamProgram, b: HomepageExamProgram) {
+  if (a.order !== b.order) {
+    return a.order - b.order;
+  }
+
+  return a.name.localeCompare(b.name, "zh-CN");
+}
+
+function compareTrackHomepageOrder(a: ExamTrackHierarchy, b: ExamTrackHierarchy) {
+  if (a.homepageOrder !== b.homepageOrder) {
+    return a.homepageOrder - b.homepageOrder;
+  }
+
+  return a.name.localeCompare(b.name, "zh-CN");
+}
+
+function compareSubjectHomepageOrder(a: ExamSubjectHierarchy, b: ExamSubjectHierarchy) {
+  if (a.homepageOrder !== b.homepageOrder) {
+    return a.homepageOrder - b.homepageOrder;
+  }
+
+  return a.name.localeCompare(b.name, "zh-CN");
+}
+
+function isVisibleHomepageStatus(status: HomepageStatus) {
+  return status !== "hidden";
+}
+
+function parseProgramHomepageInput(input: ExamProgramHomepageInput) {
+  const selectionLevel = optionalText(input.homepageSelectionLevel) ?? "track";
+
+  if (!homepageSelectionLevelOptions.includes(selectionLevel as HomepageSelectionLevel)) {
+    return { ok: false, error: "前台选择层级无效。" } as const;
+  }
+
+  return {
+    ok: true,
+    data: {
+      homepageSelectionLevel: selectionLevel as HomepageSelectionLevel
+    }
+  } as const;
+}
+
+function parseTrackHomepageInput(input: ExamTrackHomepageInput) {
+  return parseHomepageDisplayInput(input);
+}
+
+function parseHomepageDisplayInput(input: ExamTrackHomepageInput) {
+  const status = optionalText(input.homepageStatus) ?? "hidden";
+  const order = parseHomepageOrder(input.homepageOrder);
+
+  if (!homepageStatusOptions.includes(status as HomepageStatus)) {
+    return { ok: false, error: "首页状态无效。" } as const;
+  }
+
+  if (!order.ok) {
+    return order;
+  }
+
+  return {
+    ok: true,
+    data: {
+      homepageStatus: status as HomepageStatus,
+      homepageOrder: order.value,
+      homepageDescription: optionalText(input.homepageDescription)
+    }
+  } as const;
+}
+
 function parseGoalInput(input: ExamGoalInput): { ok: true; data: ParsedGoalInput } | { ok: false; error: string } {
   const programId = optionalText(input.programId);
 
@@ -723,6 +1101,22 @@ function parseDailyMinutes(value: string | number | null | undefined) {
 
   if (!Number.isFinite(parsed) || parsed < 1 || parsed > 600) {
     return { ok: false, error: "每日学习时间必须在 1 到 600 分钟之间。" } as const;
+  }
+
+  return { ok: true, value: parsed } as const;
+}
+
+function parseHomepageOrder(value: string | number | null | undefined) {
+  const text = optionalText(value);
+
+  if (!text) {
+    return { ok: true, value: 100 } as const;
+  }
+
+  const parsed = Number(text);
+
+  if (!Number.isInteger(parsed) || parsed < 0 || parsed > 9999) {
+    return { ok: false, error: "首页排序必须是 0 到 9999 的整数。" } as const;
   }
 
   return { ok: true, value: parsed } as const;

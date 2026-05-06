@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import type { Route } from "next";
 import { registerUser } from "@openexam/core/auth";
-import { setWebSessionCookie } from "@/lib/auth";
+import { normalizeWebRedirectPath, setWebSessionCookie } from "@/lib/auth";
 
 export async function registerAction(_previousState: string | null, formData: FormData) {
   const result = await registerUser({
@@ -17,5 +17,5 @@ export async function registerAction(_previousState: string | null, formData: Fo
   }
 
   await setWebSessionCookie(result.user.id);
-  redirect("/dashboard" as Route);
+  redirect(normalizeWebRedirectPath(String(formData.get("redirectTo") ?? "")) as Route);
 }

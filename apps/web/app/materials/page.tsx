@@ -70,6 +70,7 @@ export default async function MaterialsPage({ searchParams }: MaterialsPageProps
                   <span className="status-chip px-2 py-1">{stateLabel(material.extractionState)}</span>
                   <span className="status-chip px-2 py-1">{formatBytes(material.sizeBytes)}</span>
                   <span className="status-chip px-2 py-1">候选 {material.candidateCount}</span>
+                  <span className="status-chip px-2 py-1">入库 {material.confirmedCandidateCount}</span>
                   {material.extractionMethod ? <span className="status-chip px-2 py-1">{methodLabel(material.extractionMethod)}</span> : null}
                   {material.latestJob ? <span className="status-chip px-2 py-1">任务 {jobStatusLabel(material.latestJob.status)}</span> : null}
                 </div>
@@ -80,6 +81,9 @@ export default async function MaterialsPage({ searchParams }: MaterialsPageProps
                   <div className="flex flex-wrap gap-3">
                     <Link href={`/practice?material=${encodeURIComponent(material.id)}` as Route} className="pixel-button w-fit bg-white px-4 py-2">
                       练习资料题
+                    </Link>
+                    <Link href={`/questions?materialId=${encodeURIComponent(material.id)}&sourceType=user_uploaded` as Route} className="pixel-button w-fit bg-white px-4 py-2">
+                      查看入库题
                     </Link>
                     <Link href={`/ai/chat?contextType=material&contextId=${encodeURIComponent(material.id)}` as Route} className="pixel-button w-fit bg-white px-4 py-2">
                       用资料提问

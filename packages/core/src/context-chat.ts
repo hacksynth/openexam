@@ -310,7 +310,8 @@ async function resolveChatContext(userId: string, contextType: string | null | u
     const material = await db.material.findFirst({
       where: {
         id,
-        ownerId: userId
+        ownerId: userId,
+        libraryScope: "personal"
       },
       select: {
         id: true,

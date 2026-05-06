@@ -145,7 +145,7 @@ Deliverables:
 - OCR pipeline placeholder or first OCR implementation. Implemented as AI document/image fallback for scanned PDFs and images; no standalone OCR service yet.
 - AI question extraction job. Started with admin-triggered database Jobs.
 - Candidate-question review UI. Started in admin materials.
-- Manual confirmation into private question bank. Started for single-choice candidates.
+- Manual confirmation into private question bank. Started for single-choice candidates, with learner materials entering personal private practice and admin materials entering platform pending review.
 - Material-based AI chat context. Started through `/ai/chat` with material text or AI document/image input.
 
 Acceptance:
@@ -153,6 +153,7 @@ Acceptance:
 - A learner can upload a document, extract candidate questions, edit them, confirm them, and practice them privately.
 - Unconfirmed extracted questions are not practiceable.
 - Extracted questions preserve source material and page/reference metadata.
+- A learner can browse confirmed private questions from a lightweight "My Question Bank" view.
 
 ## 6. Plan & Analysis
 
@@ -245,6 +246,7 @@ Acceptance:
 
 - Admin can import compliant question data without direct database edits.
 - Admin can review sources and prevent unknown-source public publication.
+- Admin material confirmations enter the question-review flow instead of public practice directly.
 - Admin can inspect AI usage, failed jobs, and public question changes.
 
 ## Testing Priorities

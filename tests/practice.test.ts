@@ -214,7 +214,8 @@ describe("practice question access", () => {
       args: {
         where: {
           id: "material_1",
-          ownerId: "user_1"
+          ownerId: "user_1",
+          libraryScope: "personal"
         },
         select: {
           id: true,
@@ -259,7 +260,8 @@ describe("practice question access", () => {
           status: "confirmed",
           confirmedQuestionId: "q_1",
           material: {
-            ownerId: "user_1"
+            ownerId: "user_1",
+            libraryScope: "personal"
           }
         },
         select: {

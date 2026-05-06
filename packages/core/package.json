@@ -29,6 +29,7 @@
     "./ai": "./src/ai.ts",
     "./ai-output-schemas": "./src/ai-output-schemas.ts",
     "./pixel-select": "./src/pixel-select.tsx",
+    "./question-bank": "./src/question-bank.ts",
     "./question-admin": "./src/question-admin.ts",
     "./question-governance": "./src/question-governance.ts",
     "./routes": "./src/routes.ts",

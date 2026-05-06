@@ -454,6 +454,7 @@ function analysisState() {
         name: "软考",
         slug: "ruankao",
         description: null,
+        homepageSelectionLevel: "track" as const,
         createdAt: now,
         updatedAt: now
       },
@@ -463,6 +464,9 @@ function analysisState() {
         name: "软件设计师",
         slug: "software-designer",
         level: "中级",
+        homepageStatus: "open" as const,
+        homepageOrder: 10,
+        homepageDescription: "当前完整备考方向，覆盖基础知识与应用技术。",
         createdAt: now,
         updatedAt: now
       },
@@ -482,6 +486,9 @@ function analysisState() {
         name: "基础知识",
         slug: "basic-knowledge",
         description: null,
+        homepageStatus: "hidden" as const,
+        homepageOrder: 100,
+        homepageDescription: null,
         createdAt: now,
         updatedAt: now
       }

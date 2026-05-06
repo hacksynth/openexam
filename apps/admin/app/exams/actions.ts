@@ -25,7 +25,8 @@ export async function createProgramAction(formData: FormData) {
   const payload = {
     name: value(formData, "name"),
     slug: value(formData, "slug"),
-    description: value(formData, "description")
+    description: value(formData, "description"),
+    homepageSelectionLevel: value(formData, "homepageSelectionLevel")
   };
   const result = await createExamProgram(payload);
 
@@ -52,7 +53,10 @@ export async function createTrackAction(formData: FormData) {
     programId: value(formData, "programId"),
     name: value(formData, "name"),
     slug: value(formData, "slug"),
-    level: value(formData, "level")
+    level: value(formData, "level"),
+    homepageStatus: value(formData, "homepageStatus"),
+    homepageOrder: value(formData, "homepageOrder"),
+    homepageDescription: value(formData, "homepageDescription")
   };
   const result = await createExamTrack(payload);
 
@@ -66,7 +70,10 @@ export async function updateTrackAction(formData: FormData) {
     id: value(formData, "id"),
     name: value(formData, "name"),
     slug: value(formData, "slug"),
-    level: value(formData, "level")
+    level: value(formData, "level"),
+    homepageStatus: value(formData, "homepageStatus"),
+    homepageOrder: value(formData, "homepageOrder"),
+    homepageDescription: value(formData, "homepageDescription")
   };
   const result = await updateExamTrack(payload);
 
@@ -110,7 +117,10 @@ export async function createSubjectAction(formData: FormData) {
     cycleId: value(formData, "cycleId"),
     name: value(formData, "name"),
     slug: value(formData, "slug"),
-    description: value(formData, "description")
+    description: value(formData, "description"),
+    homepageStatus: value(formData, "homepageStatus"),
+    homepageOrder: value(formData, "homepageOrder"),
+    homepageDescription: value(formData, "homepageDescription")
   };
   const result = await createSubject(payload);
 
@@ -124,7 +134,10 @@ export async function updateSubjectAction(formData: FormData) {
     id: value(formData, "id"),
     name: value(formData, "name"),
     slug: value(formData, "slug"),
-    description: value(formData, "description")
+    description: value(formData, "description"),
+    homepageStatus: value(formData, "homepageStatus"),
+    homepageOrder: value(formData, "homepageOrder"),
+    homepageDescription: value(formData, "homepageDescription")
   };
   const result = await updateSubject(payload);
 
@@ -136,7 +149,8 @@ function readProgram(formData: FormData) {
   return {
     name: value(formData, "name"),
     slug: value(formData, "slug"),
-    description: value(formData, "description")
+    description: value(formData, "description"),
+    homepageSelectionLevel: value(formData, "homepageSelectionLevel")
   };
 }
 

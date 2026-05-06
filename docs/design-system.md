@@ -126,5 +126,6 @@ The foundation UI implements the first pass of the design direction in `apps/web
 - Truncated account labels in sidebars so long names and emails do not cause horizontal overflow.
 - Shared pixel UI form primitives for text inputs, textareas, selects, date pickers, choices, feedback messages, and submit buttons across learner and admin apps.
 - Custom pixel date picker controls with hard outlines, block shadows, yellow accent blocks, and hidden `YYYY-MM-DD` form values instead of native browser date inputs.
+- The learner homepage uses the same hard-edge panels and compact status chips for exam program cards. Exam detail pages use matching cards for administrator-configured open and planned directions or subjects.
 
 Theme switching is not implemented yet. Current colors are CSS custom properties on `:root`; future theme presets should override those tokens without changing layout or density.

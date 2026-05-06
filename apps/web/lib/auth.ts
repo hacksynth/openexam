@@ -35,6 +35,34 @@ export async function redirectAuthenticatedWebUser() {
   }
 }
 
+export async function redirectAuthenticatedWebUserTo(redirectTo?: string | null) {
+  const session = await getWebSession();
+
+  if (session) {
+    redirect(normalizeWebRedirectPath(redirectTo) as Route);
+  }
+}
+
+export function normalizeWebRedirectPath(value?: string | null, fallback = "/dashboard") {
+  const text = String(value ?? "").trim();
+
+  if (!text || !text.startsWith("/") || text.startsWith("//") || text.includes("\\")) {
+    return fallback;
+  }
+
+  try {
+    const parsed = new URL(text, "http://openexam.local");
+
+    if (parsed.origin !== "http://openexam.local" || parsed.pathname === "/login" || parsed.pathname === "/register") {
+      return fallback;
+    }
+
+    return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+  } catch {
+    return fallback;
+  }
+}
+
 export async function setWebSessionCookie(userId: string) {
   const { token, session } = await createSession({ userId, app: "web" });
   const cookieStore = await cookies();

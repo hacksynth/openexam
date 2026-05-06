@@ -93,6 +93,12 @@ type ParsedAdminQuestion = {
 };
 
 const adminQuestionInclude = {
+  owner: {
+    select: {
+      email: true,
+      name: true
+    }
+  },
   knowledgeBindings: {
     include: {
       knowledgeNode: {
@@ -998,6 +1004,9 @@ function toAdminQuestion(question: AdminQuestionRecord) {
     sourceTitle: question.sourceTitle ?? "",
     sourceUrl: question.sourceUrl ?? "",
     sourceLicense: question.sourceLicense ?? "",
+    ownerEmail: question.owner?.email ?? "",
+    ownerName: question.owner?.name ?? "",
+    ownership: question.owner ? "user_private" : "platform",
     reviewStatus: question.reviewStatus,
     currentVersion: question.currentVersion,
     updatedAt: question.updatedAt,

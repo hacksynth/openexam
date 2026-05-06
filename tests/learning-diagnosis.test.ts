@@ -38,7 +38,15 @@ describe("learning diagnosis", () => {
         isPrimary: true,
         createdAt: new Date("2026-05-05T00:00:00.000Z"),
         updatedAt: new Date("2026-05-05T00:00:00.000Z"),
-        program: { id: "program_1", name: "软考", slug: "ruankao", description: null, createdAt: new Date(), updatedAt: new Date() },
+        program: {
+          id: "program_1",
+          name: "软考",
+          slug: "ruankao",
+          description: null,
+          homepageSelectionLevel: "track",
+          createdAt: new Date(),
+          updatedAt: new Date()
+        },
         track: null,
         cycle: null,
         subject: null
