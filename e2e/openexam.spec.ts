@@ -1,6 +1,9 @@
+import { readdir, unlink } from "node:fs/promises";
+import path from "node:path";
 import { expect, test, type Browser, type Locator, type Page } from "@playwright/test";
 import { PrismaClient, UserRole } from "@prisma/client";
 import { hashPassword } from "@openexam/core/password";
+import { resolveLocalStoragePath } from "@openexam/core/storage";
 
 process.env.DATABASE_URL ??= "postgresql://openexam:openexam@localhost:5432/openexam?schema=public";
 process.env.AI_KEY_ENCRYPTION_SECRET = "openexam-e2e-ai-key-secret";
@@ -20,6 +23,9 @@ const paperTitle = "E2E 基础知识样例卷";
 const paperSlug = "e2e-paper-basic-sample";
 const aiPresetModel = "gpt-5.4-e2e";
 const materialTitle = "E2E 事务资料";
+const e2eProgramSlug = "e2e-ruankao";
+const e2eSyllabusVersion = "e2e";
+const e2eKnowledgeNodeCode = "E2E-DB-001";
 
 let fixtureIds: {
   programId: string;
@@ -690,9 +696,9 @@ function escapeCssAttribute(value: string) {
 
 async function seedExamHierarchy() {
   const program = await prisma.examProgram.upsert({
-    where: { slug: "e2e-ruankao" },
+    where: { slug: e2eProgramSlug },
     update: { name: "E2E 软考", description: "E2E 专用考试项目" },
-    create: { slug: "e2e-ruankao", name: "E2E 软考", description: "E2E 专用考试项目" }
+    create: { slug: e2eProgramSlug, name: "E2E 软考", description: "E2E 专用考试项目" }
   });
   const track = await prisma.examTrack.upsert({
     where: { programId_slug: { programId: program.id, slug: "software-designer" } },
@@ -710,14 +716,14 @@ async function seedExamHierarchy() {
     create: { cycleId: cycle.id, slug: "basic-knowledge", name: "基础知识", description: "E2E 基础知识科目" }
   });
   const syllabus = await prisma.syllabus.upsert({
-    where: { subjectId_version: { subjectId: subject.id, version: "e2e" } },
+    where: { subjectId_version: { subjectId: subject.id, version: e2eSyllabusVersion } },
     update: { name: "E2E 大纲" },
-    create: { subjectId: subject.id, version: "e2e", name: "E2E 大纲" }
+    create: { subjectId: subject.id, version: e2eSyllabusVersion, name: "E2E 大纲" }
   });
   const existingNode = await prisma.knowledgeNode.findFirst({
     where: {
       syllabusId: syllabus.id,
-      code: "E2E-DB-001"
+      code: e2eKnowledgeNodeCode
     }
   });
   const knowledgeNode =
@@ -725,7 +731,7 @@ async function seedExamHierarchy() {
     (await prisma.knowledgeNode.create({
       data: {
         syllabusId: syllabus.id,
-        code: "E2E-DB-001",
+        code: e2eKnowledgeNodeCode,
         title: "事务基础",
         description: "事务 ACID 特性。",
         examExpectation: "能判断原子性、一致性、隔离性和持久性。"
@@ -751,17 +757,138 @@ async function cleanupE2eData() {
     select: { id: true }
   });
   const userIds = users.map((user) => user.id);
+  const programs = await prisma.examProgram.findMany({
+    where: {
+      OR: [
+        {
+          slug: e2eProgramSlug
+        },
+        {
+          slug: {
+            startsWith: "e2e-"
+          }
+        },
+        {
+          name: {
+            startsWith: "E2E "
+          }
+        }
+      ]
+    },
+    select: { id: true }
+  });
+  const programIds = programs.map((program) => program.id);
+  const tracks =
+    programIds.length > 0
+      ? await prisma.examTrack.findMany({
+          where: {
+            programId: {
+              in: programIds
+            }
+          },
+          select: { id: true }
+        })
+      : [];
+  const trackIds = tracks.map((track) => track.id);
+  const cycles =
+    trackIds.length > 0
+      ? await prisma.examCycle.findMany({
+          where: {
+            trackId: {
+              in: trackIds
+            }
+          },
+          select: { id: true }
+        })
+      : [];
+  const cycleIds = cycles.map((cycle) => cycle.id);
+  const subjects =
+    cycleIds.length > 0
+      ? await prisma.subject.findMany({
+          where: {
+            cycleId: {
+              in: cycleIds
+            }
+          },
+          select: { id: true }
+        })
+      : [];
+  const subjectIds = subjects.map((subject) => subject.id);
+  const syllabi = await prisma.syllabus.findMany({
+    where: {
+      OR: [
+        ...(subjectIds.length > 0
+          ? [
+              {
+                subjectId: {
+                  in: subjectIds
+                }
+              }
+            ]
+          : []),
+        {
+          version: e2eSyllabusVersion
+        },
+        {
+          name: {
+            startsWith: "E2E "
+          }
+        }
+      ]
+    },
+    select: { id: true }
+  });
+  const syllabusIds = syllabi.map((syllabus) => syllabus.id);
+  const knowledgeNodes = await prisma.knowledgeNode.findMany({
+    where: {
+      OR: [
+        ...(syllabusIds.length > 0
+          ? [
+              {
+                syllabusId: {
+                  in: syllabusIds
+                }
+              }
+            ]
+          : []),
+        {
+          code: e2eKnowledgeNodeCode
+        },
+        {
+          code: {
+            startsWith: "E2E-"
+          }
+        }
+      ]
+    },
+    select: { id: true }
+  });
+  const knowledgeNodeIds = knowledgeNodes.map((node) => node.id);
   const questions = await prisma.question.findMany({
     where: {
       OR: [
         {
           stem: {
-            startsWith: "E2E 单选题"
+            startsWith: "E2E "
           }
         },
         {
           stem: extractedQuestionStem
-        }
+        },
+        {
+          sourceTitle: {
+            startsWith: "E2E "
+          }
+        },
+        ...(userIds.length > 0
+          ? [
+              {
+                ownerId: {
+                  in: userIds
+                }
+              }
+            ]
+          : [])
       ]
     },
     select: { id: true }
@@ -769,25 +896,96 @@ async function cleanupE2eData() {
   const questionIds = questions.map((question) => question.id);
   const papers = await prisma.paper.findMany({
     where: {
-      slug: {
-        startsWith: "e2e-paper-"
-      }
+      OR: [
+        {
+          slug: {
+            startsWith: "e2e-paper-"
+          }
+        },
+        {
+          title: {
+            startsWith: "E2E "
+          }
+        },
+        ...(cycleIds.length > 0
+          ? [
+              {
+                cycleId: {
+                  in: cycleIds
+                }
+              }
+            ]
+          : []),
+        ...(subjectIds.length > 0
+          ? [
+              {
+                subjectId: {
+                  in: subjectIds
+                }
+              }
+            ]
+          : [])
+      ]
     },
     select: { id: true }
   });
   const paperIds = papers.map((paper) => paper.id);
-  const attempts =
-    userIds.length > 0
-      ? await prisma.attempt.findMany({
+  const examGoals =
+    userIds.length > 0 || programIds.length > 0 || trackIds.length > 0 || cycleIds.length > 0 || subjectIds.length > 0
+      ? await prisma.examGoal.findMany({
           where: {
-            userId: {
-              in: userIds
-            }
+            OR: [
+              ...(userIds.length > 0
+                ? [
+                    {
+                      userId: {
+                        in: userIds
+                      }
+                    }
+                  ]
+                : []),
+              ...(programIds.length > 0
+                ? [
+                    {
+                      programId: {
+                        in: programIds
+                      }
+                    }
+                  ]
+                : []),
+              ...(trackIds.length > 0
+                ? [
+                    {
+                      trackId: {
+                        in: trackIds
+                      }
+                    }
+                  ]
+                : []),
+              ...(cycleIds.length > 0
+                ? [
+                    {
+                      cycleId: {
+                        in: cycleIds
+                      }
+                    }
+                  ]
+                : []),
+              ...(subjectIds.length > 0
+                ? [
+                    {
+                      subjectId: {
+                        in: subjectIds
+                      }
+                    }
+                  ]
+                : [])
+            ]
           },
           select: { id: true }
         })
       : [];
-  const attemptIds = attempts.map((attempt) => attempt.id);
+  const goalIds = examGoals.map((goal) => goal.id);
   const materials = await prisma.material.findMany({
     where: {
       OR: [
@@ -802,44 +1000,161 @@ async function cleanupE2eData() {
     select: { id: true, storageKey: true }
   });
   const materialIds = materials.map((material) => material.id);
-
-  if (userIds.length > 0) {
-    await prisma.asset.deleteMany({
-      where: {
-        OR: [
-          {
-            ownerId: {
-              in: userIds
-            }
+  const attempts =
+    userIds.length > 0 || goalIds.length > 0 || paperIds.length > 0 || materialIds.length > 0 || knowledgeNodeIds.length > 0
+      ? await prisma.attempt.findMany({
+          where: {
+            OR: [
+              ...(userIds.length > 0 ? [{ userId: { in: userIds } }] : []),
+              ...(goalIds.length > 0 ? [{ goalId: { in: goalIds } }] : []),
+              ...(paperIds.length > 0 ? [{ paperId: { in: paperIds } }] : []),
+              ...(materialIds.length > 0 ? [{ practiceMaterialId: { in: materialIds } }] : []),
+              ...(knowledgeNodeIds.length > 0 ? [{ practiceKnowledgeNodeId: { in: knowledgeNodeIds } }] : [])
+            ]
           },
-          {
-            source: "wrong_note_review_card"
-          }
-        ]
-      }
-    });
-    await prisma.job.deleteMany({
-      where: {
-        OR: [
-          {
+          select: { id: true }
+        })
+      : [];
+  const attemptIds = attempts.map((attempt) => attempt.id);
+  const wrongNotes =
+    userIds.length > 0 || questionIds.length > 0
+      ? await prisma.wrongNote.findMany({
+          where: {
+            OR: [...(userIds.length > 0 ? [{ userId: { in: userIds } }] : []), ...(questionIds.length > 0 ? [{ questionId: { in: questionIds } }] : [])]
+          },
+          select: { id: true }
+        })
+      : [];
+  const wrongNoteIds = wrongNotes.map((wrongNote) => wrongNote.id);
+  const studyPlans =
+    userIds.length > 0 || goalIds.length > 0
+      ? await prisma.studyPlan.findMany({
+          where: {
+            OR: [...(userIds.length > 0 ? [{ userId: { in: userIds } }] : []), ...(goalIds.length > 0 ? [{ goalId: { in: goalIds } }] : [])]
+          },
+          select: { id: true }
+        })
+      : [];
+  const studyPlanIds = studyPlans.map((plan) => plan.id);
+  const generatedBatches =
+    userIds.length > 0 || goalIds.length > 0
+      ? await prisma.generatedQuestionBatch.findMany({
+          where: {
+            OR: [...(userIds.length > 0 ? [{ userId: { in: userIds } }] : []), ...(goalIds.length > 0 ? [{ goalId: { in: goalIds } }] : [])]
+          },
+          select: { id: true }
+        })
+      : [];
+  const generatedBatchIds = generatedBatches.map((batch) => batch.id);
+  const aiChatThreads =
+    userIds.length > 0
+      ? await prisma.aiChatThread.findMany({
+          where: {
             userId: {
               in: userIds
             }
           },
-          {
-            type: "generate_wrong_note_review_card"
+          select: { id: true }
+        })
+      : [];
+  const aiChatThreadIds = aiChatThreads.map((thread) => thread.id);
+  const assets = await prisma.asset.findMany({
+    where: {
+      OR: [
+        ...(userIds.length > 0 ? [{ ownerId: { in: userIds } }] : []),
+        ...(materialIds.length > 0 ? [{ materialId: { in: materialIds } }] : []),
+        {
+          storageKey: {
+            contains: "e2e"
           }
+        }
+      ]
+    },
+    select: { id: true, storageKey: true }
+  });
+  const assetIds = assets.map((asset) => asset.id);
+  const storageKeys = uniqueStrings([...materials.map((material) => material.storageKey), ...assets.map((asset) => asset.storageKey)]);
+
+  if (userIds.length > 0 || materialIds.length > 0 || wrongNoteIds.length > 0) {
+    await prisma.job.deleteMany({
+      where: {
+        OR: [
+          ...(userIds.length > 0 ? [{ userId: { in: userIds } }] : []),
+          ...materialIds.map((materialId) => ({
+            payload: {
+              path: ["materialId"],
+              equals: materialId
+            }
+          })),
+          ...wrongNoteIds.map((wrongNoteId) => ({
+            payload: {
+              path: ["wrongNoteId"],
+              equals: wrongNoteId
+            }
+          }))
         ]
       }
     });
   }
 
-  if (userIds.length > 0 || questionIds.length > 0) {
+  if (assetIds.length > 0) {
+    await prisma.asset.deleteMany({ where: { id: { in: assetIds } } });
+  }
+
+  if (studyPlanIds.length > 0 || subjectIds.length > 0 || paperIds.length > 0 || materialIds.length > 0) {
+    await prisma.studyPlanTask.deleteMany({
+      where: {
+        OR: [
+          ...(studyPlanIds.length > 0 ? [{ planId: { in: studyPlanIds } }] : []),
+          ...(subjectIds.length > 0 ? [{ subjectId: { in: subjectIds } }] : []),
+          ...(paperIds.length > 0 ? [{ paperId: { in: paperIds } }] : []),
+          ...(materialIds.length > 0 ? [{ materialId: { in: materialIds } }] : [])
+        ]
+      }
+    });
+  }
+
+  if (studyPlanIds.length > 0) {
+    await prisma.studyPlanRevision.deleteMany({ where: { planId: { in: studyPlanIds } } });
+    await prisma.studyPlan.deleteMany({ where: { id: { in: studyPlanIds } } });
+  }
+
+  if (userIds.length > 0 || goalIds.length > 0) {
+    await prisma.learningDiagnosis.deleteMany({
+      where: {
+        OR: [...(userIds.length > 0 ? [{ userId: { in: userIds } }] : []), ...(goalIds.length > 0 ? [{ goalId: { in: goalIds } }] : [])]
+      }
+    });
+  }
+
+  if (generatedBatchIds.length > 0 || questionIds.length > 0) {
+    await prisma.generatedQuestionCandidate.deleteMany({
+      where: {
+        OR: [...(generatedBatchIds.length > 0 ? [{ batchId: { in: generatedBatchIds } }] : []), ...(questionIds.length > 0 ? [{ confirmedQuestionId: { in: questionIds } }] : [])]
+      }
+    });
+  }
+
+  if (generatedBatchIds.length > 0) {
+    await prisma.generatedQuestionBatch.deleteMany({ where: { id: { in: generatedBatchIds } } });
+  }
+
+  if (userIds.length > 0 || questionIds.length > 0 || attemptIds.length > 0) {
+    await prisma.consolidationNote.deleteMany({
+      where: {
+        OR: [
+          ...(userIds.length > 0 ? [{ userId: { in: userIds } }] : []),
+          ...(questionIds.length > 0 ? [{ questionId: { in: questionIds } }] : []),
+          ...(attemptIds.length > 0 ? [{ attemptAnswer: { attemptId: { in: attemptIds } } }] : [])
+        ]
+      }
+    });
     await prisma.wrongNote.deleteMany({
       where: {
         OR: [
           ...(userIds.length > 0 ? [{ userId: { in: userIds } }] : []),
-          ...(questionIds.length > 0 ? [{ questionId: { in: questionIds } }] : [])
+          ...(questionIds.length > 0 ? [{ questionId: { in: questionIds } }] : []),
+          ...(attemptIds.length > 0 ? [{ attemptAnswer: { attemptId: { in: attemptIds } } }] : [])
         ]
       }
     });
@@ -857,30 +1172,29 @@ async function cleanupE2eData() {
   }
 
   if (attemptIds.length > 0) {
+    await prisma.attemptPause.deleteMany({ where: { attemptId: { in: attemptIds } } });
     await prisma.attempt.deleteMany({ where: { id: { in: attemptIds } } });
   }
 
   if (materialIds.length > 0) {
     await prisma.materialQuestionCandidate.deleteMany({ where: { materialId: { in: materialIds } } });
-    await prisma.asset.deleteMany({ where: { materialId: { in: materialIds } } });
-    await prisma.job.deleteMany({
-      where: {
-        OR: [
-          ...(userIds.length > 0 ? [{ userId: { in: userIds } }] : []),
-          {
-            type: "extract_material_questions"
-          }
-        ]
-      }
-    });
     await prisma.material.deleteMany({ where: { id: { in: materialIds } } });
   }
 
   if (userIds.length > 0) {
+    if (aiChatThreadIds.length > 0) {
+      await prisma.aiChatMessage.deleteMany({ where: { threadId: { in: aiChatThreadIds } } });
+      await prisma.aiChatThread.deleteMany({ where: { id: { in: aiChatThreadIds } } });
+    }
+    await prisma.userKnowledgeNote.deleteMany({ where: { userId: { in: userIds } } });
     await prisma.aiCall.deleteMany({ where: { userId: { in: userIds } } });
     await prisma.userProviderKey.deleteMany({ where: { userId: { in: userIds } } });
     await prisma.session.deleteMany({ where: { userId: { in: userIds } } });
-    await prisma.examGoal.deleteMany({ where: { userId: { in: userIds } } });
+    await prisma.auditLog.deleteMany({ where: { actorId: { in: userIds } } });
+  }
+
+  if (goalIds.length > 0) {
+    await prisma.examGoal.deleteMany({ where: { id: { in: goalIds } } });
   }
 
   if (paperIds.length > 0 || questionIds.length > 0) {
@@ -909,4 +1223,124 @@ async function cleanupE2eData() {
   if (userIds.length > 0) {
     await prisma.user.deleteMany({ where: { id: { in: userIds } } });
   }
+
+  if (knowledgeNodeIds.length > 0) {
+    await deleteKnowledgeNodes(knowledgeNodeIds);
+  }
+
+  if (syllabusIds.length > 0) {
+    await prisma.syllabus.deleteMany({ where: { id: { in: syllabusIds } } });
+  }
+
+  if (subjectIds.length > 0) {
+    await prisma.subject.deleteMany({ where: { id: { in: subjectIds } } });
+  }
+
+  if (cycleIds.length > 0) {
+    await prisma.examCycle.deleteMany({ where: { id: { in: cycleIds } } });
+  }
+
+  if (trackIds.length > 0) {
+    await prisma.examTrack.deleteMany({ where: { id: { in: trackIds } } });
+  }
+
+  if (programIds.length > 0) {
+    await prisma.examProgram.deleteMany({ where: { id: { in: programIds } } });
+  }
+
+  await deleteLocalStorageKeys(storageKeys);
+  await deleteLocalE2eMaterialFiles();
+}
+
+function uniqueStrings(values: Array<string | null | undefined>) {
+  return [...new Set(values.filter((value): value is string => Boolean(value)))];
+}
+
+async function deleteKnowledgeNodes(knowledgeNodeIds: string[]) {
+  let remainingIds = [...knowledgeNodeIds];
+
+  for (let pass = 0; pass < 20 && remainingIds.length > 0; pass += 1) {
+    const childLinks = await prisma.knowledgeNode.findMany({
+      where: {
+        parentId: {
+          in: remainingIds
+        }
+      },
+      select: { parentId: true }
+    });
+    const parentIds = new Set(childLinks.map((link) => link.parentId).filter((id): id is string => Boolean(id)));
+    const leafIds = remainingIds.filter((id) => !parentIds.has(id));
+
+    if (leafIds.length === 0) {
+      break;
+    }
+
+    await prisma.knowledgeNode.deleteMany({
+      where: {
+        id: {
+          in: leafIds
+        }
+      }
+    });
+    remainingIds = remainingIds.filter((id) => !leafIds.includes(id));
+  }
+
+  if (remainingIds.length > 0) {
+    throw new Error(`E2E 知识点清理失败：${remainingIds.join(", ")}`);
+  }
+}
+
+async function deleteLocalStorageKeys(storageKeys: string[]) {
+  if ((process.env.STORAGE_DRIVER ?? "local") !== "local") {
+    return;
+  }
+
+  await Promise.all(
+    storageKeys.map(async (storageKey) => {
+      try {
+        await unlink(resolveLocalStoragePath(storageKey));
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+          throw error;
+        }
+      }
+    })
+  );
+}
+
+async function deleteLocalE2eMaterialFiles() {
+  if ((process.env.STORAGE_DRIVER ?? "local") !== "local") {
+    return;
+  }
+
+  await deleteMatchingFiles(resolveLocalStoragePath("materials"), (fileName) => fileName.toLowerCase().includes("e2e"));
+}
+
+async function deleteMatchingFiles(directory: string, shouldDelete: (fileName: string) => boolean) {
+  let entries;
+
+  try {
+    entries = await readdir(directory, { withFileTypes: true });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return;
+    }
+
+    throw error;
+  }
+
+  await Promise.all(
+    entries.map(async (entry) => {
+      const filePath = path.join(directory, entry.name);
+
+      if (entry.isDirectory()) {
+        await deleteMatchingFiles(filePath, shouldDelete);
+        return;
+      }
+
+      if (entry.isFile() && shouldDelete(entry.name)) {
+        await unlink(filePath);
+      }
+    })
+  );
 }
