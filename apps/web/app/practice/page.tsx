@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { Route } from "next";
 import { AppShell } from "@/components/app-shell";
+import { RichContent } from "@/components/rich-content";
 import { requireWebSession } from "@/lib/auth";
 import { formatGoalPath } from "@openexam/core/exam-core";
 import { FeedbackMessage, PixelChoice, SubmitButton, TextareaField, TextField } from "@openexam/core/pixel-ui";
@@ -146,7 +147,7 @@ export default async function PracticePage({ searchParams }: PracticePageProps) 
                   <p className="mt-1 whitespace-pre-line font-bold leading-7">{state.question.caseMaterial}</p>
                 </div>
               ) : null}
-              <h2 className="mt-2 text-2xl font-black">{state.question.stem}</h2>
+              <RichContent blocks={state.question.stemBlocks} className="mt-2" fallback={state.question.stem} textClassName="text-2xl font-black" />
             </div>
             <div className="flex flex-wrap gap-2">
               {state.question.knowledgeNodes.map((node) => (
@@ -217,12 +218,18 @@ function AttemptResultCard({
       </div>
       <div className="border-2 border-black bg-[var(--surface-subtle)] p-3">
         <p className="text-sm font-bold text-[var(--muted)]">题目</p>
-        <p className="mt-1 font-bold">{result.question.stem}</p>
+        <RichContent blocks={result.question.stemBlocks} className="mt-1" fallback={result.question.stem} textClassName="font-bold" />
       </div>
-      {result.explanation ? (
+      {result.explanation || result.explanationBlocks ? (
         <div className="border-2 border-black bg-white p-3">
           <p className="text-sm font-bold text-[var(--muted)]">解析</p>
-          <p className="mt-1 leading-7">{result.explanation}</p>
+          <RichContent blocks={result.explanationBlocks} className="mt-1" fallback={result.explanation} textClassName="leading-7" />
+        </div>
+      ) : null}
+      {result.referenceAnswerBlocks ? (
+        <div className="border-2 border-black bg-white p-3">
+          <p className="text-sm font-bold text-[var(--muted)]">参考答案</p>
+          <RichContent blocks={result.referenceAnswerBlocks} className="mt-1" />
         </div>
       ) : null}
       {result.aiSuggestedScore !== null && !result.userConfirmed ? (
@@ -336,7 +343,7 @@ function PracticeAnswerFields({
           <PixelChoice key={option.key} className="border-3" inputClassName="h-4 w-4 accent-[var(--primary)]" name="answer" type="checkbox" value={option.key}>
             <span>
               <span className="mr-2 font-black">{option.key}.</span>
-              {option.text}
+              <RichContent blocks={option.blocks} fallback={option.text} inline textClassName="font-bold" />
             </span>
           </PixelChoice>
         ))}
@@ -351,7 +358,7 @@ function PracticeAnswerFields({
         <PixelChoice key={option.key} className="border-3" inputClassName="h-4 w-4 accent-[var(--primary)]" name="answer" required type="radio" value={option.key}>
           <span>
             <span className="mr-2 font-black">{option.key}.</span>
-            {option.text}
+            <RichContent blocks={option.blocks} fallback={option.text} inline textClassName="font-bold" />
           </span>
         </PixelChoice>
       ))}

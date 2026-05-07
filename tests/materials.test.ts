@@ -113,6 +113,65 @@ describe("material question extraction", () => {
     });
   });
 
+  it("preserves question, option, explanation, and answer image links as rich blocks", () => {
+    expect(
+      validateExtractedQuestionsJson(
+        JSON.stringify({
+          questions: [
+            {
+              stem: "观察![题图](https://example.com/question.png)后选择正确选项",
+              options: {
+                A: "纯文本选项",
+                B: "带图 https://example.com/option-b.webp",
+                C: "干扰项 C",
+                D: "干扰项 D"
+              },
+              answer: "B",
+              explanation: "解析见 https://example.com/explanation.jpg",
+              referenceAnswerBlocks: [{ type: "image", sourceUrl: "https://example.com/answer.png", alt: "答案图" }]
+            }
+          ]
+        })
+      )
+    ).toEqual({
+      ok: true,
+      data: {
+        questions: [
+          {
+            stem: "观察题图后选择正确选项",
+            stemBlocks: [
+              { type: "text", text: "观察" },
+              { type: "image", sourceUrl: "https://example.com/question.png", assetId: null, alt: "题图" },
+              { type: "text", text: "后选择正确选项" }
+            ],
+            options: {
+              A: "纯文本选项",
+              B: "带图 https://example.com/option-b.webp",
+              C: "干扰项 C",
+              D: "干扰项 D"
+            },
+            optionBlocks: {
+              B: [
+                { type: "text", text: "带图 " },
+                { type: "image", sourceUrl: "https://example.com/option-b.webp", assetId: null, alt: "图片" }
+              ]
+            },
+            answer: "B",
+            explanation: "解析见 https://example.com/explanation.jpg",
+            explanationBlocks: [
+              { type: "text", text: "解析见 " },
+              { type: "image", sourceUrl: "https://example.com/explanation.jpg", assetId: null, alt: "图片" }
+            ],
+            referenceAnswerBlocks: [{ type: "image", sourceUrl: "https://example.com/answer.png", assetId: null, alt: "答案图" }],
+            difficulty: null,
+            knowledgeNodeId: null,
+            sourceRef: null
+          }
+        ]
+      }
+    });
+  });
+
   it("asks for all recognizable questions without a prompt-level count cap", () => {
     const prompt = buildMaterialExtractionPrompt({
       title: "资料",
@@ -121,6 +180,7 @@ describe("material question extraction", () => {
     });
 
     expect(prompt.input).toContain("尽可能完整抽取所有可识别的候选题");
+    expect(prompt.instructions).toContain("不要删除题干、选项、解析或参考答案中的图片链接");
     expect(prompt.input).not.toContain("1-8");
   });
 
@@ -177,6 +237,84 @@ describe("material question extraction", () => {
             materialId: "material_1",
             jobId: "job_1",
             stem: "事务原子性最准确的含义是什么？"
+          })
+        ]
+      }
+    });
+  });
+
+  it("stores rich image blocks in material candidate payload", async () => {
+    const calls: { method: string; args?: unknown }[] = [];
+    const db = {
+      materialQuestionCandidate: {
+        deleteMany: async (args: unknown) => {
+          calls.push({ method: "deleteMany", args });
+          return { count: 0 };
+        },
+        createMany: async (args: unknown) => {
+          calls.push({ method: "createMany", args });
+          return { count: 1 };
+        }
+      }
+    };
+
+    await createMaterialQuestionCandidates(
+      "material_1",
+      "job_1",
+      [
+        {
+          stem: "观察题图后选择正确选项",
+          stemBlocks: [
+            { type: "text", text: "观察" },
+            { type: "image", sourceUrl: "https://example.com/question.png", assetId: null, alt: "题图" },
+            { type: "text", text: "后选择正确选项" }
+          ],
+          options: {
+            A: "纯文本选项",
+            B: "带图选项",
+            C: "干扰项 C",
+            D: "干扰项 D"
+          },
+          optionBlocks: {
+            B: [
+              { type: "text", text: "带图选项" },
+              { type: "image", sourceUrl: "https://example.com/option-b.webp", assetId: null, alt: "选项图" }
+            ]
+          },
+          answer: "B",
+          explanation: "解析",
+          explanationBlocks: [{ type: "image", sourceUrl: "https://example.com/explanation.jpg", assetId: null, alt: "解析图" }]
+        }
+      ],
+      db as never
+    );
+
+    expect(calls[1]).toMatchObject({
+      method: "createMany",
+      args: {
+        data: [
+          expect.objectContaining({
+            payload: {
+              stemBlocks: [
+                { type: "text", text: "观察" },
+                { type: "image", sourceUrl: "https://example.com/question.png", assetId: null, alt: "题图" },
+                { type: "text", text: "后选择正确选项" }
+              ],
+              options: [
+                { key: "A", text: "纯文本选项" },
+                {
+                  key: "B",
+                  text: "带图选项",
+                  blocks: [
+                    { type: "text", text: "带图选项" },
+                    { type: "image", sourceUrl: "https://example.com/option-b.webp", assetId: null, alt: "选项图" }
+                  ]
+                },
+                { key: "C", text: "干扰项 C" },
+                { key: "D", text: "干扰项 D" }
+              ],
+              explanationBlocks: [{ type: "image", sourceUrl: "https://example.com/explanation.jpg", assetId: null, alt: "解析图" }]
+            }
           })
         ]
       }

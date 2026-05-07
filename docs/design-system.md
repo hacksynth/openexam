@@ -115,6 +115,18 @@ Knowledge-point views use a tree-card pattern:
 - Admin knowledge management should show each syllabus' nodes as an always-expanded tree with inline editing. Parent selectors should use tree indentation and show only valid parents for that node.
 - Admin knowledge creation should happen inside each syllabus section; avoid a global knowledge-node create form whose parent selector spans multiple syllabi.
 
+## Rich Question Content
+
+Question rendering may include text and image blocks in stems, options, explanations, and reference answers.
+
+- Practice pages, paper attempt pages, practice result pages, admin question previews, and admin material-candidate previews should render rich blocks when present.
+- Compact lists, reports, wrong-note summaries, and table-like admin rows should keep using the plain `stem` fallback.
+- Text blocks should preserve line breaks and wrap long words.
+- Private image blocks with `assetId` render through `/assets/{assetId}` using a plain `<img>` tag.
+- External image blocks without `assetId` render inline on rich question surfaces. Use `loading="lazy"`, `decoding="async"`, and `referrerPolicy="no-referrer"`. If loading fails, keep a hard-edge failure block with a "查看原图" link that opens in a new tab with `rel="noreferrer noopener"`.
+- Inline images should keep their aspect ratio, use `max-width: 100%`, cap question-content height at about `480px`, and use the same hard black border language as other content blocks.
+- Do not add click-to-zoom or a rich-text editor in the MVP. Admin editing can happen through existing JSON fields, with preview rendering beside the forms.
+
 ## Implementation Note
 
 The design system is the source of truth for UI implementation. Any future prototype should follow this document and should not introduce separate visual rules without updating this file.
@@ -145,5 +157,6 @@ The foundation UI implements the first pass of the design direction in `apps/web
 - Custom pixel date picker controls with hard outlines, block shadows, yellow accent blocks, and hidden `YYYY-MM-DD` form values instead of native browser date inputs.
 - The learner homepage uses the same hard-edge panels and compact status chips for exam program cards. Exam detail pages use matching cards for administrator-configured open and planned directions or subjects.
 - Knowledge pages use top-level knowledge cards with compact child rows, subtree-scoped statistics, detail-page tree lists, and admin tree editing.
+- Practice, paper, and admin review surfaces render rich question content blocks for stems, options, explanations, and reference answers when payload data provides them.
 
 Theme switching is not implemented yet. Current colors are CSS custom properties on `:root`; future theme presets should override those tokens without changing layout or density.

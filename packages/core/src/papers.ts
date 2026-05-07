@@ -5,10 +5,12 @@ import { type AiTextGenerator } from "./ai";
 import {
   formatAnswerValue,
   readCaseMaterial,
+  readRichContentBlocks,
   readSingleChoiceOptions,
   syncWrongNoteForObjectiveAnswer,
   type SingleChoiceOption
 } from "./practice";
+import type { RichContentBlock } from "./rich-content";
 import { generateSubjectiveScoreSuggestion } from "./subjective-scoring";
 import { prisma } from "./prisma";
 
@@ -74,6 +76,7 @@ export type PaperQuestionForAttempt = {
   section: string | null;
   score: number;
   stem: string;
+  stemBlocks?: RichContentBlock[] | null;
   options: SingleChoiceOption[];
   knowledgeNodes: string[];
   caseMaterial?: string | null;
@@ -969,7 +972,9 @@ function toPaperListItem(paper: PaperRecord) {
 function toPaperQuestionForAttempt(paperQuestion: PaperQuestionRecord): PaperQuestionForAttempt | null {
   const question = paperQuestion.question;
   const currentVersion = question.versions.find((version) => version.version === question.currentVersion) ?? question.versions[0] ?? null;
-  const options = readSingleChoiceOptions(currentVersion?.payload ?? question.payload);
+  const payload = currentVersion?.payload ?? question.payload;
+  const stem = currentVersion?.stem ?? question.stem;
+  const options = readSingleChoiceOptions(payload);
 
   if (isChoiceKind(question.kind) && !options) {
     return null;
@@ -982,10 +987,11 @@ function toPaperQuestionForAttempt(paperQuestion: PaperQuestionRecord): PaperQue
     number: paperQuestion.number,
     section: paperQuestion.section,
     score: paperQuestion.score,
-    stem: currentVersion?.stem ?? question.stem,
+    stem,
+    stemBlocks: readRichContentBlocks(payload, "stemBlocks", stem),
     options: options ?? [],
     knowledgeNodes: question.knowledgeBindings.map((binding) => binding.knowledgeNode.title),
-    caseMaterial: readCaseMaterial(currentVersion?.payload ?? question.payload)
+    caseMaterial: readCaseMaterial(payload)
   };
 }
 

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { Route } from "next";
 import { AppShell } from "@/components/app-shell";
+import { RichContent } from "@/components/rich-content";
 import { requireAdminSession } from "@/lib/auth";
 import { listKnowledgeHierarchy } from "@openexam/core/exam-core";
 import { FeedbackMessage, SelectField, SubmitButton, TextareaField, TextField } from "@openexam/core/pixel-ui";
@@ -228,7 +229,7 @@ export default async function AdminQuestionsPage({ searchParams }: QuestionsPage
                     <span className="status-chip px-2 py-1">V{question.currentVersion}</span>
                     {question.ownerEmail ? <span className="status-chip px-2 py-1">{question.ownerEmail}</span> : null}
                   </div>
-                  <h2 className="break-words text-xl font-black leading-8">{question.stem}</h2>
+                  <RichContent blocks={readPayloadJsonBlocks(question.payloadJson, "stemBlocks")} fallback={question.stem} textClassName="text-xl font-black leading-8" />
                   <p className="mt-1 break-words text-sm font-bold text-[var(--muted)]">{question.knowledgePath}</p>
                 </div>
                 <QuestionActions questionId={question.id} archived={question.archived} />
@@ -392,4 +393,18 @@ function answerPresetDefault(value: string | undefined) {
 
 function answerTextDefault(value: string | undefined) {
   return value && !answerPresetOptions.includes(value as (typeof answerPresetOptions)[number]) ? value : "";
+}
+
+function readPayloadJsonBlocks(payloadJson: string | null | undefined, key: string) {
+  if (!payloadJson) {
+    return null;
+  }
+
+  try {
+    const payload = JSON.parse(payloadJson) as unknown;
+
+    return payload && typeof payload === "object" && !Array.isArray(payload) ? (payload as Record<string, unknown>)[key] : null;
+  } catch {
+    return null;
+  }
 }

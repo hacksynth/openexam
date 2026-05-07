@@ -32,6 +32,7 @@
     "./question-bank": "./src/question-bank.ts",
     "./question-admin": "./src/question-admin.ts",
     "./question-governance": "./src/question-governance.ts",
+    "./rich-content": "./src/rich-content.ts",
     "./routes": "./src/routes.ts",
     "./study-plan": "./src/study-plan.ts",
     "./study-plan-schema": "./src/study-plan-schema.ts",

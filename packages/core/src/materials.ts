@@ -8,6 +8,11 @@ import type { AiTextInputPart } from "./ai";
 import { readEnv } from "./env";
 import { prisma } from "./prisma";
 import { singleChoiceAnswerKeys, type SingleChoiceAnswerKey } from "./question-admin";
+import {
+  normalizeRichContentBlocks,
+  richTextToPlainText,
+  type RichContentBlock
+} from "./rich-content";
 import { readStorageBytes, writeStorageBytes } from "./storage";
 
 type ActionResult<T = undefined> = T extends undefined
@@ -68,12 +73,17 @@ type MaterialCandidatePageSize = (typeof materialCandidatePageSizeOptions)[numbe
 export type ExtractedMaterialQuestion = {
   kind?: string | null;
   stem: string;
+  stemBlocks?: RichContentBlock[] | null;
   options?: Record<SingleChoiceAnswerKey, string>;
+  optionBlocks?: Partial<Record<SingleChoiceAnswerKey, RichContentBlock[]>>;
   answer?: string | string[] | boolean | null;
   payload?: Prisma.JsonValue | null;
   answerKey?: Prisma.JsonValue | null;
   rubric?: Prisma.JsonValue | null;
   explanation?: string | null;
+  explanationBlocks?: RichContentBlock[] | null;
+  referenceAnswer?: string | null;
+  referenceAnswerBlocks?: RichContentBlock[] | null;
   difficulty?: number | null;
   knowledgeNodeId?: string | null;
   sourceRef?: string | null;
@@ -577,11 +587,13 @@ export async function listMaterialKnowledgeOptions(bindingScope: string | null, 
 export function buildMaterialExtractionPrompt(input: { title: string; text: string; knowledgeNodes: { id: string; code: string; title: string }[] }) {
   return {
     instructions:
-      "你是 OpenExam 的资料抽题助手。只根据给定资料抽取题目候选。必须输出严格 JSON，不要输出 Markdown。",
+      "你是 OpenExam 的资料抽题助手。只根据给定资料抽取题目候选。必须输出严格 JSON，不要输出 Markdown。不要删除题干、选项、解析或参考答案中的图片链接。",
     input: [
       "请从资料中尽可能完整抽取所有可识别的候选题，不要人为限制题量。题型可为 single_choice、multiple_choice、true_false、blank、short_answer、case_analysis。",
+      "如果题干、选项、解析或参考答案中有图片，必须在对应 blocks 中保留为 image block。图片 block 形如 {\"type\":\"image\",\"sourceUrl\":\"https://...png\",\"alt\":\"图片说明\"}；文字 block 形如 {\"type\":\"text\",\"text\":\"文字\"}。",
+      "answerKey/answer 只放机器可判分答案，不要放图片；答案图片放入 referenceAnswerBlocks 或 explanationBlocks。",
       "输出 JSON：",
-      '{"questions":[{"kind":"single_choice","stem":"题干","options":{"A":"选项A","B":"选项B","C":"选项C","D":"选项D"},"answer":"A","explanation":"解析","difficulty":2,"knowledgeNodeId":"知识点ID","sourceRef":"页码或段落"}]}',
+      '{"questions":[{"kind":"single_choice","stem":"题干纯文本","stemBlocks":[{"type":"text","text":"题干"},{"type":"image","sourceUrl":"https://example.com/question.png","alt":"题图"}],"options":{"A":"选项A纯文本","B":"选项B纯文本","C":"选项C纯文本","D":"选项D纯文本"},"richOptions":[{"key":"A","text":"选项A纯文本","blocks":[{"type":"text","text":"选项A"},{"type":"image","sourceUrl":"https://example.com/option-a.png","alt":"选项图"}]}],"answer":"A","explanation":"解析纯文本","explanationBlocks":[{"type":"text","text":"解析"}],"referenceAnswerBlocks":[{"type":"text","text":"参考答案"}],"difficulty":2,"knowledgeNodeId":"知识点ID","sourceRef":"页码或段落"}]}',
       "单选 answer 为 A/B/C/D；多选 answer 为数组；判断 answer 为 true/false；填空 answer 可为字符串或字符串数组；主观题可给 answerKey/rubric。",
       "knowledgeNodeId 必须从下列知识点中选择；无法判断时可为空。",
       "",
@@ -605,21 +617,27 @@ function parseExtractedQuestion(value: unknown): ActionResult<ExtractedMaterialQ
     return { ok: false, error: "AI 抽题结果格式无效。" };
   }
 
-  const stem = textValue(value.stem);
+  const rawStem = textValue(value.stem);
+  const stemBlocks = readOptionalRichContentBlocks(value.stemBlocks, rawStem);
+  const stem = stemBlocks ? richTextToPlainText(stemBlocks) || rawStem : rawStem;
   const kind = parseMaterialQuestionKind(textValue(value.kind)) ?? QuestionKind.single_choice;
   const difficulty = parseDifficultyValue(value.difficulty);
-  const options = parseOptions(value.options);
+  const choiceContent = parseChoiceContent(value);
   const answer = parseAnswerValue(value.answer);
   const payload = isJsonValue(value.payload) ? value.payload : null;
   const answerKey = isJsonValue(value.answerKey) ? value.answerKey : null;
   const rubric = isJsonValue(value.rubric) ? value.rubric : null;
+  const explanation = optionalText(textValue(value.explanation));
+  const explanationBlocks = readOptionalRichContentBlocks(value.explanationBlocks, explanation);
+  const referenceAnswer = optionalText(textValue(value.referenceAnswer));
+  const referenceAnswerBlocks = readOptionalRichContentBlocks(value.referenceAnswerBlocks, referenceAnswer);
 
   if (!stem) {
     return { ok: false, error: "AI 抽题结果格式无效。" };
   }
 
   if (kind === QuestionKind.single_choice) {
-    if (!options || !singleChoiceAnswerKeys.includes(String(answer).toUpperCase() as SingleChoiceAnswerKey)) {
+    if (!choiceContent || !singleChoiceAnswerKeys.includes(String(answer).toUpperCase() as SingleChoiceAnswerKey)) {
       return { ok: false, error: "AI 抽题结果格式无效。" };
     }
 
@@ -627,9 +645,14 @@ function parseExtractedQuestion(value: unknown): ActionResult<ExtractedMaterialQ
       ok: true,
       data: {
         stem,
-        options,
+        ...(stemBlocks ? { stemBlocks } : {}),
+        options: choiceContent.options,
+        ...(choiceContent.optionBlocks ? { optionBlocks: choiceContent.optionBlocks } : {}),
         answer: String(answer).toUpperCase(),
-        explanation: optionalText(textValue(value.explanation)),
+        explanation,
+        ...(explanationBlocks ? { explanationBlocks } : {}),
+        ...(referenceAnswer ? { referenceAnswer } : {}),
+        ...(referenceAnswerBlocks ? { referenceAnswerBlocks } : {}),
         difficulty,
         knowledgeNodeId: optionalText(textValue(value.knowledgeNodeId)),
         sourceRef: optionalText(textValue(value.sourceRef))
@@ -642,12 +665,17 @@ function parseExtractedQuestion(value: unknown): ActionResult<ExtractedMaterialQ
     data: {
       kind,
       stem,
-      ...(options ? { options } : {}),
+      ...(stemBlocks ? { stemBlocks } : {}),
+      ...(choiceContent ? { options: choiceContent.options } : {}),
+      ...(choiceContent?.optionBlocks ? { optionBlocks: choiceContent.optionBlocks } : {}),
       answer,
       payload,
       answerKey,
       rubric,
-      explanation: optionalText(textValue(value.explanation)),
+      explanation,
+      ...(explanationBlocks ? { explanationBlocks } : {}),
+      ...(referenceAnswer ? { referenceAnswer } : {}),
+      ...(referenceAnswerBlocks ? { referenceAnswerBlocks } : {}),
       difficulty,
       knowledgeNodeId: optionalText(textValue(value.knowledgeNodeId)),
       sourceRef: optionalText(textValue(value.sourceRef))
@@ -683,9 +711,19 @@ function parseCandidateUpdateInput(input: MaterialQuestionCandidateUpdateInput):
   const explanation = optionalText(input.explanation);
   const knowledgeNodeId = optionalText(input.knowledgeNodeId);
   const sourceRef = optionalText(input.sourceRef);
+  const payload = parseOptionalJson(input.payloadJson, "payload JSON");
+  const answerKey = parseOptionalJson(input.answerKeyJson, "answerKey JSON");
 
   if (!stem) {
     return { ok: false, error: "题干不能为空。" };
+  }
+
+  if (!payload.ok) {
+    return payload;
+  }
+
+  if (!answerKey.ok) {
+    return answerKey;
   }
 
   if (kind === QuestionKind.single_choice || kind === QuestionKind.multiple_choice) {
@@ -716,12 +754,15 @@ function parseCandidateUpdateInput(input: MaterialQuestionCandidateUpdateInput):
       data: {
         kind,
         stem,
-        payload: {
-          options: singleChoiceAnswerKeys.map((key) => ({
-            key,
-            text: options[key]
-          }))
-        },
+        payload: mergeChoicePayloadOverride(
+          {
+            options: singleChoiceAnswerKeys.map((key) => ({
+              key,
+              text: options[key]
+            }))
+          },
+          payload.data
+        ),
         answerKey: kind === QuestionKind.multiple_choice ? { values: answerValues } : { value: answer.toUpperCase() },
         explanation,
         difficulty,
@@ -729,17 +770,6 @@ function parseCandidateUpdateInput(input: MaterialQuestionCandidateUpdateInput):
         sourceRef
       }
     };
-  }
-
-  const payload = parseOptionalJson(input.payloadJson, "payload JSON");
-  const answerKey = parseOptionalJson(input.answerKeyJson, "answerKey JSON");
-
-  if (!payload.ok) {
-    return payload;
-  }
-
-  if (!answerKey.ok) {
-    return answerKey;
   }
 
   return {
@@ -789,12 +819,7 @@ function toCandidateStorage(question: ExtractedMaterialQuestion): {
     return {
       kind,
       stem: question.stem,
-      payload: {
-        options: singleChoiceAnswerKeys.map((key) => ({
-          key,
-          text: question.options?.[key] ?? ""
-        }))
-      },
+      payload: buildChoicePayload(question),
       answerKey: {
         value: String(question.answer ?? "").toUpperCase()
       }
@@ -805,12 +830,7 @@ function toCandidateStorage(question: ExtractedMaterialQuestion): {
     return {
       kind,
       stem: question.stem,
-      payload: {
-        options: singleChoiceAnswerKeys.map((key) => ({
-          key,
-          text: question.options?.[key] ?? ""
-        }))
-      },
+      payload: buildChoicePayload(question),
       answerKey: normalizeAnswerKey(question.answerKey, question.answer)
     };
   }
@@ -818,7 +838,7 @@ function toCandidateStorage(question: ExtractedMaterialQuestion): {
   return {
     kind,
     stem: question.stem,
-    payload: toInputJsonValue(question.payload) ?? defaultPayloadForKind(kind),
+    payload: buildRichPayload(question, toInputJsonValue(question.payload) ?? defaultPayloadForKind(kind)),
     answerKey: normalizeAnswerKey(question.answerKey, question.answer)
   };
 }
@@ -827,19 +847,182 @@ function parseMaterialQuestionKind(value: string) {
   return materialQuestionKinds.includes(value as (typeof materialQuestionKinds)[number]) ? (value as QuestionKind) : null;
 }
 
-function parseOptions(value: unknown) {
-  if (!isPlainObject(value)) {
+function parseChoiceContent(value: Record<string, unknown>) {
+  const optionTexts = parsePartialOptions(value.options);
+  const richOptions = parseRichOptions(value.richOptions);
+  const explicitOptionBlocks = parseOptionBlocks(value.optionBlocks);
+  const options: Partial<Record<SingleChoiceAnswerKey, string>> = {};
+  const optionBlocks: Partial<Record<SingleChoiceAnswerKey, RichContentBlock[]>> = {};
+
+  for (const key of singleChoiceAnswerKeys) {
+    const text = optionTexts[key] || richOptions.texts[key] || "";
+    const blocks = richOptions.blocks[key] ?? explicitOptionBlocks[key] ?? readOptionalRichContentBlocks(null, text);
+    const plain = text || (blocks ? richTextToPlainText(blocks) : "");
+
+    if (plain) {
+      options[key] = plain;
+    }
+
+    if (blocks) {
+      optionBlocks[key] = blocks;
+    }
+  }
+
+  if (!singleChoiceAnswerKeys.every((key) => options[key])) {
     return null;
   }
 
-  const options = {
-    A: textValue(value.A ?? value.a),
-    B: textValue(value.B ?? value.b),
-    C: textValue(value.C ?? value.c),
-    D: textValue(value.D ?? value.d)
+  return {
+    options: options as Record<SingleChoiceAnswerKey, string>,
+    optionBlocks: Object.keys(optionBlocks).length > 0 ? optionBlocks : null
+  };
+}
+
+function parsePartialOptions(value: unknown) {
+  const options: Partial<Record<SingleChoiceAnswerKey, string>> = {};
+
+  if (!isPlainObject(value)) {
+    return options;
+  }
+
+  for (const key of singleChoiceAnswerKeys) {
+    const text = textValue(value[key] ?? value[key.toLowerCase()]);
+
+    if (text) {
+      options[key] = text;
+    }
+  }
+
+  return options;
+}
+
+function parseRichOptions(value: unknown) {
+  const texts: Partial<Record<SingleChoiceAnswerKey, string>> = {};
+  const blocks: Partial<Record<SingleChoiceAnswerKey, RichContentBlock[]>> = {};
+
+  if (!Array.isArray(value)) {
+    return { texts, blocks };
+  }
+
+  for (const item of value) {
+    if (!isPlainObject(item) || typeof item.key !== "string") {
+      continue;
+    }
+
+    const key = item.key.trim().toUpperCase() as SingleChoiceAnswerKey;
+
+    if (!singleChoiceAnswerKeys.includes(key)) {
+      continue;
+    }
+
+    const text = optionalText(textValue(item.text));
+    const richBlocks = readOptionalRichContentBlocks(item.blocks, text);
+
+    if (text) {
+      texts[key] = text;
+    } else if (richBlocks) {
+      texts[key] = richTextToPlainText(richBlocks);
+    }
+
+    if (richBlocks) {
+      blocks[key] = richBlocks;
+    }
+  }
+
+  return { texts, blocks };
+}
+
+function parseOptionBlocks(value: unknown) {
+  const blocks: Partial<Record<SingleChoiceAnswerKey, RichContentBlock[]>> = {};
+
+  if (!isPlainObject(value)) {
+    return blocks;
+  }
+
+  for (const key of singleChoiceAnswerKeys) {
+    const richBlocks = readOptionalRichContentBlocks(value[key] ?? value[key.toLowerCase()]);
+
+    if (richBlocks) {
+      blocks[key] = richBlocks;
+    }
+  }
+
+  return blocks;
+}
+
+function buildChoicePayload(question: ExtractedMaterialQuestion): Prisma.InputJsonValue {
+  const payload = {
+    options: singleChoiceAnswerKeys.map((key) => {
+      const option: { key: SingleChoiceAnswerKey; text: string; blocks?: RichContentBlock[] } = {
+        key,
+        text: question.options?.[key] ?? ""
+      };
+      const blocks = question.optionBlocks?.[key] ?? readOptionalRichContentBlocks(null, option.text);
+
+      if (blocks) {
+        option.blocks = blocks;
+      }
+
+      return option;
+    })
   };
 
-  return singleChoiceAnswerKeys.every((key) => options[key]) ? options : null;
+  return buildRichPayload(question, payload);
+}
+
+function buildRichPayload(question: ExtractedMaterialQuestion, basePayload: unknown): Prisma.InputJsonValue {
+  const payload = isPlainObject(basePayload) ? { ...basePayload } : {};
+
+  if (question.stemBlocks?.length) {
+    payload.stemBlocks = question.stemBlocks;
+  }
+
+  if (question.explanationBlocks?.length) {
+    payload.explanationBlocks = question.explanationBlocks;
+  }
+
+  if (question.referenceAnswer) {
+    payload.referenceAnswer = question.referenceAnswer;
+  }
+
+  if (question.referenceAnswerBlocks?.length) {
+    payload.referenceAnswerBlocks = question.referenceAnswerBlocks;
+  }
+
+  return toInputJsonValue(payload) ?? {};
+}
+
+function readOptionalRichContentBlocks(value: unknown, fallbackText?: string | null): RichContentBlock[] | null {
+  const blocks = normalizeRichContentBlocks(value, fallbackText);
+
+  if (blocks.length === 0) {
+    return null;
+  }
+
+  if (Array.isArray(value) || blocks.some((block) => block.type === "image")) {
+    return blocks;
+  }
+
+  return null;
+}
+
+function mergeChoicePayloadOverride(defaultPayload: { options: { key: SingleChoiceAnswerKey; text: string }[] }, override: Prisma.InputJsonValue | null) {
+  if (!isPlainObject(override)) {
+    return defaultPayload;
+  }
+
+  const overrideObject = override as Record<string, unknown>;
+  const mergedOptions = defaultPayload.options.map((option) => {
+    const overrideOption = Array.isArray(overrideObject.options)
+      ? overrideObject.options.find((item: unknown) => isPlainObject(item) && item.key === option.key)
+      : null;
+    const blocks = isPlainObject(overrideOption) ? readOptionalRichContentBlocks(overrideOption.blocks, option.text) : null;
+
+    return blocks ? { ...option, blocks } : option;
+  });
+  const merged: Record<string, unknown> = { ...overrideObject, options: mergedOptions };
+
+  return toInputJsonValue(merged) ?? defaultPayload;
 }
 
 function parseAnswerValue(value: unknown): ExtractedMaterialQuestion["answer"] {
@@ -891,7 +1074,7 @@ function defaultPayloadForKind(kind: QuestionKind): Prisma.InputJsonValue {
   return {};
 }
 
-function toInputJsonValue(value: Prisma.JsonValue | null | undefined): Prisma.InputJsonValue | null {
+function toInputJsonValue(value: unknown): Prisma.InputJsonValue | null {
   if (value === null || value === undefined) {
     return null;
   }

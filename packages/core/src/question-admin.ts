@@ -827,7 +827,7 @@ function buildQuestionStorage(input: {
       return {
         ok: true,
         data: {
-          payload: { options },
+          payload: mergeChoicePayloadOverride({ options }, input.payloadOverride),
           answerKey: input.answerKeyOverride ?? { value: normalized },
           rubric: input.rubricOverride
         }
@@ -843,7 +843,7 @@ function buildQuestionStorage(input: {
     return {
       ok: true,
       data: {
-        payload: { options },
+        payload: mergeChoicePayloadOverride({ options }, input.payloadOverride),
         answerKey: input.answerKeyOverride ?? { values },
         rubric: input.rubricOverride
       }
@@ -910,6 +910,26 @@ function buildQuestionStorage(input: {
       rubric: input.rubricOverride ?? (answer ? { referenceAnswer: answer } : null)
     }
   };
+}
+
+function mergeChoicePayloadOverride(
+  defaultPayload: { options: { key: string; text: string }[] },
+  override: Prisma.InputJsonValue | null
+): Prisma.InputJsonValue {
+  if (!isPlainObject(override)) {
+    return defaultPayload;
+  }
+
+  const overrideObject = override as Record<string, unknown>;
+  const mergedOptions = defaultPayload.options.map((option) => {
+    const overrideOption = Array.isArray(overrideObject.options)
+      ? overrideObject.options.find((item: unknown) => isPlainObject(item) && item.key === option.key)
+      : null;
+
+    return isPlainObject(overrideOption) && Array.isArray(overrideOption.blocks) ? { ...option, blocks: overrideOption.blocks } : option;
+  });
+
+  return JSON.parse(JSON.stringify({ ...overrideObject, options: mergedOptions })) as Prisma.InputJsonValue;
 }
 
 function toImportQuestionCsvRow(row: Record<string, string>): AdminQuestionInput {

@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { Route } from "next";
 import type { ReactNode } from "react";
 import { AppShell } from "@/components/app-shell";
+import { RichContent } from "@/components/rich-content";
 import { requireAdminSession } from "@/lib/auth";
 import { listKnowledgeHierarchy } from "@openexam/core/exam-core";
 import { listAdminMaterials, listMaterialQuestionCandidateSections, materialCandidatePageSizeOptions, materialQuestionKinds, type MaterialQuestionCandidateView } from "@openexam/core/materials";
@@ -246,15 +247,26 @@ function CandidateCard({
         <span className="status-chip px-2 py-1">答案 {candidate.answer}</span>
         {candidate.difficulty ? <span className="status-chip px-2 py-1">难度 {candidate.difficulty}</span> : null}
       </div>
-      <h2 className="break-words text-xl font-black">{candidate.stem}</h2>
+      <RichContent blocks={readPayloadBlocks(candidate.payload, "stemBlocks")} fallback={candidate.stem} textClassName="text-xl font-black" />
       <div className="grid gap-2 text-sm font-bold">
         {(["A", "B", "C", "D"] as const).map((key) => (
-          <p key={key} className="border-2 border-black bg-white p-2">
-            {key}. {candidate.options[key]}
-          </p>
+          <div key={key} className="border-2 border-black bg-white p-2">
+            <span className="mr-2 font-black">{key}.</span>
+            <RichContent blocks={readCandidateOptionBlocks(candidate.payload, key)} fallback={candidate.options[key]} inline textClassName="font-bold" />
+          </div>
         ))}
       </div>
-      {candidate.explanation ? <p className="border-2 border-black bg-[var(--surface-subtle)] p-3 text-sm font-bold">{candidate.explanation}</p> : null}
+      {candidate.explanation || readPayloadBlocks(candidate.payload, "explanationBlocks") ? (
+        <div className="border-2 border-black bg-[var(--surface-subtle)] p-3 text-sm font-bold">
+          <RichContent blocks={readPayloadBlocks(candidate.payload, "explanationBlocks")} fallback={candidate.explanation} textClassName="leading-7" />
+        </div>
+      ) : null}
+      {readPayloadBlocks(candidate.payload, "referenceAnswerBlocks") || readPayloadText(candidate.payload, "referenceAnswer") ? (
+        <div className="border-2 border-black bg-white p-3 text-sm font-bold">
+          <p className="mb-2 text-[var(--muted)]">参考答案</p>
+          <RichContent blocks={readPayloadBlocks(candidate.payload, "referenceAnswerBlocks")} fallback={readPayloadText(candidate.payload, "referenceAnswer")} textClassName="leading-7" />
+        </div>
+      ) : null}
       {editable ? (
         <div className="grid gap-3">
           <CandidateEditForm candidate={candidate} knowledgeNodes={knowledgeNodes} paging={paging} />
@@ -395,4 +407,28 @@ function methodLabel(value: string) {
 
 function formatBytes(value: number) {
   return value >= 1024 * 1024 ? `${(value / 1024 / 1024).toFixed(1)}MB` : `${Math.ceil(value / 1024)}KB`;
+}
+
+function readPayloadBlocks(payload: unknown, key: string) {
+  return isRecord(payload) ? payload[key] : null;
+}
+
+function readPayloadText(payload: unknown, key: string) {
+  const value = isRecord(payload) ? payload[key] : null;
+
+  return typeof value === "string" ? value : null;
+}
+
+function readCandidateOptionBlocks(payload: unknown, key: string) {
+  if (!isRecord(payload) || !Array.isArray(payload.options)) {
+    return null;
+  }
+
+  const option = payload.options.find((item) => isRecord(item) && item.key === key);
+
+  return isRecord(option) ? option.blocks : null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import type { Route } from "next";
 import { useEffect, useMemo, useState } from "react";
+import { RichContent } from "@/components/rich-content";
 import type { PaperAttemptSessionState } from "@openexam/core/papers";
 import { PixelChoice, SubmitButton, TextareaField, TextField } from "@openexam/core/pixel-ui";
 import { autosavePaperAttemptAction, pausePaperAttemptAction, resumePaperAttemptAction, submitPaperAttemptAction } from "../actions";
@@ -143,7 +144,7 @@ export function PaperAttemptForm({ paper, attempt }: { paper: ReadyPaper; attemp
                 <p className="mt-1 whitespace-pre-line font-bold leading-7">{question.caseMaterial}</p>
               </div>
             ) : null}
-            <h3 className="break-words text-xl font-black leading-8">{question.stem}</h3>
+            <RichContent blocks={question.stemBlocks} fallback={question.stem} textClassName="text-xl font-black leading-8" />
           </div>
           <QuestionAnswerInput
             answer={answers[question.id] ?? ""}
@@ -243,7 +244,8 @@ function QuestionAnswerInput({
             value={option.key}
           >
             <span>
-              {option.key}. {option.text}
+              <span className="mr-2 font-black">{option.key}.</span>
+              <RichContent blocks={option.blocks} fallback={option.text} inline textClassName="font-bold" />
             </span>
           </PixelChoice>
         ))}
@@ -256,7 +258,8 @@ function QuestionAnswerInput({
       {question.options.map((option) => (
         <PixelChoice key={option.key} checked={answer === option.key} disabled={disabled} name={`control_${question.id}`} onChange={() => onChange(option.key)} type="radio" value={option.key}>
           <span>
-            {option.key}. {option.text}
+            <span className="mr-2 font-black">{option.key}.</span>
+            <RichContent blocks={option.blocks} fallback={option.text} inline textClassName="font-bold" />
           </span>
         </PixelChoice>
       ))}

@@ -3,6 +3,7 @@ import { getPrimaryExamGoal, type PrimaryGoal } from "./exam-core";
 import { gradeObjectiveAnswer, type ObjectiveQuestionKind } from "./grading";
 import { generateSubjectiveScoreSuggestion } from "./subjective-scoring";
 import { prisma } from "./prisma";
+import { normalizeRichContentBlocks, type RichContentBlock } from "./rich-content";
 
 const practiceQuestionInclude = {
   knowledgeBindings: {
@@ -30,12 +31,14 @@ type PracticeDatabase = typeof prisma;
 export type SingleChoiceOption = {
   key: string;
   text: string;
+  blocks?: RichContentBlock[];
 };
 
 export type PracticeQuestion = {
   id: string;
   kind: QuestionKind;
   stem: string;
+  stemBlocks?: RichContentBlock[] | null;
   options: SingleChoiceOption[];
   difficulty: number | null;
   knowledgeNodes: string[];
@@ -100,7 +103,8 @@ export function readSingleChoiceOptions(payload: Prisma.JsonValue | null | undef
 
     return {
       key: item.key.trim(),
-      text: item.text.trim()
+      text: item.text.trim(),
+      ...readOptionBlocks(item)
     };
   });
 
@@ -117,6 +121,35 @@ export function readCaseMaterial(payload: Prisma.JsonValue | null | undefined): 
   if (isJsonObject(payload) && typeof payload.caseMaterial === "string" && payload.caseMaterial.trim()) {
     return payload.caseMaterial.trim();
   }
+  return null;
+}
+
+export function readRichContentBlocks(payload: Prisma.JsonValue | null | undefined, key: string, fallbackText?: string | null): RichContentBlock[] | null {
+  if (!isJsonObject(payload)) {
+    return readOptionalRichContentBlocks(null, fallbackText);
+  }
+
+  return readOptionalRichContentBlocks(payload[key], fallbackText);
+}
+
+function readOptionBlocks(item: Prisma.JsonObject) {
+  const text = typeof item.text === "string" ? item.text : null;
+  const blocks = readOptionalRichContentBlocks(item.blocks, text);
+
+  return blocks ? { blocks } : {};
+}
+
+function readOptionalRichContentBlocks(value: unknown, fallbackText?: string | null): RichContentBlock[] | null {
+  const blocks = normalizeRichContentBlocks(value, fallbackText);
+
+  if (blocks.length === 0) {
+    return null;
+  }
+
+  if (Array.isArray(value) || blocks.some((block) => block.type === "image")) {
+    return blocks;
+  }
+
   return null;
 }
 
@@ -494,6 +527,9 @@ export async function getAttemptResult(userId: string, attemptId: string) {
   }
 
   const answer = attempt.answers[0];
+  const payload = answer.questionVersion?.payload ?? answer.question.payload;
+  const stem = answer.questionVersion?.stem ?? answer.question.stem;
+  const explanation = answer.questionVersion?.explanation ?? answer.question.explanation;
   const answerKey = readObjectiveAnswerKey(answer.questionVersion?.answerKey ?? answer.question.answerKey);
 
   return {
@@ -507,12 +543,15 @@ export async function getAttemptResult(userId: string, attemptId: string) {
     userConfirmed: answer.userConfirmed,
     userAnswer: readSubmittedAnswer(answer.userAnswer),
     correctAnswer: formatAnswerValue(answerKey),
-    explanation: answer.questionVersion?.explanation ?? answer.question.explanation,
+    explanation,
+    explanationBlocks: readRichContentBlocks(payload, "explanationBlocks", explanation),
+    referenceAnswerBlocks: readRichContentBlocks(payload, "referenceAnswerBlocks"),
     question: {
       id: answer.question.id,
       kind: answer.question.kind,
-      stem: answer.questionVersion?.stem ?? answer.question.stem,
-      options: readSingleChoiceOptions(answer.questionVersion?.payload ?? answer.question.payload) ?? [],
+      stem,
+      stemBlocks: readRichContentBlocks(payload, "stemBlocks", stem),
+      options: readSingleChoiceOptions(payload) ?? [],
       knowledgeNodes: answer.question.knowledgeBindings.map((binding) => binding.knowledgeNode.title)
     }
   };
@@ -1309,7 +1348,9 @@ function parsePositiveInteger(value: string | number | null | undefined) {
 
 function toPracticeQuestion(question: PracticeQuestionRecord): PracticeQuestion | null {
   const version = question.versions.find((item) => item.version === question.currentVersion) ?? question.versions[0] ?? null;
-  const options = readSingleChoiceOptions(version?.payload ?? question.payload);
+  const payload = version?.payload ?? question.payload;
+  const stem = version?.stem ?? question.stem;
+  const options = readSingleChoiceOptions(payload);
 
   if (isChoiceKind(question.kind) && !options) {
     return null;
@@ -1318,12 +1359,13 @@ function toPracticeQuestion(question: PracticeQuestionRecord): PracticeQuestion 
   return {
     id: question.id,
     kind: question.kind,
-    stem: version?.stem ?? question.stem,
+    stem,
+    stemBlocks: readRichContentBlocks(payload, "stemBlocks", stem),
     options: options ?? [],
     difficulty: question.difficulty,
     knowledgeNodes: question.knowledgeBindings.map((binding) => binding.knowledgeNode.title),
     sourceType: question.sourceType,
-    caseMaterial: readCaseMaterial(version?.payload ?? question.payload)
+    caseMaterial: readCaseMaterial(payload)
   };
 }
 

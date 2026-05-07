@@ -416,12 +416,13 @@ function toCandidateStorage(question: ExtractedMaterialQuestion): {
     return {
       kind,
       stem: question.stem,
-      payload: {
+      payload: buildRichPayload(question, {
         options: singleChoiceAnswerKeys.map((key) => ({
           key,
-          text: question.options?.[key] ?? ""
+          text: question.options?.[key] ?? "",
+          ...(question.optionBlocks?.[key] ? { blocks: question.optionBlocks[key] } : {})
         }))
-      },
+      }),
       answerKey: kind === QuestionKind.multiple_choice ? normalizeAnswerKey(question.answerKey, question.answer) : { value: String(question.answer ?? "").toUpperCase() }
     };
   }
@@ -429,9 +430,31 @@ function toCandidateStorage(question: ExtractedMaterialQuestion): {
   return {
     kind,
     stem: question.stem,
-    payload: toInputJsonValue(question.payload) ?? defaultPayloadForKind(kind),
+    payload: buildRichPayload(question, toInputJsonValue(question.payload) ?? defaultPayloadForKind(kind)),
     answerKey: normalizeAnswerKey(question.answerKey, question.answer)
   };
+}
+
+function buildRichPayload(question: ExtractedMaterialQuestion, basePayload: unknown): Prisma.InputJsonValue {
+  const payload: Record<string, unknown> = basePayload && typeof basePayload === "object" && !Array.isArray(basePayload) ? { ...basePayload } : {};
+
+  if (question.stemBlocks?.length) {
+    payload.stemBlocks = question.stemBlocks;
+  }
+
+  if (question.explanationBlocks?.length) {
+    payload.explanationBlocks = question.explanationBlocks;
+  }
+
+  if (question.referenceAnswer) {
+    payload.referenceAnswer = question.referenceAnswer;
+  }
+
+  if (question.referenceAnswerBlocks?.length) {
+    payload.referenceAnswerBlocks = question.referenceAnswerBlocks;
+  }
+
+  return toInputJsonValue(payload) ?? {};
 }
 
 function normalizeAnswerKey(answerKey: Prisma.JsonValue | null | undefined, answer: ExtractedMaterialQuestion["answer"]): Prisma.InputJsonValue {
@@ -465,7 +488,7 @@ function defaultPayloadForKind(kind: QuestionKind): Prisma.InputJsonValue {
   return {};
 }
 
-function toInputJsonValue(value: Prisma.JsonValue | null | undefined): Prisma.InputJsonValue | null {
+function toInputJsonValue(value: unknown): Prisma.InputJsonValue | null {
   if (value === null || value === undefined) {
     return null;
   }

@@ -151,6 +151,27 @@ Questions are extensible with structured fields:
 
 `payload`, `answerKey`, and `rubric` should use JSONB and schema validation.
 
+Rich question content:
+
+- `stem` remains the plain-text fallback for search, compact lists, reports, wrong-note summaries, and non-rich clients.
+- Rich content lives in existing JSON fields for the MVP; do not add new Prisma tables or columns until editing and asset lifecycle requirements justify it.
+- `payload.stemBlocks` stores the full rich stem content.
+- `payload.options[].text` remains the plain-text option fallback, while `payload.options[].blocks` stores rich option content.
+- `payload.explanationBlocks` stores rich explanation content.
+- `payload.referenceAnswerBlocks` stores rich reference-answer content for answers that need diagrams or images.
+- `answerKey` remains machine-gradable and must not contain image blocks. Answer images belong in `referenceAnswerBlocks` or `explanationBlocks`.
+- Rich content blocks use:
+
+```ts
+type RichContentBlock =
+  | { type: "text"; text: string }
+  | { type: "image"; sourceUrl: string; assetId?: string | null; alt?: string | null };
+```
+
+- Image blocks preserve the original `sourceUrl` and may later add `assetId` when an image is imported into OpenExam private storage.
+- The MVP only accepts `https://` source URLs for common bitmap formats: `png`, `jpg`, `jpeg`, `webp`, and `gif`. SVG, `http://`, relative paths, and other protocols should be downgraded to text instead of failing the whole extraction.
+- Material extraction should ask AI providers to preserve images in stems, options, explanations, and reference answers. Parsers should prefer provider-supplied blocks, and should also convert Markdown image syntax and bare bitmap URLs found inside AI output fields into blocks.
+
 Implementation note:
 
 - Prisma uses JSON columns for `payload`, `answerKey`, and `rubric`.

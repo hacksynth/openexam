@@ -17,15 +17,40 @@ export const choiceOptionsObjectSchema = z.object({
   D: z.string().min(1)
 });
 
+export const richContentBlockSchema = z.union([
+  z.object({
+    type: z.literal("text"),
+    text: z.string().min(1)
+  }),
+  z.object({
+    type: z.literal("image"),
+    sourceUrl: z.string().min(1),
+    assetId: z.string().optional().nullable(),
+    alt: z.string().optional().nullable()
+  })
+]);
+
+export const choiceOptionRichObjectSchema = z.object({
+  key: z.string().min(1),
+  text: z.string().optional().nullable(),
+  blocks: z.array(richContentBlockSchema).optional().nullable()
+});
+
 export const materialQuestionExtractionItemSchema = z.object({
   kind: aiQuestionKindSchema.optional().nullable(),
   stem: z.string().min(1),
+  stemBlocks: z.array(richContentBlockSchema).optional().nullable(),
   options: choiceOptionsObjectSchema.optional(),
+  optionBlocks: z.record(z.string(), z.array(richContentBlockSchema)).optional().nullable(),
+  richOptions: z.array(choiceOptionRichObjectSchema).optional().nullable(),
   answer: z.union([z.string(), z.boolean(), z.array(z.string())]).optional().nullable(),
   payload: jsonValueSchema.optional().nullable(),
   answerKey: jsonValueSchema.optional().nullable(),
   rubric: jsonValueSchema.optional().nullable(),
   explanation: z.string().optional().nullable(),
+  explanationBlocks: z.array(richContentBlockSchema).optional().nullable(),
+  referenceAnswer: z.string().optional().nullable(),
+  referenceAnswerBlocks: z.array(richContentBlockSchema).optional().nullable(),
   difficulty: z.number().int().min(1).max(5).optional().nullable(),
   knowledgeNodeId: z.string().optional().nullable(),
   sourceRef: z.string().optional().nullable()
