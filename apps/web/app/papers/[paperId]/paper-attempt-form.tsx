@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import type { Route } from "next";
-import { useEffect, useMemo, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { RichContent } from "@/components/rich-content";
 import type { PaperAttemptSessionState } from "@openexam/core/papers";
 import { PixelChoice, SubmitButton, TextareaField, TextField } from "@openexam/core/pixel-ui";
@@ -17,6 +18,9 @@ export function PaperAttemptForm({ paper, attempt }: { paper: ReadyPaper; attemp
   const [answers, setAnswers] = useState<Record<string, string>>(attempt.answers);
   const [elapsedSeconds, setElapsedSeconds] = useState(attempt.elapsedSeconds);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
+  const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
+  const formRef = useRef<HTMLFormElement>(null);
+  const confirmedSubmitRef = useRef(false);
   const paused = attempt.status === "paused";
   const answeredCount = Object.values(answers).filter(Boolean).length;
   const unansweredCount = paper.questions.length - answeredCount;
@@ -59,9 +63,9 @@ export function PaperAttemptForm({ paper, attempt }: { paper: ReadyPaper; attemp
       void Promise.all(
         entries.map(([questionId, answer]) =>
           autosavePaperAttemptAction({
-          attemptId: attempt.id,
-          questionId,
-          answer
+            attemptId: attempt.id,
+            questionId,
+            answer
           })
         )
       ).then((results) => {
@@ -77,18 +81,28 @@ export function PaperAttemptForm({ paper, attempt }: { paper: ReadyPaper; attemp
     };
   }, [answers, attempt.id, paused]);
 
-  return (
-    <form
-      action={submitPaperAttemptAction}
-      className="grid gap-4"
-      onSubmit={(event) => {
-        const submitter = (event.nativeEvent as SubmitEvent).submitter as HTMLElement | null;
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    const submitter = (event.nativeEvent as SubmitEvent).submitter as HTMLElement | null;
 
-        if (submitter?.dataset.action === "submit" && unansweredCount > 0 && !window.confirm(`还有 ${unansweredCount} 道题未作答，未答题将按 0 分处理。确认提交？`)) {
-          event.preventDefault();
-        }
-      }}
-    >
+    if (confirmedSubmitRef.current) {
+      confirmedSubmitRef.current = false;
+      return;
+    }
+
+    if (submitter?.dataset.action === "submit" && unansweredCount > 0) {
+      event.preventDefault();
+      setShowSubmitConfirm(true);
+    }
+  }
+
+  function confirmSubmit() {
+    confirmedSubmitRef.current = true;
+    setShowSubmitConfirm(false);
+    formRef.current?.requestSubmit();
+  }
+
+  return (
+    <form action={submitPaperAttemptAction} className="grid gap-4" onSubmit={handleSubmit} ref={formRef}>
       <input name="paperId" type="hidden" value={paper.id} />
       <input name="attemptId" type="hidden" value={attempt.id} />
       <section className="pixel-panel sticky top-3 z-10 grid gap-4 p-4">
@@ -160,6 +174,14 @@ export function PaperAttemptForm({ paper, attempt }: { paper: ReadyPaper; attemp
           返回试卷
         </Link>
       </div>
+      <ConfirmDialog
+        confirmLabel="确认提交"
+        description={`还有 ${unansweredCount} 道题未作答，未答题将按 0 分处理。`}
+        onCancel={() => setShowSubmitConfirm(false)}
+        onConfirm={confirmSubmit}
+        open={showSubmitConfirm}
+        title="确认提交试卷"
+      />
     </form>
   );
 }

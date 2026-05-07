@@ -1,39 +1,37 @@
 "use client";
 
-import { type FormEvent, useCallback, useState } from "react";
+import { ConfirmFormDialog } from "./confirm-dialog";
 
 export function ConfirmForm({
   action,
   confirmMessage,
+  confirmTitle = "确认操作",
+  confirmLabel = "确认",
+  tone = "default",
   buttonLabel,
   buttonClassName = "pixel-button bg-white px-4 py-2",
   children
 }: {
   action: string | ((formData: FormData) => void);
   confirmMessage: string;
+  confirmTitle?: string;
+  confirmLabel?: string;
+  tone?: "default" | "danger";
   buttonLabel: string;
   buttonClassName?: string;
   children?: React.ReactNode;
 }) {
-  const [pending, setPending] = useState(false);
-
-  const handleSubmit = useCallback(
-    (e: FormEvent<HTMLFormElement>) => {
-      if (!pending && !window.confirm(confirmMessage)) {
-        e.preventDefault();
-        return;
-      }
-      setPending(true);
-    },
-    [confirmMessage, pending]
-  );
-
   return (
-    <form action={action} onSubmit={handleSubmit}>
-      <button className={buttonClassName} disabled={pending} type="submit">
-        {pending ? "提交中..." : buttonLabel}
-      </button>
+    <ConfirmFormDialog
+      action={action}
+      buttonClassName={buttonClassName}
+      buttonLabel={buttonLabel}
+      confirmLabel={confirmLabel}
+      description={confirmMessage}
+      title={confirmTitle}
+      tone={tone}
+    >
       {children}
-    </form>
+    </ConfirmFormDialog>
   );
 }

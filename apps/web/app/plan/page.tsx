@@ -207,7 +207,7 @@ function PlanActions({
   const adjustmentReasons = plan ? getStudyPlanAdjustmentReasons(analysis, plan) : [];
   const hasTargetChange = adjustmentReasons.some((reason) => reason.includes("考试日期"));
   const buttonLabel = plan ? (hasTargetChange ? "按新考试日期调整计划" : "调整后续计划") : "生成学习计划";
-  const confirmMessage = plan ? "将保留已完成任务，并根据最新学习情况调整今天未完成及未来计划，确定继续？" : "将基于考试日期、每日时间和当前学习数据生成计划，确定继续？";
+  const confirmMessage = plan ? "将保留已完成任务，并根据最新学习情况调整今天未完成及未来计划。" : "将基于考试日期、每日时间和当前学习数据生成计划。";
 
   return (
     <div className="grid gap-3">
@@ -221,8 +221,24 @@ function PlanActions({
       ) : (
         <>
           <div className="flex flex-wrap gap-3">
-            <ConfirmForm action={generateStudyPlanAction} buttonLabel={buttonLabel} confirmMessage={confirmMessage} buttonClassName="pixel-button px-4 py-2" />
-            {plan ? <ConfirmForm action={abandonCurrentStudyPlanAction} buttonLabel="放弃当前计划" confirmMessage="放弃后计划将标记为已放弃且无法恢复，确定继续？" /> : null}
+            <ConfirmForm
+              action={generateStudyPlanAction}
+              buttonLabel={buttonLabel}
+              buttonClassName="pixel-button px-4 py-2"
+              confirmLabel={plan ? "确认调整" : "确认生成"}
+              confirmMessage={confirmMessage}
+              confirmTitle={plan ? "确认调整学习计划" : "确认生成学习计划"}
+            />
+            {plan ? (
+              <ConfirmForm
+                action={abandonCurrentStudyPlanAction}
+                buttonLabel="放弃当前计划"
+                confirmLabel="确认放弃"
+                confirmMessage="放弃后计划将标记为已放弃且无法恢复。"
+                confirmTitle="确认放弃当前计划"
+                tone="danger"
+              />
+            ) : null}
             <Link href={"/analysis" as Route} className="pixel-button bg-white px-4 py-2">
               查看分析
             </Link>
