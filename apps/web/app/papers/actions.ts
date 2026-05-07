@@ -12,7 +12,7 @@ import {
   savePaperAttemptAnswer,
   submitPaperAttempt
 } from "@openexam/core/papers";
-import { collectQuestionForReview } from "@openexam/core/practice";
+import { collectQuestionForConsolidation } from "@openexam/core/practice";
 import { requireWebSession } from "@/lib/auth";
 
 export async function submitPaperAttemptAction(formData: FormData) {
@@ -30,7 +30,10 @@ export async function submitPaperAttemptAction(formData: FormData) {
   revalidatePath("/papers" as Route);
   revalidatePath("/attempts" as Route);
   revalidatePath("/wrong-notes" as Route);
+  revalidatePath("/consolidation" as Route);
   revalidatePath("/dashboard" as Route);
+  revalidatePath("/analysis" as Route);
+  revalidatePath("/plan" as Route);
 
   if (!result.ok) {
     redirect(`/papers/${paperId}?error=${encodeURIComponent(result.error)}` as Route);
@@ -108,6 +111,9 @@ export async function confirmAttemptAnswerScoreAction(formData: FormData) {
 
   revalidatePath(`/attempts/${attemptId}` as Route);
   revalidatePath("/wrong-notes" as Route);
+  revalidatePath("/consolidation" as Route);
+  revalidatePath("/analysis" as Route);
+  revalidatePath("/plan" as Route);
 
   if (!result.ok) {
     redirect(`/attempts/${attemptId}?error=${encodeURIComponent(result.error)}` as Route);
@@ -123,6 +129,9 @@ export async function confirmAllAttemptAnswerScoresAction(formData: FormData) {
 
   revalidatePath(`/attempts/${attemptId}` as Route);
   revalidatePath("/wrong-notes" as Route);
+  revalidatePath("/consolidation" as Route);
+  revalidatePath("/analysis" as Route);
+  revalidatePath("/plan" as Route);
 
   if (!result.ok) {
     redirect(`/attempts/${attemptId}?error=${encodeURIComponent(result.error)}` as Route);
@@ -134,19 +143,23 @@ export async function confirmAllAttemptAnswerScoresAction(formData: FormData) {
 export async function collectAttemptQuestionAction(formData: FormData) {
   const session = await requireWebSession();
   const attemptId = String(formData.get("attemptId") ?? "");
-  const result = await collectQuestionForReview(session.user.id, {
+  const result = await collectQuestionForConsolidation(session.user.id, {
     questionId: String(formData.get("questionId") ?? ""),
     attemptAnswerId: String(formData.get("attemptAnswerId") ?? "")
   });
 
   revalidatePath(`/attempts/${attemptId}` as Route);
+  revalidatePath("/consolidation" as Route);
   revalidatePath("/wrong-notes" as Route);
+  revalidatePath("/dashboard" as Route);
+  revalidatePath("/analysis" as Route);
+  revalidatePath("/plan" as Route);
 
   if (!result.ok) {
     redirect(`/attempts/${attemptId}?error=${encodeURIComponent(result.error)}` as Route);
   }
 
-  redirect(`/attempts/${attemptId}?notice=${encodeURIComponent("题目已加入复习。")}` as Route);
+  redirect(`/attempts/${attemptId}?notice=${encodeURIComponent("题目已标记为待巩固。")}` as Route);
 }
 
 export async function generateAttemptAnswerAiExplanationAction(formData: FormData) {

@@ -1,9 +1,10 @@
-import { Prisma } from "@prisma/client";
+import { Prisma, type AttemptStatus } from "@prisma/client";
 import { formatGoalPath, type PrimaryGoal } from "./exam-core";
 import { buildPracticeQuestionWhere } from "./practice";
 import { prisma } from "./prisma";
 
 type AnalysisDatabase = typeof prisma;
+const finalizedAttemptStatuses: AttemptStatus[] = ["submitted", "graded"];
 
 export type AnalysisAnswerInput = {
   isCorrect: boolean;
@@ -43,6 +44,11 @@ export type AnalysisWrongNoteInput = {
   knowledgeNodes: { id: string; title: string }[];
 };
 
+export type AnalysisConsolidationNoteInput = {
+  mastered: boolean;
+  knowledgeNodes: { id: string; title: string }[];
+};
+
 export type KnowledgePerformance = {
   id: string;
   title: string;
@@ -55,6 +61,7 @@ export type KnowledgePerformance = {
   accuracy: number;
   scoreRate: number;
   pendingWrongNotes: number;
+  pendingConsolidationNotes: number;
 };
 
 export type LearningAnalysisSummary = {
@@ -68,6 +75,9 @@ export type LearningAnalysisSummary = {
   scoreRate: number;
   pendingWrongNotes: number;
   masteredWrongNotes: number;
+  pendingConsolidationNotes: number;
+  masteredConsolidationNotes: number;
+  masteryRiskCount: number;
   weakKnowledgeNodes: KnowledgePerformance[];
   byKind: KindPerformance[];
   byDifficulty: DifficultyPerformance[];
@@ -106,32 +116,64 @@ export async function getLearningAnalysis(userId: string, db: AnalysisDatabase =
     return { status: "no_goal" };
   }
 
-  const [attempts, wrongNotes] = await Promise.all([
-    db.attempt.findMany({
+  const [attemptAnswers, recentAttempts, wrongNotes, consolidationNotes] = await Promise.all([
+    db.attemptAnswer.findMany({
       where: {
-        userId,
-        goalId: goal.id
+        attempt: {
+          userId,
+          goalId: goal.id,
+          status: {
+            in: finalizedAttemptStatuses
+          }
+        }
       },
       include: {
-        paper: true,
-        answers: {
+        question: {
           include: {
-            question: {
+            knowledgeBindings: {
               include: {
-                knowledgeBindings: {
-                  include: {
-                    knowledgeNode: true
-                  }
-                }
+                knowledgeNode: true
               }
             }
           }
         }
+      }
+    }),
+    db.attempt.findMany({
+      where: {
+        userId,
+        goalId: goal.id,
+        status: {
+          in: finalizedAttemptStatuses
+        }
+      },
+      include: {
+        paper: true
       },
       orderBy: [{ submittedAt: "desc" }, { createdAt: "desc" }],
-      take: 50
+      take: 8
     }),
     db.wrongNote.findMany({
+      where: {
+        userId,
+        errorCount: {
+          gt: 0
+        },
+        question: buildPracticeQuestionWhere(userId, goal)
+      },
+      include: {
+        question: {
+          include: {
+            knowledgeBindings: {
+              include: {
+                knowledgeNode: true
+              }
+            }
+          }
+        }
+      }
+    }),
+    db.consolidationNote.findMany({
       where: {
         userId,
         question: buildPracticeQuestionWhere(userId, goal)
@@ -150,23 +192,28 @@ export async function getLearningAnalysis(userId: string, db: AnalysisDatabase =
     })
   ]);
 
-  const answers = attempts.flatMap((attempt) =>
-    attempt.answers.map((answer) => ({
-      isCorrect: Boolean(answer.isCorrect),
-      score: answer.score ?? 0,
-      maxScore: answer.maxScore ?? 0,
-      userAnswer: readSubmittedAnswer(answer.userAnswer),
-      kind: answer.question.kind,
-      difficulty: answer.question.difficulty ?? null,
-      knowledgeNodes: answer.question.knowledgeBindings.map((binding) => ({
-        id: binding.knowledgeNodeId,
-        title: binding.knowledgeNode.title
-      }))
+  const answers = attemptAnswers.map((answer) => ({
+    isCorrect: Boolean(answer.isCorrect),
+    score: answer.score ?? 0,
+    maxScore: answer.maxScore ?? 0,
+    userAnswer: readSubmittedAnswer(answer.userAnswer),
+    kind: answer.question.kind,
+    difficulty: answer.question.difficulty ?? null,
+    knowledgeNodes: answer.question.knowledgeBindings.map((binding) => ({
+      id: binding.knowledgeNodeId,
+      title: binding.knowledgeNode.title
     }))
-  );
+  }));
   const summary = summarizeLearningAnalysis(
     answers,
     wrongNotes.map((note) => ({
+      mastered: note.mastered,
+      knowledgeNodes: note.question.knowledgeBindings.map((binding) => ({
+        id: binding.knowledgeNodeId,
+        title: binding.knowledgeNode.title
+      }))
+    })),
+    consolidationNotes.map((note) => ({
       mastered: note.mastered,
       knowledgeNodes: note.question.knowledgeBindings.map((binding) => ({
         id: binding.knowledgeNodeId,
@@ -180,7 +227,7 @@ export async function getLearningAnalysis(userId: string, db: AnalysisDatabase =
     goal,
     goalPath: formatGoalPath(goal),
     summary,
-    recentAttempts: attempts.slice(0, 8).map((attempt) => ({
+    recentAttempts: recentAttempts.map((attempt) => ({
       id: attempt.id,
       title: attempt.paper?.title ?? "单题练习",
       kind: attempt.paperId ? "paper" : "practice",
@@ -191,7 +238,7 @@ export async function getLearningAnalysis(userId: string, db: AnalysisDatabase =
   };
 }
 
-export function summarizeLearningAnalysis(answers: AnalysisAnswerInput[], wrongNotes: AnalysisWrongNoteInput[]): LearningAnalysisSummary {
+export function summarizeLearningAnalysis(answers: AnalysisAnswerInput[], wrongNotes: AnalysisWrongNoteInput[], consolidationNotes: AnalysisConsolidationNoteInput[] = []): LearningAnalysisSummary {
   const totalQuestions = answers.length;
   const correctCount = answers.filter((answer) => answer.isCorrect).length;
   const unansweredCount = answers.filter((answer) => !answer.userAnswer).length;
@@ -200,6 +247,9 @@ export function summarizeLearningAnalysis(answers: AnalysisAnswerInput[], wrongN
   const maxScore = answers.reduce((sum, answer) => sum + answer.maxScore, 0);
   const pendingWrongNotes = wrongNotes.filter((note) => !note.mastered).length;
   const masteredWrongNotes = wrongNotes.filter((note) => note.mastered).length;
+  const pendingConsolidationNotes = consolidationNotes.filter((note) => !note.mastered).length;
+  const masteredConsolidationNotes = consolidationNotes.filter((note) => note.mastered).length;
+  const masteryRiskCount = pendingWrongNotes + pendingConsolidationNotes;
   const knowledge = new Map<string, KnowledgePerformance>();
 
   for (const answer of answers) {
@@ -225,13 +275,29 @@ export function summarizeLearningAnalysis(answers: AnalysisAnswerInput[], wrongN
     }
   }
 
+  for (const note of consolidationNotes.filter((item) => !item.mastered)) {
+    for (const node of note.knowledgeNodes.length > 0 ? note.knowledgeNodes : [{ id: "unknown", title: "未绑定知识点" }]) {
+      const current = knowledge.get(node.id) ?? emptyKnowledgePerformance(node);
+
+      current.pendingConsolidationNotes += 1;
+      knowledge.set(node.id, current);
+    }
+  }
+
   const weakKnowledgeNodes = [...knowledge.values()]
     .map((node) => ({
       ...node,
       accuracy: node.total > 0 ? Math.round((node.correct / node.total) * 100) : 0,
       scoreRate: node.maxScore > 0 ? Math.round((node.score / node.maxScore) * 100) : 0
     }))
-    .sort((left, right) => right.pendingWrongNotes - left.pendingWrongNotes || left.accuracy - right.accuracy || right.wrong - left.wrong || left.title.localeCompare(right.title, "zh-CN"))
+    .sort(
+      (left, right) =>
+        right.pendingWrongNotes - left.pendingWrongNotes ||
+        right.pendingConsolidationNotes - left.pendingConsolidationNotes ||
+        left.accuracy - right.accuracy ||
+        right.wrong - left.wrong ||
+        left.title.localeCompare(right.title, "zh-CN")
+    )
     .slice(0, 8);
 
   const byKind = computeKindPerformance(answers);
@@ -248,6 +314,9 @@ export function summarizeLearningAnalysis(answers: AnalysisAnswerInput[], wrongN
     scoreRate: maxScore > 0 ? Math.round((totalScore / maxScore) * 100) : 0,
     pendingWrongNotes,
     masteredWrongNotes,
+    pendingConsolidationNotes,
+    masteredConsolidationNotes,
+    masteryRiskCount,
     weakKnowledgeNodes,
     byKind,
     byDifficulty
@@ -261,11 +330,14 @@ export function toStudyPlanSourceStats(analysis: Extract<LearningAnalysisState, 
     accuracy: analysis.summary.accuracy,
     scoreRate: analysis.summary.scoreRate,
     pendingWrongNotes: analysis.summary.pendingWrongNotes,
+    pendingConsolidationNotes: analysis.summary.pendingConsolidationNotes,
+    masteryRiskCount: analysis.summary.masteryRiskCount,
     weakKnowledgeNodes: analysis.summary.weakKnowledgeNodes.map((node) => ({
       id: node.id,
       title: node.title,
       accuracy: node.accuracy,
       pendingWrongNotes: node.pendingWrongNotes,
+      pendingConsolidationNotes: node.pendingConsolidationNotes,
       total: node.total
     }))
   };
@@ -283,7 +355,8 @@ function emptyKnowledgePerformance(node: { id: string; title: string }): Knowled
     maxScore: 0,
     accuracy: 0,
     scoreRate: 0,
-    pendingWrongNotes: 0
+    pendingWrongNotes: 0,
+    pendingConsolidationNotes: 0
   };
 }
 

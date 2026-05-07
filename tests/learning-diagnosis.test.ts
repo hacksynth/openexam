@@ -63,6 +63,9 @@ describe("learning diagnosis", () => {
         scoreRate: 67,
         pendingWrongNotes: 3,
         masteredWrongNotes: 1,
+        pendingConsolidationNotes: 2,
+        masteredConsolidationNotes: 0,
+        masteryRiskCount: 5,
         byKind: [],
         byDifficulty: [],
         weakKnowledgeNodes: [
@@ -77,7 +80,8 @@ describe("learning diagnosis", () => {
             maxScore: 4,
             accuracy: 25,
             scoreRate: 25,
-            pendingWrongNotes: 2
+            pendingWrongNotes: 2,
+            pendingConsolidationNotes: 1
           }
         ]
       },
@@ -86,6 +90,7 @@ describe("learning diagnosis", () => {
 
     expect(prompt.instructions).toContain("严格 JSON");
     expect(prompt.input).toContain("目标：软考");
+    expect(prompt.input).toContain("待巩固题：2");
     expect(prompt.input).toContain("node_1 数据库事务");
   });
 });

@@ -12,7 +12,7 @@ export default async function DashboardPage() {
   return (
     <AppShell section="learner" eyebrow="学习端基础版" title="仪表盘">
       <section className="grid gap-5">
-        <div className="grid gap-4 md:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-5">
           {dashboard.metrics.map((metric) => (
             <article key={metric.label} className="pixel-panel p-4">
               <p className="text-xs font-bold uppercase text-[var(--muted)]">{metric.label}</p>
@@ -46,6 +46,9 @@ export default async function DashboardPage() {
               <Link href="/wrong-notes" className="pixel-button bg-white px-4 py-2">
                 复习错题
               </Link>
+              <Link href={"/consolidation" as Route} className="pixel-button bg-white px-4 py-2">
+                巩固正确题
+              </Link>
             </div>
           </section>
 
@@ -69,12 +72,12 @@ export default async function DashboardPage() {
           <section className="pixel-panel p-5">
             <h2 className="mb-4 text-xl font-black">薄弱知识点</h2>
             {dashboard.weakKnowledgeNodes.length === 0 ? (
-              <p className="border-2 border-black bg-[var(--surface-subtle)] p-3 font-bold text-[var(--muted)]">暂无未掌握错题，继续练习后会按知识点汇总。</p>
+              <p className="border-2 border-black bg-[var(--surface-subtle)] p-3 font-bold text-[var(--muted)]">暂无掌握风险，继续练习后会按知识点汇总。</p>
             ) : (
               <div className="flex flex-wrap gap-2">
                 {dashboard.weakKnowledgeNodes.map((node) => (
                   <span key={node.title} className="status-chip px-2 py-1">
-                    {node.title} / {node.count} 题
+                    {node.title} / 错题 {node.wrongCount} / 待巩固 {node.consolidationCount}
                   </span>
                 ))}
               </div>

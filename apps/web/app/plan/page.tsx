@@ -16,6 +16,7 @@ const kindLabels: Record<string, string> = {
   practice: "练习",
   paper: "试卷",
   wrong_note_review: "错题",
+  consolidation_review: "巩固",
   knowledge_review: "知识点",
   material_review: "资料"
 };
@@ -56,7 +57,7 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
                 <p className="text-xs font-bold uppercase text-[var(--muted)]">Rolling Plan</p>
                 <h2 className="mt-1 break-words text-2xl font-black">{plan ? `${plan.goalPath}` : "尚未生成学习计划"}</h2>
                 <p className="mt-1 font-bold text-[var(--muted)]">
-                  当前数据：作答 {analysis.summary.totalQuestions} 题，正确率 {analysis.summary.accuracy}%，未掌握错题 {analysis.summary.pendingWrongNotes}。
+                  当前数据：作答 {analysis.summary.totalQuestions} 题，正确率 {analysis.summary.accuracy}%，未掌握错题 {analysis.summary.pendingWrongNotes}，待巩固 {analysis.summary.pendingConsolidationNotes}。
                 </p>
               </div>
               <PlanActions analysis={analysis} plan={plan} />

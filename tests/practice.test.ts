@@ -208,6 +208,7 @@ describe("practice question access", () => {
 
   it("normalizes supported practice modes and falls back to new practice", () => {
     expect(normalizePracticeMode("wrong")).toBe("wrong");
+    expect(normalizePracticeMode("consolidation")).toBe("consolidation");
     expect(normalizePracticeMode("retry_practiced")).toBe("retry_practiced");
     expect(normalizePracticeMode("comprehensive")).toBe("comprehensive");
     expect(normalizePracticeMode("bad")).toBe("new");

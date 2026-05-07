@@ -108,13 +108,13 @@ The MVP supports these practice modes:
 Practice selection rules:
 
 - The default practice entry should guide the learner to a knowledge node or enter from weak knowledge, today's plan, or the knowledge tree. Full-goal random practice remains available as a secondary "comprehensive practice" entry.
-- Practice modes share `/practice` and are selected with an explicit mode parameter such as `new`, `wrong`, `retry_practiced`, or `comprehensive`. Single-question wrong-note retry continues to use a direct retry question id.
+- Practice modes share `/practice` and are selected with an explicit mode parameter such as `new`, `wrong`, `consolidation`, `retry_practiced`, or `comprehensive`. Single-question wrong-note retry continues to use a direct retry question id.
 - Knowledge-node practice includes the selected node and its child nodes by default. Selecting a leaf node naturally scopes practice to that leaf.
 - Default practice excludes questions the learner has already submitted under the current primary exam goal. A question counts as practiced after a submitted attempt answer exists for the current user and goal, including single-question practice, knowledge-node practice, material practice, AI-private questions, and paper attempts. In-progress, unsubmitted, or abandoned drafts do not count.
 - Subjective questions count as practiced immediately after answer submission, even if AI-assisted or manual score confirmation is still pending.
 - Deduplication is by `Question.id`, not by `QuestionVersion`. A later question version does not automatically make the same question eligible as new practice.
 - New-question mode uses a stable queue rather than random selection. Comprehensive practice may provide a separate random entry.
-- Repeat practice is explicit. When no new questions are available, the UI should offer clear actions such as unmastered wrong-note practice, retry practiced questions in the same scope, nearby child/sibling knowledge nodes, or AI-generated new questions.
+- Repeat practice is explicit. When no new questions are available, the UI should offer clear actions such as unmastered wrong-note practice, pending consolidation practice, retry practiced questions in the same scope, nearby child/sibling knowledge nodes, or AI-generated new questions.
 - Material and knowledge-node filters intersect. For example, material practice with a knowledge-node filter only returns confirmed questions from that material that also belong to the selected knowledge scope and current goal.
 - AI-generated candidates only enter practice after learner confirmation creates private questions. Confirmed AI questions follow the same knowledge binding and deduplication rules as other questions.
 - After submission, the result page and "practice another question" action must preserve the current mode, knowledge-node filter, material filter, and other explicit practice filters.
@@ -122,7 +122,7 @@ Practice selection rules:
 
 The MVP does not include leaderboards, social check-ins, class assignments, community question lists, or complex adaptive testing.
 
-Implementation note: `/practice` supports a goal-scoped multi-kind flow. `packages/core/src/practice.ts` retrieves public approved questions for the current goal, avoids immediate repeats, supports wrong-note retry, persists one-question attempts, references the answered question version, grades single-choice/multiple-choice/true-false/blank objective answers, captures subjective answers, and writes wrong notes for incorrect objective answers.
+Implementation note: `/practice` supports a goal-scoped multi-kind flow. `packages/core/src/practice.ts` retrieves public approved questions for the current goal, avoids immediate repeats, supports wrong-note retry and consolidation practice, persists one-question attempts, references the answered question version, grades single-choice/multiple-choice/true-false/blank objective answers, captures subjective answers, writes wrong notes only for incorrect objective answers, and writes consolidation notes for correct objective answers that the learner marks as not mastered.
 
 ### Attempt History
 
@@ -161,7 +161,7 @@ The wrong-note system is a core module.
 Required behavior:
 
 - Automatically collect wrong answers.
-- Allow manual collection of correct questions.
+- Keep wrong notes limited to questions with an actual incorrect answer.
 - Mark mastered or not mastered.
 - Record mistake reason tags: unclear concept, misread question, calculation error, memory gap, wrong method, time pressure, guessed answer.
 - User notes.
@@ -183,6 +183,21 @@ Wrong-note practice rules:
 - Wrong-note practice is ordered by higher error count first, then older update time, then stable knowledge-tree order.
 
 Implementation note: `/wrong-notes` lists auto-collected wrong notes, shows correct answer and explanation, supports all/unmastered/mastered and knowledge-node filters, lets the learner toggle mastered/not mastered, links directly to retry, marks a note mastered after a correct retry, generates OpenAI wrong-note analysis, and can queue private review-card image generation. The page displays the latest review-card job status, generated image asset, and failed-job error summary. Mistake reason tags and user notes remain pending.
+
+### Consolidation Notes
+
+Consolidation notes capture questions the learner answered correctly but explicitly marked as not mastered. They do not count as wrong answers and must not reduce learning-analysis accuracy.
+
+Required behavior:
+
+- Correct objective answers default to mastered.
+- A learner can mark a correct objective answer as not mastered from the result page or attempt report.
+- Pending consolidation notes are shown on `/consolidation`, separate from `/wrong-notes`.
+- Consolidation practice uses `/practice?mode=consolidation` and only draws pending consolidation notes.
+- A correct or incorrect answer from consolidation practice closes the pending consolidation note; an incorrect answer also creates or updates a wrong note.
+- Consolidation notes feed AI diagnosis, weak-point ranking, dashboards, and study plans as `待巩固`, separate from `未掌握错题`.
+
+Implementation note: historical manual review records with `WrongNote.errorCount = 0` are migrated into `ConsolidationNote`; true wrong notes with `errorCount > 0` remain in `/wrong-notes`.
 
 ### Knowledge Points
 
@@ -295,6 +310,7 @@ Diagnosis inputs:
 - Practice history.
 - Accuracy, timing, type, subject, and knowledge-node performance.
 - Wrong-note counts and mastery status.
+- Pending consolidation-note counts and knowledge-node distribution.
 - Mock exam scores and completion records.
 - User self-assessment and daily available time.
 - Question metadata including difficulty, source, year, and cycle.
@@ -307,9 +323,9 @@ Diagnosis outputs:
 - Recommended next actions.
 - Plan suggestions.
 
-Study plans must be structured task tables, not plain text. Tasks are scheduled by date, carry explicit status, and can bind to subjects, knowledge nodes, papers, materials, and question sets. A saved target date is required before plan generation. The active window starts today and covers the remaining exam-prep period up to a maximum of 30 days.
+Study plans must be structured task tables, not plain text. Tasks are scheduled by date, carry explicit status, and can bind to subjects, knowledge nodes, papers, materials, and question sets. A saved target date is required before plan generation. The active window starts today and covers the remaining exam-prep period up to a maximum of 30 days. Plan task kinds include `wrong_note_review` for actual wrong notes and `consolidation_review` for correct-but-not-mastered questions.
 
-Implementation note: `/analysis` summarizes practice history, weak knowledge nodes, and wrong-note pressure from database-backed learning data. `/plan` generates and adjusts structured rolling plans with the schema in `packages/core/src/study-plan-schema.ts`, stores scheduled task status, and records plan revisions.
+Implementation note: `/analysis` summarizes practice history, weak knowledge nodes, wrong-note pressure, and consolidation pressure from database-backed learning data. `/plan` generates and adjusts structured rolling plans with the schema in `packages/core/src/study-plan-schema.ts`, stores scheduled task status, and records plan revisions.
 
 ## Question Bank Policy
 

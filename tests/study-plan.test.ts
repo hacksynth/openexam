@@ -23,6 +23,7 @@ describe("study plan generation", () => {
     expect(prompt.input).toContain("计划窗口：2026-05-05 至 2026-05-18");
     expect(prompt.input).toContain("事务基础");
     expect(prompt.input).toContain("未掌握错题3");
+    expect(prompt.input).toContain("待巩固题：2");
   });
 
   it("supports baseline plans before the learner has practice data", () => {
@@ -324,6 +325,28 @@ function createStudyPlanDb(calls: { method: string; args?: unknown }[], activePl
     examGoal: {
       findFirst: async () => analysisState().goal
     },
+    attemptAnswer: {
+      findMany: async () => [
+        {
+          isCorrect: false,
+          score: 0,
+          maxScore: 1,
+          userAnswer: { value: "B" },
+          question: {
+            kind: "single_choice",
+            difficulty: 1,
+            knowledgeBindings: [
+              {
+                knowledgeNodeId: "node_db",
+                knowledgeNode: {
+                  title: "事务基础"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
     attempt: {
       findMany: async () => [
         {
@@ -333,31 +356,28 @@ function createStudyPlanDb(calls: { method: string; args?: unknown }[], activePl
           submittedAt: new Date("2026-05-05T00:00:00.000Z"),
           createdAt: new Date("2026-05-05T00:00:00.000Z"),
           totalScore: 0,
-          maxScore: 1,
-          answers: [
-            {
-              isCorrect: false,
-              score: 0,
-              maxScore: 1,
-              userAnswer: { value: "B" },
-              question: {
-                kind: "single_choice",
-                difficulty: 1,
-                knowledgeBindings: [
-                  {
-                    knowledgeNodeId: "node_db",
-                    knowledgeNode: {
-                      title: "事务基础"
-                    }
-                  }
-                ]
-              }
-            }
-          ]
+          maxScore: 1
         }
       ]
     },
     wrongNote: {
+      findMany: async () => [
+        {
+          mastered: false,
+          question: {
+            knowledgeBindings: [
+              {
+                knowledgeNodeId: "node_db",
+                knowledgeNode: {
+                  title: "事务基础"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    consolidationNote: {
       findMany: async () => [
         {
           mastered: false,
@@ -504,6 +524,9 @@ function analysisState() {
       scoreRate: 50,
       pendingWrongNotes: 3,
       masteredWrongNotes: 1,
+      pendingConsolidationNotes: 2,
+      masteredConsolidationNotes: 0,
+      masteryRiskCount: 5,
       byKind: [],
       byDifficulty: [],
       weakKnowledgeNodes: [
@@ -518,7 +541,8 @@ function analysisState() {
           maxScore: 4,
           accuracy: 25,
           scoreRate: 25,
-          pendingWrongNotes: 3
+          pendingWrongNotes: 3,
+          pendingConsolidationNotes: 2
         }
       ]
     },

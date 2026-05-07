@@ -57,6 +57,7 @@ export type PracticeEmptyReason =
   | "knowledge_required"
   | "no_new_questions"
   | "no_wrong_questions"
+  | "no_consolidation_questions"
   | "no_practiced_questions";
 
 export type PracticeQuestionState =
@@ -483,6 +484,20 @@ export async function submitPracticeAnswer(
         masteredOnCorrect: input.retry === true || practiceMode === PracticeMode.wrong,
         reviewedAt: now
       });
+
+      if (practiceMode === PracticeMode.consolidation) {
+        await tx.consolidationNote.updateMany({
+          where: {
+            userId,
+            questionId: question.id,
+            mastered: false
+          },
+          data: {
+            mastered: true,
+            lastReviewedAt: now
+          }
+        });
+      }
     }
 
     return {
@@ -637,7 +652,7 @@ export async function listWrongNotes(userId: string, options: WrongNoteFilters =
     where: {
       userId,
       ...(typeof options.mastered === "boolean" ? { mastered: options.mastered } : {}),
-      ...(typeof minErrorCount === "number" ? { errorCount: { gte: minErrorCount } } : {}),
+      errorCount: typeof minErrorCount === "number" ? { gte: minErrorCount } : { gt: 0 },
       ...(options.updatedSince ? { updatedAt: { gte: options.updatedSince } } : {}),
       question: {
         ...(options.questionKind ? { kind: options.questionKind as never } : {}),
@@ -722,6 +737,18 @@ export async function syncWrongNoteForObjectiveAnswer(
       }
     });
 
+    await tx.consolidationNote.updateMany({
+      where: {
+        userId: input.userId,
+        questionId: input.questionId,
+        mastered: false
+      },
+      data: {
+        mastered: true,
+        lastReviewedAt: input.reviewedAt
+      }
+    });
+
     return;
   }
 
@@ -771,7 +798,7 @@ export async function updateWrongNoteReflection(
   return result.count > 0 ? ({ ok: true } as const) : ({ ok: false, error: "错题不存在。" } as const);
 }
 
-export async function collectQuestionForReview(
+export async function collectQuestionForConsolidation(
   userId: string,
   input: {
     questionId: string;
@@ -782,6 +809,39 @@ export async function collectQuestionForReview(
 
   if (!questionId) {
     return { ok: false, error: "题目不存在。" } as const;
+  }
+
+  const attemptAnswerId = input.attemptAnswerId?.trim() || null;
+  const attemptAnswer = attemptAnswerId
+    ? await prisma.attemptAnswer.findFirst({
+        where: {
+          id: attemptAnswerId,
+          questionId,
+          isCorrect: true,
+          attempt: {
+            userId,
+            status: {
+              in: ["submitted", "graded"]
+            }
+          }
+        },
+        select: {
+          id: true,
+          question: {
+            select: {
+              kind: true
+            }
+          }
+        }
+      })
+    : null;
+
+  if (!attemptAnswer) {
+    return { ok: false, error: "只能将已答对的题标记为待巩固。" } as const;
+  }
+
+  if (!toObjectiveQuestionKind(attemptAnswer.question.kind)) {
+    return { ok: false, error: "待巩固第一版仅支持客观题。" } as const;
   }
 
   const question = await prisma.question.findFirst({
@@ -800,35 +860,71 @@ export async function collectQuestionForReview(
 
   const now = new Date();
 
-  await prisma.wrongNote.upsert({
-    where: {
-      userId_questionId: {
-        userId,
-        questionId
+  await prisma.$transaction(async (tx) => {
+    const wrongNote = await tx.wrongNote.findUnique({
+      where: {
+        userId_questionId: {
+          userId,
+          questionId
+        }
+      },
+      select: {
+        id: true,
+        errorCount: true
       }
-    },
-    update: {
-      attemptAnswerId: input.attemptAnswerId?.trim() || undefined,
-      manualCollectedAt: now,
-      mastered: false
-    },
-    create: {
-      userId,
-      questionId,
-      attemptAnswerId: input.attemptAnswerId?.trim() || null,
-      errorCount: 0,
-      manualCollectedAt: now
+    });
+
+    if (wrongNote && wrongNote.errorCount > 0) {
+      await tx.wrongNote.update({
+        where: { id: wrongNote.id },
+        data: {
+          mastered: false,
+          lastReviewedAt: null
+        }
+      });
+      await tx.consolidationNote.updateMany({
+        where: { userId, questionId },
+        data: {
+          mastered: true,
+          lastReviewedAt: now
+        }
+      });
+      return;
     }
+
+    await tx.consolidationNote.upsert({
+      where: {
+        userId_questionId: {
+          userId,
+          questionId
+        }
+      },
+      update: {
+        attemptAnswerId,
+        mastered: false,
+        lastReviewedAt: null
+      },
+      create: {
+        userId,
+        questionId,
+        attemptAnswerId
+      }
+    });
   });
 
   return { ok: true } as const;
 }
 
+export const collectQuestionForReview = collectQuestionForConsolidation;
+
 export async function getDashboardPracticeSummary(userId: string) {
   const wrongNotes = await prisma.wrongNote.findMany({
     where: {
       userId,
-      mastered: false
+      mastered: false,
+      errorCount: {
+        gt: 0
+      }
     },
     include: {
       question: {
@@ -870,12 +966,111 @@ export function summarizeWrongNotes(notes: { mastered: boolean; knowledgeNodes: 
   };
 }
 
-async function getRetryQuestion(userId: string, goal: NonNullable<PrimaryGoal>, questionId: string) {
-  const wrongNote = await prisma.wrongNote.findUnique({
+export type ConsolidationNoteFilters = {
+  mastered?: boolean;
+  knowledgeNodeId?: string | null;
+};
+
+export async function listConsolidationNotes(userId: string, options: ConsolidationNoteFilters = {}) {
+  const notes = await prisma.consolidationNote.findMany({
     where: {
-      userId_questionId: {
+      userId,
+      ...(typeof options.mastered === "boolean" ? { mastered: options.mastered } : {}),
+      question: {
+        ...(options.knowledgeNodeId
+          ? {
+              knowledgeBindings: {
+                some: {
+                  knowledgeNodeId: options.knowledgeNodeId
+                }
+              }
+            }
+          : {})
+      }
+    },
+    orderBy: [{ updatedAt: "desc" }],
+    include: {
+      attemptAnswer: {
+        include: {
+          questionVersion: true
+        }
+      },
+      question: {
+        include: {
+          knowledgeBindings: {
+            include: {
+              knowledgeNode: true
+            }
+          },
+          versions: {
+            orderBy: { version: "desc" },
+            take: 1
+          }
+        }
+      }
+    }
+  });
+
+  return notes.map((note) => {
+    const version = note.attemptAnswer?.questionVersion ?? note.question.versions[0] ?? null;
+
+    return {
+      id: note.id,
+      questionId: note.questionId,
+      attemptAnswerId: note.attemptAnswerId,
+      mastered: note.mastered,
+      lastReviewedAt: note.lastReviewedAt,
+      createdAt: note.createdAt,
+      updatedAt: note.updatedAt,
+      stem: version?.stem ?? note.question.stem,
+      explanation: version?.explanation ?? note.question.explanation,
+      correctAnswer: formatAnswerValue(readObjectiveAnswerKey(version?.answerKey ?? note.question.answerKey)),
+      knowledgeNodes: note.question.knowledgeBindings.map((binding) => ({
+        id: binding.knowledgeNodeId,
+        title: binding.knowledgeNode.title
+      }))
+    };
+  });
+}
+
+export async function setConsolidationNoteMastered(userId: string, consolidationNoteId: string, mastered: boolean) {
+  const result = await prisma.consolidationNote.updateMany({
+    where: { id: consolidationNoteId, userId },
+    data: {
+      mastered,
+      lastReviewedAt: mastered ? new Date() : null
+    }
+  });
+
+  return result.count > 0 ? ({ ok: true } as const) : ({ ok: false, error: "待巩固题不存在。" } as const);
+}
+
+export function summarizeConsolidationNotes(notes: { mastered: boolean; knowledgeNodes: string[] }[]) {
+  const pending = notes.filter((note) => !note.mastered);
+  const counts = new Map<string, number>();
+
+  for (const note of pending) {
+    for (const title of note.knowledgeNodes) {
+      counts.set(title, (counts.get(title) ?? 0) + 1);
+    }
+  }
+
+  return {
+    pendingConsolidationNotes: pending.length,
+    weakKnowledgeNodes: [...counts.entries()]
+      .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0], "zh-CN"))
+      .slice(0, 5)
+      .map(([title, count]) => ({ title, count }))
+  };
+}
+
+async function getRetryQuestion(userId: string, goal: NonNullable<PrimaryGoal>, questionId: string) {
+  const wrongNote = await prisma.wrongNote.findFirst({
+    where: {
         userId,
-        questionId
+      questionId,
+      errorCount: {
+        gt: 0
       }
     },
     select: {
@@ -1077,6 +1272,11 @@ async function selectPracticeQuestion(
     return { question, emptyReason: question ? undefined : ("no_wrong_questions" as PracticeEmptyReason) };
   }
 
+  if (input.mode === PracticeMode.consolidation) {
+    const question = await findConsolidationPracticeQuestion(userId, baseWhere, excludedCurrent, knowledgeScope);
+    return { question, emptyReason: question ? undefined : ("no_consolidation_questions" as PracticeEmptyReason) };
+  }
+
   const attemptedIds = await listAttemptedQuestionIds(userId, goal, baseWhere);
 
   if (input.mode === PracticeMode.retry_practiced) {
@@ -1167,6 +1367,9 @@ async function findWrongPracticeQuestion(
     where: {
       userId,
       mastered: false,
+      errorCount: {
+        gt: 0
+      },
       ...(excluded.length > 0
         ? {
             questionId: {
@@ -1191,6 +1394,47 @@ async function findWrongPracticeQuestion(
         const errorDelta = right.errorCount - left.errorCount;
         if (errorDelta !== 0) return errorDelta;
 
+        const updatedDelta = left.updatedAt.getTime() - right.updatedAt.getTime();
+        if (updatedDelta !== 0) return updatedDelta;
+
+        return comparePracticeQuestions(left.question, right.question, knowledgeScope ?? null);
+      })
+      .map((note) => note.question)[0] ?? null
+  );
+}
+
+async function findConsolidationPracticeQuestion(
+  userId: string,
+  baseWhere: Prisma.QuestionWhereInput,
+  excludedIds: string[],
+  knowledgeScope?: KnowledgePracticeScope | null
+) {
+  const excluded = [...new Set(excludedIds)].filter(Boolean);
+  const notes = await prisma.consolidationNote.findMany({
+    where: {
+      userId,
+      mastered: false,
+      ...(excluded.length > 0
+        ? {
+            questionId: {
+              notIn: excluded
+            }
+          }
+        : {}),
+      question: baseWhere
+    },
+    include: {
+      question: {
+        include: practiceQuestionInclude
+      }
+    },
+    orderBy: [{ updatedAt: "asc" }],
+    take: 200
+  });
+
+  return (
+    notes
+      .sort((left, right) => {
         const updatedDelta = left.updatedAt.getTime() - right.updatedAt.getTime();
         if (updatedDelta !== 0) return updatedDelta;
 
@@ -1319,6 +1563,10 @@ export function normalizePracticeMode(value: string | PracticeMode | null | unde
 
   if (normalized === PracticeMode.wrong) {
     return PracticeMode.wrong;
+  }
+
+  if (normalized === PracticeMode.consolidation) {
+    return PracticeMode.consolidation;
   }
 
   if (normalized === PracticeMode.retry_practiced) {

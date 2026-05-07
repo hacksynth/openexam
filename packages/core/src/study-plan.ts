@@ -28,7 +28,7 @@ type StudyPlanOutputValidation = {
   windowStartDate: Date;
 };
 
-const studyPlanPromptVersion = "study-plan-generate-v2";
+const studyPlanPromptVersion = "study-plan-generate-v3";
 const defaultMaxOutputTokens = 3200;
 const maxPlanWindowDays = 30;
 const millisecondsPerDay = 86_400_000;
@@ -42,6 +42,7 @@ const taskHrefByKind: Record<StudyPlan["tasks"][number]["kind"], string> = {
   practice: "/practice",
   paper: "/papers",
   wrong_note_review: "/wrong-notes",
+  consolidation_review: "/consolidation",
   knowledge_review: "/knowledge",
   material_review: "/materials"
 };
@@ -456,6 +457,10 @@ export function getStudyPlanAdjustmentReasons(
       reasons.push("未掌握错题明显增加");
     }
 
+    if (analysis.summary.pendingConsolidationNotes - sourceStats.pendingConsolidationNotes >= 3) {
+      reasons.push("待巩固题明显增加");
+    }
+
     const previousTop3 = sourceStats.weakKnowledgeNodes.slice(0, 3).map((node) => node.id).join(",");
     const currentTop3 = analysis.summary.weakKnowledgeNodes.slice(0, 3).map((node) => node.id).join(",");
 
@@ -540,14 +545,14 @@ export function buildStudyPlanPrompt(
       isAdjustment ? "请基于最新学习数据和当前计划，调整今天未完成及未来计划。" : "请基于学习数据生成学习计划。",
       "输出必须符合：",
       JSON.stringify(expectedJson),
-      "kind 只能是 practice、paper、wrong_note_review、knowledge_review、material_review。",
+      "kind 只能是 practice、paper、wrong_note_review、consolidation_review、knowledge_review、material_review。",
       "status 只能用于 decisions，且只能是 carried_over 或 skipped。新 tasks 默认都是 pending。",
       "subjectId、paperId、materialId 是可选字段；没有真实数据库 ID 时必须省略，不要输出“可选”、中文说明或占位符。",
       `计划窗口：${dateKey(window.startDate)} 至 ${dateKey(window.endDate)}，共 ${window.days} 天。`,
       `剩余备考天数：${window.remainingDays} 天；当前只生成最多 ${maxPlanWindowDays} 天的近期计划。`,
       `每日可用时间：${analysis.goal.dailyMinutes} 分钟；每天 1-3 个任务，总分钟数不得超过每日可用时间的 120%。`,
-      `考试日期：${dateKey(window.targetDate)}。如果计划覆盖考试当天，当天只安排 wrong_note_review 或 knowledge_review，且总时长不超过 60 分钟。`,
-      "每天至少 1 个任务，优先安排薄弱知识点、未掌握错题和适量整卷练习。",
+      `考试日期：${dateKey(window.targetDate)}。如果计划覆盖考试当天，当天只安排 wrong_note_review、consolidation_review 或 knowledge_review，且总时长不超过 60 分钟。`,
+      "每天至少 1 个任务，优先安排薄弱知识点、未掌握错题、待巩固题和适量整卷练习。",
       isAdjustment ? "decisions 必须覆盖下方所有待处理旧任务；用户已完成或已跳过的任务不要恢复。" : "decisions 必须输出空数组。",
       "",
       `目标 ID：${analysis.goal.id}`,
@@ -557,7 +562,9 @@ export function buildStudyPlanPrompt(
       stats.totalQuestions === 0 ? "暂无作答数据：请按考试大纲和目标日期生成基线计划。" : `正确率：${stats.accuracy}%`,
       `得分率：${stats.scoreRate}%`,
       `未掌握错题：${stats.pendingWrongNotes}`,
-      `薄弱知识点：${stats.weakKnowledgeNodes.map((node) => `${node.id} ${node.title} 正确率${node.accuracy}% 未掌握错题${node.pendingWrongNotes}`).join(" / ") || "暂无"}`,
+      `待巩固题：${stats.pendingConsolidationNotes}`,
+      `掌握风险：${stats.masteryRiskCount}`,
+      `薄弱知识点：${stats.weakKnowledgeNodes.map((node) => `${node.id} ${node.title} 正确率${node.accuracy}% 未掌握错题${node.pendingWrongNotes} 待巩固${node.pendingConsolidationNotes}`).join(" / ") || "暂无"}`,
       "",
       isAdjustment
         ? `待处理旧任务：${adjustableTasks.map((task) => formatAdjustableTaskForPrompt(task, options?.existingPlan ?? null, window)).join(" / ") || "无"}`
@@ -670,7 +677,7 @@ function validateStudyPlanOutput(plan: StudyPlan, options: StudyPlanOutputValida
     }
 
     if (scheduledDate === targetDateKey) {
-      if (tasks.some((task) => task.kind !== "wrong_note_review" && task.kind !== "knowledge_review")) {
+      if (tasks.some((task) => task.kind !== "wrong_note_review" && task.kind !== "consolidation_review" && task.kind !== "knowledge_review")) {
         return { ok: false, error: "考试当天只能安排轻量复盘任务。" };
       }
 
@@ -772,6 +779,7 @@ function readSourceStats(value: Prisma.JsonValue | null | undefined) {
 
   const totalQuestions = Number(value.totalQuestions ?? 0);
   const pendingWrongNotes = Number(value.pendingWrongNotes ?? 0);
+  const pendingConsolidationNotes = Number(value.pendingConsolidationNotes ?? 0);
   const weakKnowledgeNodes = Array.isArray(value.weakKnowledgeNodes)
     ? value.weakKnowledgeNodes
         .map((node) => {
@@ -790,6 +798,7 @@ function readSourceStats(value: Prisma.JsonValue | null | undefined) {
   return {
     totalQuestions,
     pendingWrongNotes,
+    pendingConsolidationNotes,
     weakKnowledgeNodes
   };
 }

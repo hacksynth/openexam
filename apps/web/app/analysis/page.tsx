@@ -27,7 +27,7 @@ export default async function AnalysisPage({ searchParams }: AnalysisPageProps) 
               <div>
                 <p className="text-xs font-bold uppercase text-[var(--muted)]">当前目标</p>
                 <h2 className="mt-1 break-words text-2xl font-black">{state.goalPath}</h2>
-                <p className="mt-1 font-bold text-[var(--muted)]">分析基于最近 50 次作答和当前目标范围内的错题。</p>
+                <p className="mt-1 font-bold text-[var(--muted)]">分析基于当前目标下全部已提交作答和目标范围内错题。</p>
               </div>
               <div className="flex flex-wrap gap-3">
                 <Link href={"/practice" as Route} className="pixel-button px-4 py-2">
@@ -42,11 +42,12 @@ export default async function AnalysisPage({ searchParams }: AnalysisPageProps) 
               </div>
             </section>
 
-            <section className="grid gap-4 md:grid-cols-4">
+            <section className="grid gap-4 md:grid-cols-5">
               <Metric label="作答题数" value={String(state.summary.totalQuestions)} />
               <Metric label="正确率" value={`${state.summary.accuracy}%`} />
               <Metric label="得分率" value={`${state.summary.scoreRate}%`} />
               <Metric label="未掌握错题" value={String(state.summary.pendingWrongNotes)} />
+              <Metric label="待巩固" value={String(state.summary.pendingConsolidationNotes)} />
             </section>
 
             {state.summary.totalQuestions === 0 ? (
@@ -90,7 +91,7 @@ export default async function AnalysisPage({ searchParams }: AnalysisPageProps) 
                         <article key={node.id} className="border-2 border-black bg-[var(--surface-subtle)] p-3">
                           <h3 className="break-words text-lg font-black">{node.title}</h3>
                           <p className="mt-1 text-sm font-bold text-[var(--muted)]">
-                            正确 {node.correct} / {node.total}，正确率 {node.accuracy}%，未掌握错题 {node.pendingWrongNotes}
+                            正确 {node.correct} / {node.total}，正确率 {node.accuracy}%，未掌握错题 {node.pendingWrongNotes}，待巩固 {node.pendingConsolidationNotes}
                           </p>
                         </article>
                       ))}

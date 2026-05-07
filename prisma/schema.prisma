@@ -61,6 +61,7 @@ enum AttemptStatus {
 enum PracticeMode {
   new
   wrong
+  consolidation
   retry_practiced
   comprehensive
 }
@@ -126,6 +127,7 @@ model User {
   goals            ExamGoal[]
   attempts         Attempt[]
   wrongNotes       WrongNote[]
+  consolidationNotes ConsolidationNote[]
   questions        Question[]               @relation("QuestionOwner")
   materials        Material[]
   assets           Asset[]
@@ -281,6 +283,7 @@ model Question {
   paperLinks        PaperQuestion[]
   attemptAnswers    AttemptAnswer[]
   wrongNotes        WrongNote[]
+  consolidationNotes ConsolidationNote[]
   createdAt         DateTime                @default(now())
   updatedAt         DateTime                @updatedAt
 
@@ -435,6 +438,7 @@ model AttemptAnswer {
   aiExplanation     String?
   userConfirmed     Boolean          @default(false)
   wrongNotes        WrongNote[]
+  consolidationNotes ConsolidationNote[]
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
 
@@ -462,6 +466,25 @@ model WrongNote {
 
   @@unique([userId, questionId])
   @@index([userId, mastered])
+}
+
+model ConsolidationNote {
+  id              String         @id @default(cuid())
+  userId          String
+  user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  questionId      String
+  question        Question       @relation(fields: [questionId], references: [id])
+  attemptAnswerId String?
+  attemptAnswer   AttemptAnswer? @relation(fields: [attemptAnswerId], references: [id])
+  mastered        Boolean        @default(false)
+  lastReviewedAt  DateTime?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@unique([userId, questionId])
+  @@index([userId, mastered])
+  @@index([questionId])
+  @@index([attemptAnswerId])
 }
 
 model Material {

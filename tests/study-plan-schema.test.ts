@@ -23,6 +23,27 @@ describe("studyPlanSchema", () => {
     expect(result.success).toBe(true);
   });
 
+  it("accepts consolidation review tasks", () => {
+    const result = studyPlanSchema.safeParse({
+      goalId: "goal_1",
+      generatedAt: "2026-05-05T00:00:00.000Z",
+      days: 1,
+      decisions: [],
+      tasks: [
+        {
+          day: 1,
+          scheduledDate: "2026-05-05",
+          title: "Review correct but unmastered questions",
+          kind: "consolidation_review",
+          minutes: 30,
+          knowledgeNodeIds: ["node_1"]
+        }
+      ]
+    });
+
+    expect(result.success).toBe(true);
+  });
+
   it("rejects free-form plans that are not task tables", () => {
     const result = studyPlanSchema.safeParse({
       goalId: "goal_1",

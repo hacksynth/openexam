@@ -162,12 +162,12 @@ export default async function AttemptReportPage({ params, searchParams }: Attemp
                       <input name="attemptAnswerId" type="hidden" value={answer.id} />
                       <SubmitButton className="w-fit bg-white px-4 py-2" label={answer.aiExplanation ? "重新生成本题 AI 解析" : "请求本题 AI 解析"} />
                     </form>
-                    {answer.isCorrect !== false && answer.userAnswer ? (
+                    {answer.isCorrect === true && answer.userAnswer && answer.kind !== "short_answer" && answer.kind !== "case_analysis" ? (
                       <form action={collectAttemptQuestionAction}>
                         <input name="attemptId" type="hidden" value={report.id} />
                         <input name="attemptAnswerId" type="hidden" value={answer.id} />
                         <input name="questionId" type="hidden" value={answer.questionId} />
-                        <SubmitButton className="w-fit bg-white px-4 py-2" label="收藏复习" />
+                        <SubmitButton className="w-fit bg-white px-4 py-2" label="标记未掌握" />
                       </form>
                     ) : null}
                   </div>

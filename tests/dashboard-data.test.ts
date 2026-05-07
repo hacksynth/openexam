@@ -23,6 +23,22 @@ describe("getLearnerDashboard", () => {
           }
         ]
       },
+      consolidationNote: {
+        findMany: async () => [
+          {
+            mastered: false,
+            question: {
+              knowledgeBindings: [
+                {
+                  knowledgeNode: {
+                    title: "事务基础"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      },
       studyPlan: {
         findFirst: async () => ({
           generatedAt: new Date("2026-05-05T00:00:00.000Z"),
@@ -69,6 +85,7 @@ describe("getLearnerDashboard", () => {
       metrics: [
         { label: "今日任务", value: "1" },
         { label: "待复习错题", value: "1" },
+        { label: "待巩固", value: "1" },
         { label: "薄弱知识点", value: "1" },
         { label: "AI 任务", value: "1" }
       ],
@@ -82,7 +99,9 @@ describe("getLearnerDashboard", () => {
       weakKnowledgeNodes: [
         {
           title: "事务基础",
-          count: 1
+          count: 2,
+          wrongCount: 1,
+          consolidationCount: 1
         }
       ],
       recentJobs: [

@@ -1,6 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
-import { summarizeWrongNotes } from "./practice";
+import { summarizeConsolidationNotes, summarizeWrongNotes } from "./practice";
 
 type DashboardDatabase = typeof prisma;
 
@@ -24,8 +24,28 @@ export async function getLearnerDashboard(userId: string, db: DashboardDatabase 
     where: { userId, isPrimary: true },
     select: { id: true }
   });
-  const [wrongNotes, plan, jobs, aiCalls, paperAttempts] = await Promise.all([
+  const [wrongNotes, consolidationNotes, plan, jobs, aiCalls, paperAttempts] = await Promise.all([
     db.wrongNote.findMany({
+      where: {
+        userId,
+        mastered: false,
+        errorCount: {
+          gt: 0
+        }
+      },
+      include: {
+        question: {
+          include: {
+            knowledgeBindings: {
+              include: {
+                knowledgeNode: true
+              }
+            }
+          }
+        }
+      }
+    }),
+    db.consolidationNote.findMany({
       where: {
         userId,
         mastered: false
@@ -86,12 +106,19 @@ export async function getLearnerDashboard(userId: string, db: DashboardDatabase 
       knowledgeNodes: note.question.knowledgeBindings.map((binding) => binding.knowledgeNode.title)
     }))
   );
+  const consolidationSummary = summarizeConsolidationNotes(
+    consolidationNotes.map((note) => ({
+      mastered: note.mastered,
+      knowledgeNodes: note.question.knowledgeBindings.map((binding) => binding.knowledgeNode.title)
+    }))
+  );
+  const weakKnowledgeNodes = combineRiskKnowledgeNodes(practiceSummary.weakKnowledgeNodes, consolidationSummary.weakKnowledgeNodes);
   const planTasks = getTodayPlanTasks(plan, now).map((task) => ({
     id: task.id,
     label: task.title,
     href: taskHrefByKind(task.kind)
   }));
-  const derivedTasks = planTasks.length > 0 ? [] : buildDerivedTasks(practiceSummary, paperAttempts);
+  const derivedTasks = planTasks.length > 0 ? [] : buildDerivedTasks(practiceSummary, consolidationSummary, paperAttempts);
   const todayTasks = planTasks.length > 0 ? planTasks : derivedTasks;
   const recentJobs = [...jobs.map(toJobActivity), ...aiCalls.map(toAiActivity)]
     .sort((left, right) => right.updatedAt.getTime() - left.updatedAt.getTime())
@@ -102,11 +129,12 @@ export async function getLearnerDashboard(userId: string, db: DashboardDatabase 
     metrics: [
       { label: "今日任务", value: String(todayTasks.length) },
       { label: "待复习错题", value: String(practiceSummary.pendingWrongNotes) },
-      { label: "薄弱知识点", value: String(practiceSummary.weakKnowledgeNodes.length) },
+      { label: "待巩固", value: String(consolidationSummary.pendingConsolidationNotes) },
+      { label: "薄弱知识点", value: String(weakKnowledgeNodes.length) },
       { label: "AI 任务", value: String(activeAiTaskCount) }
     ],
     todayTasks,
-    weakKnowledgeNodes: practiceSummary.weakKnowledgeNodes,
+    weakKnowledgeNodes,
     recentJobs
   };
 }
@@ -128,6 +156,7 @@ function getTodayPlanTasks(plan: DashboardPlan | null, now: Date) {
 
 function buildDerivedTasks(
   practiceSummary: ReturnType<typeof summarizeWrongNotes>,
+  consolidationSummary: ReturnType<typeof summarizeConsolidationNotes>,
   paperAttempts: DashboardPaperAttempt[]
 ) {
   const tasks: { id: string; label: string; href: string }[] = [];
@@ -137,6 +166,14 @@ function buildDerivedTasks(
       id: "wrong-notes",
       label: `复习 ${practiceSummary.pendingWrongNotes} 道未掌握错题`,
       href: "/wrong-notes"
+    });
+  }
+
+  if (consolidationSummary.pendingConsolidationNotes > 0) {
+    tasks.push({
+      id: "consolidation",
+      label: `巩固 ${consolidationSummary.pendingConsolidationNotes} 道正确未掌握题`,
+      href: "/consolidation"
     });
   }
 
@@ -189,10 +226,36 @@ function taskHrefByKind(kind: string) {
       practice: "/practice",
       paper: "/papers",
       wrong_note_review: "/wrong-notes",
+      consolidation_review: "/consolidation",
       knowledge_review: "/knowledge",
       material_review: "/materials"
     }[kind] ?? "/practice"
   );
+}
+
+function combineRiskKnowledgeNodes(
+  wrongNodes: ReturnType<typeof summarizeWrongNotes>["weakKnowledgeNodes"],
+  consolidationNodes: ReturnType<typeof summarizeConsolidationNotes>["weakKnowledgeNodes"]
+) {
+  const counts = new Map<string, { title: string; count: number; wrongCount: number; consolidationCount: number }>();
+
+  for (const node of wrongNodes) {
+    const current = counts.get(node.title) ?? { title: node.title, count: 0, wrongCount: 0, consolidationCount: 0 };
+    current.count += node.count;
+    current.wrongCount += node.count;
+    counts.set(node.title, current);
+  }
+
+  for (const node of consolidationNodes) {
+    const current = counts.get(node.title) ?? { title: node.title, count: 0, wrongCount: 0, consolidationCount: 0 };
+    current.count += node.count;
+    current.consolidationCount += node.count;
+    counts.set(node.title, current);
+  }
+
+  return [...counts.values()]
+    .sort((left, right) => right.wrongCount - left.wrongCount || right.consolidationCount - left.consolidationCount || left.title.localeCompare(right.title, "zh-CN"))
+    .slice(0, 5);
 }
 
 function jobTypeLabel(type: string) {

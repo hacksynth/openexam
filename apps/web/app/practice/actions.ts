@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import type { Route } from "next";
 import { generateAttemptAnswerAiExplanation, generateQuestionExplanation } from "@openexam/core/ai";
 import { confirmAttemptAnswerScore } from "@openexam/core/papers";
-import { collectQuestionForReview, submitPracticeAnswer } from "@openexam/core/practice";
+import { collectQuestionForConsolidation, submitPracticeAnswer } from "@openexam/core/practice";
 import { requireWebSession } from "@/lib/auth";
 
 export async function submitPracticeAnswerAction(formData: FormData) {
@@ -29,7 +29,10 @@ export async function submitPracticeAnswerAction(formData: FormData) {
 
   revalidatePath("/practice" as Route);
   revalidatePath("/wrong-notes" as Route);
+  revalidatePath("/consolidation" as Route);
   revalidatePath("/dashboard" as Route);
+  revalidatePath("/analysis" as Route);
+  revalidatePath("/plan" as Route);
 
   if (!result.ok) {
     redirect(practiceRedirect({ error: result.error, materialId, knowledgeNodeId, practiceMode }));
@@ -44,13 +47,17 @@ export async function submitSingleChoiceAnswerAction(formData: FormData) {
 
 export async function collectPracticeQuestionAction(formData: FormData) {
   const session = await requireWebSession();
-  const result = await collectQuestionForReview(session.user.id, {
+  const result = await collectQuestionForConsolidation(session.user.id, {
     questionId: value(formData, "questionId"),
     attemptAnswerId: optionalText(value(formData, "attemptAnswerId")) || undefined
   });
 
   revalidatePath("/wrong-notes" as Route);
+  revalidatePath("/consolidation" as Route);
   revalidatePath("/practice" as Route);
+  revalidatePath("/dashboard" as Route);
+  revalidatePath("/analysis" as Route);
+  revalidatePath("/plan" as Route);
 
   if (!result.ok) {
     redirect(practiceRedirect({ error: result.error }));
@@ -78,7 +85,10 @@ export async function confirmPracticeAnswerScoreAction(formData: FormData) {
   revalidatePath("/practice" as Route);
   revalidatePath("/attempts" as Route);
   revalidatePath("/wrong-notes" as Route);
+  revalidatePath("/consolidation" as Route);
   revalidatePath("/dashboard" as Route);
+  revalidatePath("/analysis" as Route);
+  revalidatePath("/plan" as Route);
 
   if (!result.ok) {
     redirect(practiceRedirect({ attemptId, materialId, knowledgeNodeId: optionalText(value(formData, "knowledgeNodeId")), practiceMode: optionalText(value(formData, "practiceMode")), error: result.error }));

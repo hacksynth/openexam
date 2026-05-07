@@ -289,6 +289,9 @@ async function buildKnowledgeDashboard(userId: string, goal: NonNullable<Primary
       where: {
         userId,
         mastered: false,
+        errorCount: {
+          gt: 0
+        },
         question: buildPracticeQuestionWhere(userId, goal)
       },
       include: {

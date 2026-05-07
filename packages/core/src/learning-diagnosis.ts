@@ -10,7 +10,7 @@ type ActionResult<T = undefined> = T extends undefined
 
 type DiagnosisDatabase = typeof prisma;
 
-const promptVersion = "learning-diagnosis-v1";
+const promptVersion = "learning-diagnosis-v2";
 const defaultMaxOutputTokens = 1200;
 
 export async function getLatestLearningDiagnosis(userId: string, db: DiagnosisDatabase = prisma) {
@@ -172,9 +172,11 @@ export function buildLearningDiagnosisPrompt(analysis: Extract<LearningAnalysisS
       `未作答题数：${stats.unansweredCount}`,
       `未掌握错题：${stats.pendingWrongNotes}`,
       `已掌握错题：${stats.masteredWrongNotes}`,
+      `待巩固题：${stats.pendingConsolidationNotes}`,
+      `掌握风险：${stats.masteryRiskCount}`,
       "薄弱知识点：",
       stats.weakKnowledgeNodes
-        .map((node) => `${node.id} ${node.title}：正确率 ${node.accuracy}%，得分率 ${node.scoreRate}%，未掌握错题 ${node.pendingWrongNotes}，作答 ${node.total} 题`)
+        .map((node) => `${node.id} ${node.title}：正确率 ${node.accuracy}%，得分率 ${node.scoreRate}%，未掌握错题 ${node.pendingWrongNotes}，待巩固 ${node.pendingConsolidationNotes}，作答 ${node.total} 题`)
         .join("\n") || "暂无",
       "",
       "要求：summary 要指出当前主要风险；recommendations 给出 3-5 条可执行动作；weakKnowledgeNodeIds 只能使用上方出现的 ID。"

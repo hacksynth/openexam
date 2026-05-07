@@ -98,9 +98,9 @@ Deliverables:
 - Practice session records. Started with one-question practice attempts, paper attempts, a learner history page, and per-attempt reports.
 - Objective answer grading. Started for single-choice, multiple-choice, true-false, and blank questions.
 - Wrong-note auto-collection. Started for incorrect objective submissions, with correct retry marking notes as mastered.
-- Manual favorite/collection.
+- Consolidation collection. Started for correct objective answers the learner explicitly marks as not mastered; these live outside the wrong-note system.
 - Wrong-note filters and mastery state. Started with all/unmastered/mastered filters, knowledge-node filters, weak-node summaries, and retry entry.
-- Basic statistics by goal, subject, question type, difficulty, and knowledge node. Started with pending wrong-note count and weak knowledge-node ranking.
+- Basic statistics by goal, subject, question type, difficulty, and knowledge node. Started with pending wrong-note count, pending consolidation count, and weak knowledge-node ranking.
 
 Acceptance:
 
@@ -163,8 +163,8 @@ Status: started with database-backed analysis, AI diagnosis, and structured plan
 
 Deliverables:
 
-- Mastery calculation rules. Started from attempts and wrong-note mastery state.
-- Weak-point ranking. Started from knowledge-node accuracy and pending wrong notes.
+- Mastery calculation rules. Started from attempts, wrong-note mastery state, and consolidation-note mastery state.
+- Weak-point ranking. Started from knowledge-node accuracy, pending wrong notes, and pending consolidation notes.
 - Goal-based analysis page. Started.
 - AI diagnosis grounded in statistics. Started with persisted `LearningDiagnosis` records on `/analysis`.
 - Structured study-plan schema. Started.
@@ -273,7 +273,7 @@ Browser workflow tests should cover:
 
 - Register/login. Started.
 - Select goal. Started.
-- Practice and wrong-note flow. Started for paper wrong-note retry and mastered-state update after correct retry.
+- Practice, wrong-note, and consolidation flow. Started for paper wrong-note retry, mastered-state update after correct retry, correct-answer not-mastered marking, and consolidation practice.
 - Admin question and paper creation. Started, including JSON question import.
 - Paper report and unanswered confirmation. Started.
 - Paper hide/restore. Started.

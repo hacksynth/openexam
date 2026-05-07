@@ -97,6 +97,15 @@ export default async function PracticePage({ searchParams }: PracticePageProps) 
               secondaryHref={practiceHref({ mode: "retry_practiced", knowledgeNodeId: params.knowledgeNodeId, materialId })}
               secondaryLabel="重练已练题"
             />
+          ) : state.emptyReason === "no_consolidation_questions" ? (
+            <EmptyState
+              title="当前范围暂无待巩固题"
+              description="待巩固练习只使用答对后标记为未掌握的题。可以返回练新题或重练已练题。"
+              actionHref={practiceHref({ mode: "new", knowledgeNodeId: params.knowledgeNodeId, materialId })}
+              actionLabel="练新题"
+              secondaryHref={practiceHref({ mode: "retry_practiced", knowledgeNodeId: params.knowledgeNodeId, materialId })}
+              secondaryLabel="重练已练题"
+            />
           ) : state.emptyReason === "no_practiced_questions" ? (
             <EmptyState
               title="当前范围暂无已练题"
@@ -278,7 +287,10 @@ function AttemptResultCard({
         <Link href={"/wrong-notes" as Route} className="pixel-button bg-white px-4 py-2">
           查看错题本
         </Link>
-        {result.isCorrect !== false && result.userAnswer ? (
+        <Link href={"/consolidation" as Route} className="pixel-button bg-white px-4 py-2">
+          查看待巩固
+        </Link>
+        {result.isCorrect === true && result.userAnswer && result.question.kind !== "short_answer" && result.question.kind !== "case_analysis" ? (
           <form action={collectPracticeQuestionAction}>
             <input name="questionId" type="hidden" value={result.question.id} />
             <input name="attemptId" type="hidden" value={result.id} />
@@ -286,7 +298,7 @@ function AttemptResultCard({
             <input name="materialId" type="hidden" value={materialId ?? ""} />
             <input name="knowledgeNodeId" type="hidden" value={knowledgeNodeId ?? ""} />
             <input name="practiceMode" type="hidden" value={mode ?? ""} />
-            <SubmitButton className="bg-white px-4 py-2" label="收藏复习" />
+            <SubmitButton className="bg-white px-4 py-2" label="标记未掌握" />
           </form>
         ) : null}
         <form action={generatePracticeAnswerAiExplanationAction}>

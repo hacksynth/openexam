@@ -1,6 +1,6 @@
 # OpenExam Architecture Decisions
 
-Last updated: 2026-05-06
+Last updated: 2026-05-07
 
 This document records confirmed architecture decisions for the OpenExam MVP.
 
@@ -74,6 +74,7 @@ Learner routes:
 - `/papers`
 - `/attempts`
 - `/wrong-notes`
+- `/consolidation`
 - `/knowledge`
 - `/materials`
 - `/plan`
@@ -98,7 +99,7 @@ Admin pages live inside the web app under `/admin/...`. Shared API routes, such 
 
 Implementation note:
 
-- `apps/web` includes route shells for every learner route above and admin route shells under `apps/web/app/admin`; `/goals`, `/dashboard`, `/practice`, `/papers`, `/attempts`, `/attempts/[attemptId]`, and `/wrong-notes` now use database-backed workflow data.
+- `apps/web` includes route shells for every learner route above and admin route shells under `apps/web/app/admin`; `/goals`, `/dashboard`, `/practice`, `/papers`, `/attempts`, `/attempts/[attemptId]`, `/wrong-notes`, and `/consolidation` now use database-backed workflow data.
 - `/admin/exams`, `/admin/knowledge`, `/admin/questions`, and `/admin/papers` contain the first minimal CRUD workflows.
 - The app exposes `/api/health` for foundation health checks.
 - Admin business APIs are not implemented yet.
@@ -192,9 +193,9 @@ Rules:
 - `Attempt` records user work.
 - Attempt answers bind to the question version used at answer time.
 - MVP focused practice remains one question per `Attempt`; multi-question knowledge sessions should be modeled later as papers or a separate custom-practice session feature.
-- Single-question practice attempts should record source metadata, such as `practiceMode`, `practiceKnowledgeNodeId`, and `practiceMaterialId`, so history and analytics do not have to infer source from URLs. `practiceMode` should use a Prisma enum with `new`, `wrong`, `retry_practiced`, and `comprehensive`. `practiceKnowledgeNodeId` and `practiceMaterialId` should be nullable foreign keys using `onDelete: SetNull`. Paper attempts use `paperId` instead and should not populate these practice-source fields.
+- Single-question practice attempts should record source metadata, such as `practiceMode`, `practiceKnowledgeNodeId`, and `practiceMaterialId`, so history and analytics do not have to infer source from URLs. `practiceMode` should use a Prisma enum with `new`, `wrong`, `consolidation`, `retry_practiced`, and `comprehensive`. `practiceKnowledgeNodeId` and `practiceMaterialId` should be nullable foreign keys using `onDelete: SetNull`. Paper attempts use `paperId` instead and should not populate these practice-source fields.
 
-Implementation note: the current practice workflow creates one `Attempt` per submitted question, grades objective question kinds, and captures subjective answers for later confirmation. The current paper workflow creates or resumes one `Attempt` per public paper with multiple `AttemptAnswer` rows, autosave, pause records, and server-derived elapsed time. Both store selected answers in `AttemptAnswer.userAnswer` and incorrect objective answers enter `WrongNote`. Correct retry from a wrong note marks it mastered. The report helper reads only the current user's attempts and aggregates score, accuracy, unanswered count, and knowledge-node statistics.
+Implementation note: the current practice workflow creates one `Attempt` per submitted question, grades objective question kinds, and captures subjective answers for later confirmation. The current paper workflow creates or resumes one `Attempt` per public paper with multiple `AttemptAnswer` rows, autosave, pause records, and server-derived elapsed time. Both store selected answers in `AttemptAnswer.userAnswer`. Incorrect objective answers enter `WrongNote`; correct objective answers only enter `ConsolidationNote` when the learner explicitly marks them as not mastered. Correct retry from a wrong note marks it mastered. A consolidation-practice answer closes the pending consolidation note, and an incorrect consolidation-practice answer also creates or updates a wrong note. The report helper reads only the current user's attempts and aggregates score, accuracy, unanswered count, and knowledge-node statistics.
 
 Paper hiding uses `Paper.archivedAt`. Visibility remains the publication state (`private`, `unlisted`, or `public`), while archived papers are excluded from learner paper lists and attempts. Restoring a public paper still checks that all bound questions are public, approved, and not deleted.
 
@@ -205,7 +206,7 @@ Default learner practice is knowledge-point first.
 Rules:
 
 - `/practice` should prefer an explicit knowledge scope from the knowledge tree, weak knowledge, today's plan, or another contextual entry. Full-goal random practice is a secondary comprehensive mode.
-- Practice modes share the `/practice` route through an explicit mode parameter, such as `new`, `wrong`, `retry_practiced`, or `comprehensive`. Direct single-question retry continues to use a retry question id.
+- Practice modes share the `/practice` route through an explicit mode parameter, such as `new`, `wrong`, `consolidation`, `retry_practiced`, or `comprehensive`. Direct single-question retry continues to use a retry question id.
 - The selected knowledge scope includes the chosen `KnowledgeNode` and its descendants.
 - The MVP should expand descendants in application code by loading the goal-scoped knowledge tree and deriving the selected node id set. Do not introduce a closure table or materialized path until tree size or query performance requires it.
 - Default selection excludes questions already submitted by the current user under the current primary `ExamGoal`.
@@ -213,11 +214,11 @@ Rules:
 - Subjective `AttemptAnswer` rows count as practiced immediately after submission, even before AI-assisted or manual score confirmation.
 - Deduplication uses `Question.id`. `QuestionVersion` preserves historical answer context, but a version change does not make the same question newly eligible by default.
 - New-question mode is a stable queue, not random selection. The default ordering should be deterministic: questions directly bound to the selected node first, then descendant nodes in knowledge-tree preorder; within each node, sort by known difficulty from low to high, then questions with no difficulty, then older updated questions first. Comprehensive practice may expose random selection separately.
-- Repetition requires an explicit mode or entry point, such as wrong-note retry, retry practiced questions in the current scope, or review mastered wrong notes.
+- Repetition requires an explicit mode or entry point, such as wrong-note retry, consolidation practice, retry practiced questions in the current scope, or review mastered wrong notes.
 - Material and knowledge filters compose as an intersection: confirmed material question ids, current-goal access rules, selected knowledge scope, permissions, and deduplication must all pass.
 - Submission redirects, result pages, and "practice another question" links must preserve the current mode, knowledge-node filter, material filter, and other explicit practice filters, only adding the just-answered question as a temporary skip when appropriate.
 - If the current `ExamGoal` is broader than one `Subject`, knowledge-tree pages should group nodes by subject. Default `new` practice should require a selected subject or knowledge node; `comprehensive` mode may span subjects inside the goal.
-- If no new question remains in the current scope, the UI should explain the empty reason and offer next actions in this order: unmastered wrong notes in the same scope, explicit retry of practiced questions in the same scope, nearby child/sibling knowledge scopes with new questions, and AI generation for that scope.
+- If no new question remains in the current scope, the UI should explain the empty reason and offer next actions in this order: unmastered wrong notes in the same scope, pending consolidation notes in the same scope, explicit retry of practiced questions in the same scope, nearby child/sibling knowledge scopes with new questions, and AI generation for that scope.
 
 For questions bound to multiple knowledge nodes, deduplication still happens once by `Question.id`, while statistics are attributed to every bound knowledge node.
 
@@ -274,12 +275,16 @@ Wrong-note retry is an explicit repeat-practice mode.
 Rules:
 
 - Wrong-note practice defaults to `mastered = false`.
+- Wrong notes represent actual incorrect answers only; `WrongNote.errorCount > 0` is required for wrong-note lists, retry selection, weak-point pressure, and AI inputs.
 - A parent knowledge-node wrong-note scope includes descendant-node wrong notes and deduplicates by `Question.id`.
 - Wrong-note practice ordering is deterministic: higher `WrongNote.errorCount` first, then older `WrongNote.updatedAt`, then knowledge-tree order.
 - A correct retry marks the wrong note mastered and records `lastReviewedAt`.
 - An incorrect retry keeps the wrong note unmastered and increments `errorCount`.
 - Subjective answers do not automatically create wrong notes at submission time. After score confirmation, `score < maxScore` creates or updates a wrong note, while `score == maxScore` does not. On subjective retry, a confirmed full score marks the wrong note mastered; a confirmed non-full score keeps it unmastered and increments `errorCount`. Pending subjective scores do not change wrong-note mastery.
-- Manual review collection can create a wrong note for any accessible question regardless of score, with `errorCount = 0` when there was no actual incorrect answer.
+- Correct objective answers default to mastered. If the learner marks a correct objective answer as not mastered, the app creates or reopens a `ConsolidationNote` instead of a `WrongNote`.
+- `ConsolidationNote` records correct-but-not-mastered questions. Pending consolidation notes use `/consolidation` and `/practice?mode=consolidation`; they do not affect accuracy and do not appear in `/wrong-notes`.
+- If a pending consolidation question is later answered incorrectly, the pending consolidation note is closed and a wrong note is created or updated. If a question already has a true wrong note, marking a later correct answer as not mastered reopens the wrong note instead of creating duplicate consolidation pressure.
+- Historical manual review records with `WrongNote.errorCount = 0` migrate to `ConsolidationNote`.
 - Practicing mastered wrong notes or all wrong notes requires an explicit learner choice.
 - Retry remains constrained by the current exam goal, selected knowledge scope, material scope when present, question visibility, ownership, review status, and deletion state.
 
@@ -383,7 +388,7 @@ Implementation note:
 - `/ai/tasks` lists the user's recent `AiCall` records with model, status, prompt version, duration, token usage, error summary, and retry for failed wrong-note explanations.
 - Admin `/ai` manages provider model presets, default task routing, temperature, max tokens, and enabled state.
 - Material extraction jobs use text, document, or vision-capable provider adapters and write Zod-validated pending `MaterialQuestionCandidate` records before confirmation creates private questions. Personal materials create owner-bound approved private questions; platform materials create ownerless pending-review private questions.
-- `/analysis` can generate persisted `LearningDiagnosis` records from current statistics.
+- `/analysis` can generate persisted `LearningDiagnosis` records from current statistics, including accuracy, true wrong-note pressure, and consolidation pressure as separate inputs.
 - `/ai/chat` stores context-bound chat threads and messages for question, wrong-note, knowledge-node, plan, attempt, and material contexts.
 - `/practice/generate` creates private AI-generated question candidates that require confirmation before becoming practiceable private questions.
 

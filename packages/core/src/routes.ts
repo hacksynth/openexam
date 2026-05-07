@@ -75,6 +75,14 @@ export const learnerRoutes: RouteItem[] = [
     status: "foundation"
   },
   {
+    id: "consolidation",
+    href: "/consolidation",
+    label: "待巩固",
+    description: "答对但标记未掌握的题，按知识点筛选并维护掌握状态。",
+    section: "learner",
+    status: "foundation"
+  },
+  {
     id: "knowledge",
     href: "/knowledge",
     label: "知识点",

@@ -15,6 +15,7 @@ const kindLabels: Record<string, string> = {
   practice: "练习",
   paper: "试卷",
   wrong_note_review: "错题",
+  consolidation_review: "巩固",
   knowledge_review: "知识点",
   material_review: "资料"
 };

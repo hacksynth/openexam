@@ -8,7 +8,7 @@ export const studyPlanTaskSchema = z.object({
   day: z.number().int().min(1).max(30),
   scheduledDate: scheduledDateSchema,
   title: z.string().min(1),
-  kind: z.enum(["practice", "paper", "wrong_note_review", "knowledge_review", "material_review"]),
+  kind: z.enum(["practice", "paper", "wrong_note_review", "consolidation_review", "knowledge_review", "material_review"]),
   minutes: z.number().int().min(5).max(240),
   subjectId: z.string().optional(),
   knowledgeNodeIds: z.array(z.string()).default([]),
