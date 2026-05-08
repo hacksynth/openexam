@@ -229,7 +229,7 @@ describe("material question extraction", () => {
         }
       }
     });
-    expect(calls[1]).toMatchObject({
+    expect(calls.find((call) => call.method === "createMany")).toMatchObject({
       method: "createMany",
       args: {
         data: [
@@ -243,20 +243,9 @@ describe("material question extraction", () => {
     });
   });
 
-  it("stores rich image blocks in material candidate payload", async () => {
+  it("imports external rich image blocks into platform assets", async () => {
     const calls: { method: string; args?: unknown }[] = [];
-    const db = {
-      materialQuestionCandidate: {
-        deleteMany: async (args: unknown) => {
-          calls.push({ method: "deleteMany", args });
-          return { count: 0 };
-        },
-        createMany: async (args: unknown) => {
-          calls.push({ method: "createMany", args });
-          return { count: 1 };
-        }
-      }
-    };
+    const db = createMaterialCandidateDb(calls);
 
     await createMaterialQuestionCandidates(
       "material_1",
@@ -286,10 +275,11 @@ describe("material question extraction", () => {
           explanationBlocks: [{ type: "image", sourceUrl: "https://example.com/explanation.jpg", assetId: null, alt: "解析图" }]
         }
       ],
-      db as never
+      db as never,
+      imageImportOptions(calls)
     );
 
-    expect(calls[1]).toMatchObject({
+    expect(calls.find((call) => call.method === "createMany")).toMatchObject({
       method: "createMany",
       args: {
         data: [
@@ -297,7 +287,7 @@ describe("material question extraction", () => {
             payload: {
               stemBlocks: [
                 { type: "text", text: "观察" },
-                { type: "image", sourceUrl: "https://example.com/question.png", assetId: null, alt: "题图" },
+                { type: "image", sourceUrl: "https://example.com/question.png", assetId: "asset_1", alt: "题图" },
                 { type: "text", text: "后选择正确选项" }
               ],
               options: [
@@ -307,14 +297,160 @@ describe("material question extraction", () => {
                   text: "带图选项",
                   blocks: [
                     { type: "text", text: "带图选项" },
-                    { type: "image", sourceUrl: "https://example.com/option-b.webp", assetId: null, alt: "选项图" }
+                    { type: "image", sourceUrl: "https://example.com/option-b.webp", assetId: "asset_2", alt: "选项图" }
                   ]
                 },
                 { key: "C", text: "干扰项 C" },
                 { key: "D", text: "干扰项 D" }
               ],
-              explanationBlocks: [{ type: "image", sourceUrl: "https://example.com/explanation.jpg", assetId: null, alt: "解析图" }]
+              explanationBlocks: [{ type: "image", sourceUrl: "https://example.com/explanation.jpg", assetId: "asset_3", alt: "解析图" }]
             }
+          })
+        ]
+      }
+    });
+    expect(calls.filter((call) => call.method === "asset.create")).toHaveLength(3);
+    expect(calls.filter((call) => call.method === "writeStorageBytes")).toHaveLength(3);
+  });
+
+  it("deduplicates repeated external image URLs in one material extraction", async () => {
+    const calls: { method: string; args?: unknown }[] = [];
+    const db = createMaterialCandidateDb(calls);
+
+    await createMaterialQuestionCandidates(
+      "material_1",
+      "job_1",
+      [
+        {
+          stem: "同图题",
+          stemBlocks: [{ type: "image", sourceUrl: "https://img.example.com/render?id=1", assetId: null, alt: "题图" }],
+          options: {
+            A: "A",
+            B: "B",
+            C: "C",
+            D: "D"
+          },
+          optionBlocks: {
+            A: [{ type: "image", sourceUrl: "https://img.example.com/render?id=1#fragment", assetId: null, alt: "同图" }]
+          },
+          answer: "A"
+        }
+      ],
+      db as never,
+      imageImportOptions(calls)
+    );
+
+    const createCall = calls.find((call) => call.method === "createMany")!;
+
+    expect(calls.filter((call) => call.method === "asset.create")).toHaveLength(1);
+    expect(createCall).toMatchObject({
+      args: {
+        data: [
+          expect.objectContaining({
+            payload: expect.objectContaining({
+              stemBlocks: [{ type: "image", sourceUrl: "https://img.example.com/render?id=1", assetId: "asset_1", alt: "题图" }],
+              options: expect.arrayContaining([
+                expect.objectContaining({
+                  key: "A",
+                  blocks: [{ type: "image", sourceUrl: "https://img.example.com/render?id=1#fragment", assetId: "asset_1", alt: "同图" }]
+                })
+              ])
+            })
+          })
+        ]
+      }
+    });
+  });
+
+  it("keeps external URLs and records warnings when image import is disabled", async () => {
+    const calls: { method: string; args?: unknown }[] = [];
+    const db = createMaterialCandidateDb(calls);
+
+    await createMaterialQuestionCandidates(
+      "material_1",
+      "job_1",
+      [
+        {
+          stem: "外链题",
+          stemBlocks: [{ type: "image", sourceUrl: "https://example.com/question.png", assetId: null, alt: "题图" }],
+          options: {
+            A: "A",
+            B: "B",
+            C: "C",
+            D: "D"
+          },
+          answer: "A"
+        }
+      ],
+      db as never,
+      imageImportOptions(calls, { env: { OPENEXAM_IMPORT_EXTERNAL_IMAGES: "false" } })
+    );
+
+    expect(calls.some((call) => call.method === "asset.create")).toBe(false);
+    expect(calls.find((call) => call.method === "createMany")).toMatchObject({
+      args: {
+        data: [
+          expect.objectContaining({
+            payload: expect.objectContaining({
+              stemBlocks: [{ type: "image", sourceUrl: "https://example.com/question.png", assetId: null, alt: "题图" }],
+              imageImportWarnings: [
+                {
+                  sourceUrl: "https://example.com/question.png",
+                  scope: "stemBlocks",
+                  reason: "外链图片自动导入已关闭。"
+                }
+              ]
+            })
+          })
+        ]
+      }
+    });
+  });
+
+  it("records warnings for images beyond the per-candidate import limit", async () => {
+    const calls: { method: string; args?: unknown }[] = [];
+    const db = createMaterialCandidateDb(calls);
+    const stemBlocks = Array.from({ length: 9 }, (_, index) => ({
+      type: "image" as const,
+      sourceUrl: `https://example.com/question-${index}.png`,
+      assetId: null,
+      alt: `题图 ${index}`
+    }));
+
+    await createMaterialQuestionCandidates(
+      "material_1",
+      "job_1",
+      [
+        {
+          stem: "多图题",
+          stemBlocks,
+          options: {
+            A: "A",
+            B: "B",
+            C: "C",
+            D: "D"
+          },
+          answer: "A"
+        }
+      ],
+      db as never,
+      imageImportOptions(calls)
+    );
+
+    expect(calls.filter((call) => call.method === "asset.create")).toHaveLength(8);
+    expect(calls.find((call) => call.method === "createMany")).toMatchObject({
+      args: {
+        data: [
+          expect.objectContaining({
+            payload: expect.objectContaining({
+              imageImportWarnings: [
+                {
+                  sourceUrl: "https://example.com/question-8.png",
+                  scope: "stemBlocks",
+                  reason: "单个候选题图片不能超过 8 张，已保留外链。"
+                }
+              ]
+            })
           })
         ]
       }
@@ -715,6 +851,58 @@ function hasConfirmedStatus(args: unknown) {
   const where = (args as { where?: { status?: unknown } }).where;
 
   return where?.status === "confirmed";
+}
+
+function createMaterialCandidateDb(calls: { method: string; args?: unknown }[]) {
+  return {
+    material: {
+      findUnique: async (args: unknown) => {
+        calls.push({ method: "material.findUnique", args });
+        return { id: "material_1", ownerId: "user_1" };
+      }
+    },
+    asset: {
+      create: async (args: unknown) => {
+        calls.push({ method: "asset.create", args });
+        return { id: `asset_${calls.filter((call) => call.method === "asset.create").length}` };
+      }
+    },
+    materialQuestionCandidate: {
+      deleteMany: async (args: unknown) => {
+        calls.push({ method: "deleteMany", args });
+        return { count: 0 };
+      },
+      createMany: async (args: unknown) => {
+        calls.push({ method: "createMany", args });
+        return { count: 1 };
+      }
+    }
+  };
+}
+
+function imageImportOptions(calls: { method: string; args?: unknown }[], options: { env?: NodeJS.ProcessEnv } = {}) {
+  return {
+    env: {
+      DATABASE_URL: "postgresql://openexam:openexam@localhost:5432/openexam?schema=public",
+      ...options.env
+    },
+    fetch: async () =>
+      new Response(fakePngBytes(), {
+        headers: {
+          "content-length": String(fakePngBytes().length),
+          "content-type": "image/png"
+        }
+      }),
+    lookup: async () => [{ address: "93.184.216.34", family: 4 }],
+    writeStorageBytes: async (args: unknown) => {
+      calls.push({ method: "writeStorageBytes", args });
+      return { storageKey: (args as { storageKey: string }).storageKey };
+    }
+  };
+}
+
+function fakePngBytes() {
+  return Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x00]);
 }
 
 function materialConfirmDb({

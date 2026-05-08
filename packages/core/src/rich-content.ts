@@ -171,7 +171,12 @@ function isSupportedImageSourceUrl(value: string) {
       return false;
     }
 
-    const extension = url.pathname.split(".").pop()?.toLowerCase() ?? "";
+    const lastSegment = url.pathname.split("/").pop() ?? "";
+    const extension = lastSegment.includes(".") ? lastSegment.split(".").pop()?.toLowerCase() ?? "" : "";
+
+    if (!extension) {
+      return true;
+    }
 
     return supportedBitmapExtensions.has(extension);
   } catch {

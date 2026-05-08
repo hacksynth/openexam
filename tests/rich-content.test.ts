@@ -3,11 +3,12 @@ import { normalizeRichContentBlocks, richTextToPlainText, textToRichContentBlock
 
 describe("rich content blocks", () => {
   it("extracts markdown images and bare bitmap URLs into image blocks", () => {
-    expect(textToRichContentBlocks("题干 ![图1](https://example.com/a.png) 继续 https://cdn.example.com/b.webp。")).toEqual([
+    expect(textToRichContentBlocks("题干 ![图1](https://example.com/a.png) 继续 https://cdn.example.com/b.webp https://img.example.com/render?id=1。")).toEqual([
       { type: "text", text: "题干 " },
       { type: "image", sourceUrl: "https://example.com/a.png", assetId: null, alt: "图1" },
       { type: "text", text: " 继续 " },
-      { type: "image", sourceUrl: "https://cdn.example.com/b.webp", assetId: null, alt: "图片" }
+      { type: "image", sourceUrl: "https://cdn.example.com/b.webp", assetId: null, alt: "图片" },
+      { type: "image", sourceUrl: "https://img.example.com/render?id=1", assetId: null, alt: "图片" }
     ]);
   });
 

@@ -5,6 +5,7 @@ import { requireWebSession } from "@/lib/auth";
 import { formatDateInput, formatGoalPath, getPrimaryExamGoal, listExamHierarchy } from "@openexam/core/exam-core";
 import { DateField, FeedbackMessage, SelectField, SubmitButton, TextField } from "@openexam/core/pixel-ui";
 import { savePrimaryGoalAction } from "./actions";
+import { resolveGoalFormDefaults } from "./defaults";
 
 type GoalsPageProps = {
   searchParams: Promise<{ error?: string; notice?: string; programId?: string; trackId?: string; cycleId?: string; subjectId?: string }>;
@@ -17,24 +18,7 @@ export default async function GoalsPage({ searchParams }: GoalsPageProps) {
   const tracks = hierarchy.flatMap((program) => program.tracks.map((track) => ({ ...track, program })));
   const cycles = tracks.flatMap((track) => track.cycles.map((cycle) => ({ ...cycle, track })));
   const subjects = cycles.flatMap((cycle) => cycle.subjects.map((subject) => ({ ...subject, cycle })));
-  const hasPrefill = Boolean(params.programId || params.trackId || params.cycleId || params.subjectId);
-  const prefillMatchesPrimary =
-    hasPrefill &&
-    Boolean(primaryGoal) &&
-    (!params.programId || params.programId === primaryGoal?.programId) &&
-    (!params.trackId || params.trackId === primaryGoal?.trackId) &&
-    (!params.cycleId || params.cycleId === primaryGoal?.cycleId) &&
-    (!params.subjectId || params.subjectId === primaryGoal?.subjectId);
-  const preservePrimaryDetails = !hasPrefill || prefillMatchesPrimary;
-  const defaults = {
-    programId: hasPrefill ? params.programId ?? "" : primaryGoal?.programId ?? "",
-    trackId: hasPrefill ? params.trackId ?? "" : primaryGoal?.trackId ?? "",
-    cycleId: hasPrefill ? params.cycleId ?? "" : primaryGoal?.cycleId ?? "",
-    subjectId: hasPrefill ? params.subjectId ?? "" : primaryGoal?.subjectId ?? "",
-    targetDate: preservePrimaryDetails ? formatDateInput(primaryGoal?.targetDate) : "",
-    targetScore: preservePrimaryDetails ? primaryGoal?.targetScore ?? "" : "",
-    dailyMinutes: preservePrimaryDetails ? primaryGoal?.dailyMinutes ?? 60 : 60
-  };
+  const defaults = resolveGoalFormDefaults(params, primaryGoal);
 
   return (
     <AppShell section="learner" eyebrow="Exam Core" title="考试目标">

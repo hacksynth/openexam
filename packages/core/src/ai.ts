@@ -1,8 +1,10 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
 import { AiProvider, AiTaskType, Prisma } from "@prisma/client";
 import OpenAI from "openai";
-import { formatAnswerValue, readObjectiveAnswerKey, readSingleChoiceOptions, type SingleChoiceOption } from "./practice";
+import { findReadableAsset, readAssetBytes as readStoredAssetBytes, type ReadableAsset } from "./assets";
+import { formatAnswerValue, readObjectiveAnswerKey, readRichContentBlocks, readSingleChoiceOptions, type SingleChoiceOption } from "./practice";
 import { prisma } from "./prisma";
+import type { RichContentBlock } from "./rich-content";
 
 type ActionResult<T = undefined> = T extends undefined
   ? { ok: true } | { ok: false; error: string }
@@ -10,6 +12,13 @@ type ActionResult<T = undefined> = T extends undefined
 
 type AiDatabase = typeof prisma;
 type AiPresetTaskBindingDatabase = Pick<AiDatabase, "aiProviderPresetTask">;
+type AiExplanationOptions = {
+  db?: AiDatabase;
+  env?: NodeJS.ProcessEnv;
+  generateText?: AiTextGenerator;
+  readAssetBytes?: AssetBytesReader;
+};
+type AssetBytesReader = (asset: Pick<ReadableAsset, "storageKey">, env: NodeJS.ProcessEnv) => Promise<Buffer>;
 
 export type AiTextRequest = {
   provider?: AiProvider;
@@ -58,10 +67,12 @@ export type OpenAiCredentialResult = AiCredentialResult;
 
 export type WrongNoteAiContext = {
   stem: string;
+  stemBlocks?: RichContentBlock[] | null;
   options: SingleChoiceOption[];
   userAnswer: string;
   correctAnswer: string | null;
   officialExplanation: string | null;
+  explanationBlocks?: RichContentBlock[] | null;
   knowledgeNodes: string[];
   mistakeTags?: string[];
   userNotes?: string | null;
@@ -71,11 +82,34 @@ export type WrongNoteAiContext = {
 export type AttemptAnswerAiContext = {
   kind: string;
   stem: string;
+  stemBlocks?: RichContentBlock[] | null;
   options: SingleChoiceOption[];
   userAnswer: string;
   correctAnswer: string | null;
   officialExplanation: string | null;
+  explanationBlocks?: RichContentBlock[] | null;
   knowledgeNodes: string[];
+};
+
+type StandaloneQuestionAiContext = Omit<AttemptAnswerAiContext, "userAnswer">;
+
+type QuestionImageReference = {
+  assetId?: string | null;
+  label: string;
+  sourceUrl?: string | null;
+};
+
+type ResolvedQuestionImage = {
+  dataBase64: string;
+  filename: string;
+  label: string;
+  mimeType: string;
+  sizeBytes: number;
+};
+
+type QuestionVisualContext = {
+  externalNotices: string[];
+  imageRefs: QuestionImageReference[];
 };
 
 export type AiProviderPresetInput = {
@@ -102,11 +136,15 @@ export type ResolvedAiTaskPreset = {
 const openAiProvider = AiProvider.openai;
 const supportedAiProviders = [AiProvider.openai, AiProvider.anthropic, AiProvider.gemini] as const;
 const wrongNoteTask = AiTaskType.explain_question;
-const wrongNotePromptVersion = "wrong-note-explain-v1";
-const questionPromptVersion = "question-explain-v1";
+const wrongNotePromptVersion = "wrong-note-explain-v2";
+const questionPromptVersion = "question-explain-v2";
 const defaultMaxOutputTokens = 700;
 const defaultDailyAiCallLimit = 50;
 const defaultDailyPlatformTokenLimit = 100000;
+const maxQuestionExplanationImages = 8;
+const maxQuestionExplanationImageBytes = 10 * 1024 * 1024;
+const maxQuestionExplanationTotalImageBytes = 20 * 1024 * 1024;
+const supportedQuestionExplanationImageMimeTypes = new Set(["image/png", "image/jpeg", "image/webp"]);
 const providerLabels: Record<AiProvider, string> = {
   [AiProvider.openai]: "OpenAI",
   [AiProvider.anthropic]: "Claude",
@@ -563,11 +601,7 @@ export async function setAiProviderPresetEnabled(id: string, enabled: boolean, d
 export async function retryFailedAiCall(
   userId: string,
   aiCallId: string,
-  options: {
-    db?: AiDatabase;
-    env?: NodeJS.ProcessEnv;
-    generateText?: AiTextGenerator;
-  } = {}
+  options: AiExplanationOptions = {}
 ): Promise<ActionResult<{ analysis: string; aiCallId: string; retryOfAiCallId: string }>> {
   const db = options.db ?? prisma;
   const failedCall = await db.aiCall.findFirst({
@@ -610,21 +644,10 @@ export async function retryFailedAiCall(
 export async function generateWrongNoteAiAnalysis(
   userId: string,
   wrongNoteId: string,
-  options: {
-    db?: AiDatabase;
-    env?: NodeJS.ProcessEnv;
-    generateText?: AiTextGenerator;
-  } = {}
+  options: AiExplanationOptions = {}
 ): Promise<ActionResult<{ analysis: string; aiCallId: string }>> {
   const db = options.db ?? prisma;
   const env = options.env ?? process.env;
-  const presetResult = await resolveWrongNotePreset(db);
-
-  if (!presetResult.ok) {
-    return presetResult;
-  }
-
-  const preset = presetResult.data;
   const wrongNote = await loadWrongNoteContext(userId, wrongNoteId, db);
 
   if (!wrongNote) {
@@ -633,6 +656,20 @@ export async function generateWrongNoteAiAnalysis(
 
   const context = toWrongNoteAiContext(wrongNote);
   const prompt = buildWrongNotePrompt(context);
+  const visualInput = await prepareQuestionVisualInput(userId, context, db, env, options.readAssetBytes);
+
+  if (!visualInput.ok) {
+    return visualInput;
+  }
+
+  const presetResult = await resolveWrongNotePreset(db, questionRequiredCapability(visualInput.data));
+
+  if (!presetResult.ok) {
+    return presetResult;
+  }
+
+  const preset = presetResult.data;
+  const aiInput = buildAiInputWithQuestionImages(prompt.input, visualInput.data);
   const aiCall = await db.aiCall.create({
     data: {
       userId,
@@ -642,6 +679,7 @@ export async function generateWrongNoteAiAnalysis(
       promptVersion: wrongNotePromptVersion,
       inputContextSource: `wrong_note:${wrongNote.id}`,
       tokenEstimate: estimateTokens(prompt.input),
+      imageCount: visualInput.data.images.length || null,
       status: "running"
     }
   });
@@ -684,7 +722,7 @@ export async function generateWrongNoteAiAnalysis(
         baseURL: credential?.ok ? credential.data.baseURL : normalizeBaseUrl(env[platformBaseUrlEnv[preset.provider]]),
         model: preset.model,
         instructions: prompt.instructions,
-        input: prompt.input,
+        input: aiInput,
         maxOutputTokens: preset.maxOutputTokens,
         temperature: preset.temperature
       });
@@ -726,21 +764,10 @@ export async function generateWrongNoteAiAnalysis(
 export async function generateAttemptAnswerAiExplanation(
   userId: string,
   attemptAnswerId: string,
-  options: {
-    db?: AiDatabase;
-    env?: NodeJS.ProcessEnv;
-    generateText?: AiTextGenerator;
-  } = {}
+  options: AiExplanationOptions = {}
 ): Promise<ActionResult<{ analysis: string; aiCallId: string }>> {
   const db = options.db ?? prisma;
   const env = options.env ?? process.env;
-  const presetResult = await resolveWrongNotePreset(db);
-
-  if (!presetResult.ok) {
-    return presetResult;
-  }
-
-  const preset = presetResult.data;
   const answer = await loadAttemptAnswerContext(userId, attemptAnswerId, db);
 
   if (!answer) {
@@ -749,6 +776,20 @@ export async function generateAttemptAnswerAiExplanation(
 
   const context = toAttemptAnswerAiContext(answer);
   const prompt = buildQuestionExplanationPrompt(context);
+  const visualInput = await prepareQuestionVisualInput(userId, context, db, env, options.readAssetBytes);
+
+  if (!visualInput.ok) {
+    return visualInput;
+  }
+
+  const presetResult = await resolveWrongNotePreset(db, questionRequiredCapability(visualInput.data));
+
+  if (!presetResult.ok) {
+    return presetResult;
+  }
+
+  const preset = presetResult.data;
+  const aiInput = buildAiInputWithQuestionImages(prompt.input, visualInput.data);
   const aiCall = await db.aiCall.create({
     data: {
       userId,
@@ -758,6 +799,7 @@ export async function generateAttemptAnswerAiExplanation(
       promptVersion: questionPromptVersion,
       inputContextSource: `attempt_answer:${answer.id}`,
       tokenEstimate: estimateTokens(prompt.input),
+      imageCount: visualInput.data.images.length || null,
       status: "running"
     }
   });
@@ -800,7 +842,7 @@ export async function generateAttemptAnswerAiExplanation(
         baseURL: credential?.ok ? credential.data.baseURL : normalizeBaseUrl(env[platformBaseUrlEnv[preset.provider]]),
         model: preset.model,
         instructions: prompt.instructions,
-        input: prompt.input,
+        input: aiInput,
         maxOutputTokens: preset.maxOutputTokens,
         temperature: preset.temperature
       });
@@ -842,21 +884,10 @@ export async function generateAttemptAnswerAiExplanation(
 export async function generateQuestionExplanation(
   userId: string,
   questionId: string,
-  options: {
-    db?: AiDatabase;
-    env?: NodeJS.ProcessEnv;
-    generateText?: AiTextGenerator;
-  } = {}
+  options: AiExplanationOptions = {}
 ): Promise<ActionResult<{ analysis: string; aiCallId: string }>> {
   const db = options.db ?? prisma;
   const env = options.env ?? process.env;
-  const presetResult = await resolveWrongNotePreset(db);
-
-  if (!presetResult.ok) {
-    return presetResult;
-  }
-
-  const preset = presetResult.data;
   const question = await db.question.findFirst({
     where: { id: questionId.trim() },
     include: {
@@ -882,22 +913,31 @@ export async function generateQuestionExplanation(
   const correctAnswer = formatAnswerValue(readObjectiveAnswerKey(answerKey));
   const knowledgeNodes = question.knowledgeBindings.map((b) => b.knowledgeNode.title);
   const explanation = version?.explanation ?? question.explanation;
+  const context: StandaloneQuestionAiContext = {
+    kind: question.kind,
+    stem,
+    stemBlocks: readRichContentBlocks(payload, "stemBlocks", stem),
+    options: optionsList,
+    correctAnswer,
+    officialExplanation: explanation,
+    explanationBlocks: readRichContentBlocks(payload, "explanationBlocks", explanation),
+    knowledgeNodes
+  };
+  const prompt = buildStandaloneQuestionExplanationPrompt(context);
+  const visualInput = await prepareQuestionVisualInput(userId, context, db, env, options.readAssetBytes);
 
-  const promptText = [
-    "请为这道题生成一段独立学习解析，包含：",
-    "1. 题目考查点。",
-    "2. 推荐解题步骤。",
-    "3. 易错避坑提醒。",
-    "",
-    `题型：${question.kind}`,
-    `题干：${stem}`,
-    `选项：${optionsList.map((o) => `${o.key}. ${o.text}`).join("\n") || "无选项"}`,
-    `参考答案：${correctAnswer ?? "未配置"}`,
-    `官方解析：${explanation || "暂无"}`,
-    `知识点：${knowledgeNodes.join(" / ") || "未绑定知识点"}`,
-    "",
-    "输出 3-5 个短段落，不要使用 Markdown 表格。"
-  ].join("\n");
+  if (!visualInput.ok) {
+    return visualInput;
+  }
+
+  const presetResult = await resolveWrongNotePreset(db, questionRequiredCapability(visualInput.data));
+
+  if (!presetResult.ok) {
+    return presetResult;
+  }
+
+  const preset = presetResult.data;
+  const aiInput = buildAiInputWithQuestionImages(prompt.input, visualInput.data);
 
   const aiCall = await db.aiCall.create({
     data: {
@@ -907,7 +947,8 @@ export async function generateQuestionExplanation(
       taskType: wrongNoteTask,
       promptVersion: questionPromptVersion,
       inputContextSource: `question:${question.id}`,
-      tokenEstimate: estimateTokens(promptText),
+      tokenEstimate: estimateTokens(prompt.input),
+      imageCount: visualInput.data.images.length || null,
       status: "running"
     }
   });
@@ -946,8 +987,8 @@ export async function generateQuestionExplanation(
         apiKey: credential?.ok ? credential.data.apiKey : "test-key",
         baseURL: credential?.ok ? credential.data.baseURL : normalizeBaseUrl(env[platformBaseUrlEnv[preset.provider]]),
         model: preset.model,
-        instructions: "你是 OpenExam 的题目讲解助手。只根据给定题目上下文作答，不要编造题目以外的信息。用简体中文，直接解释解题思路和关键知识点。",
-        input: promptText,
+        instructions: prompt.instructions,
+        input: aiInput,
         maxOutputTokens: preset.maxOutputTokens,
         temperature: preset.temperature
       });
@@ -1026,6 +1067,236 @@ export function buildQuestionExplanationPrompt(context: AttemptAnswerAiContext) 
       "输出 3-5 个短段落，不要使用 Markdown 表格。"
     ].join("\n")
   };
+}
+
+function buildStandaloneQuestionExplanationPrompt(context: StandaloneQuestionAiContext) {
+  const options = context.options.map((option) => `${option.key}. ${option.text}`).join("\n") || "无选项";
+
+  return {
+    instructions:
+      "你是 OpenExam 的题目讲解助手。只根据给定题目上下文作答，不要编造题目以外的信息。用简体中文，直接解释解题思路和关键知识点。",
+    input: [
+      "请为这道题生成一段独立学习解析，包含：",
+      "1. 题目考查点。",
+      "2. 推荐解题步骤。",
+      "3. 易错避坑提醒。",
+      "",
+      `题型：${context.kind}`,
+      `题干：${context.stem}`,
+      `选项：\n${options}`,
+      `参考答案：${context.correctAnswer ?? "未配置"}`,
+      `官方解析：${context.officialExplanation || "暂无"}`,
+      `知识点：${context.knowledgeNodes.join(" / ") || "未绑定知识点"}`,
+      "",
+      "输出 3-5 个短段落，不要使用 Markdown 表格。"
+    ].join("\n")
+  };
+}
+
+async function prepareQuestionVisualInput(
+  userId: string,
+  context: Pick<AttemptAnswerAiContext, "stemBlocks" | "options" | "explanationBlocks">,
+  db: AiDatabase,
+  env: NodeJS.ProcessEnv,
+  readAssetBytes: AssetBytesReader = readStoredAssetBytes
+): Promise<ActionResult<{ externalNotices: string[]; images: ResolvedQuestionImage[] }>> {
+  const visualContext = collectQuestionVisualContext(context);
+
+  if (visualContext.imageRefs.length === 0) {
+    if (visualContext.externalNotices.length > 0) {
+      return { ok: false, error: "这道题包含外链图片，当前 AI 解析只支持平台内图片，请先将图片导入为平台资产。" };
+    }
+
+    return { ok: true, data: { externalNotices: visualContext.externalNotices, images: [] } };
+  }
+
+  if (visualContext.imageRefs.length > maxQuestionExplanationImages) {
+    return { ok: false, error: `题目图片不能超过 ${maxQuestionExplanationImages} 张。` };
+  }
+
+  const images: ResolvedQuestionImage[] = [];
+  let totalBytes = 0;
+
+  for (const ref of visualContext.imageRefs) {
+    const assetId = ref.assetId?.trim();
+
+    if (!assetId) {
+      continue;
+    }
+
+    const readable = await findReadableAsset(assetId, { userId }, db);
+
+    if (!readable.ok) {
+      return { ok: false, error: `${ref.label}无法读取：${readable.error}` };
+    }
+
+    if (!supportedQuestionExplanationImageMimeTypes.has(readable.data.mimeType)) {
+      return { ok: false, error: `${ref.label}格式暂不支持，请使用 PNG、JPEG 或 WebP 图片。` };
+    }
+
+    if (readable.data.sizeBytes > maxQuestionExplanationImageBytes) {
+      return { ok: false, error: `${ref.label}超过 ${formatBytes(maxQuestionExplanationImageBytes)}，请压缩后再解析。` };
+    }
+
+    totalBytes += readable.data.sizeBytes;
+
+    if (totalBytes > maxQuestionExplanationTotalImageBytes) {
+      return { ok: false, error: `题目图片总大小超过 ${formatBytes(maxQuestionExplanationTotalImageBytes)}，请删减或压缩后再解析。` };
+    }
+
+    const bytes = await readAssetBytes(readable.data, env).catch(() => null);
+
+    if (!bytes) {
+      return { ok: false, error: `${ref.label}读取失败，请稍后重试。` };
+    }
+
+    if (bytes.length > maxQuestionExplanationImageBytes) {
+      return { ok: false, error: `${ref.label}超过 ${formatBytes(maxQuestionExplanationImageBytes)}，请压缩后再解析。` };
+    }
+
+    totalBytes += bytes.length - readable.data.sizeBytes;
+
+    if (totalBytes > maxQuestionExplanationTotalImageBytes) {
+      return { ok: false, error: `题目图片总大小超过 ${formatBytes(maxQuestionExplanationTotalImageBytes)}，请删减或压缩后再解析。` };
+    }
+
+    images.push({
+      dataBase64: bytes.toString("base64"),
+      filename: `${assetId}.${imageExtension(readable.data.mimeType)}`,
+      label: ref.label,
+      mimeType: readable.data.mimeType,
+      sizeBytes: bytes.length
+    });
+  }
+
+  if (images.length === 0 && visualContext.externalNotices.length > 0) {
+    return { ok: false, error: "这道题包含外链图片，当前 AI 解析只支持平台内图片，请先将图片导入为平台资产。" };
+  }
+
+  return { ok: true, data: { externalNotices: visualContext.externalNotices, images } };
+}
+
+function collectQuestionVisualContext(context: Pick<AttemptAnswerAiContext, "stemBlocks" | "options" | "explanationBlocks">): QuestionVisualContext {
+  const imageRefs: QuestionImageReference[] = [];
+  const externalNotices: string[] = [];
+
+  collectImageRefsFromBlocks(context.stemBlocks, "题干", imageRefs, externalNotices);
+
+  for (const option of context.options) {
+    collectImageRefsFromBlocks(option.blocks, `选项 ${option.key}`, imageRefs, externalNotices);
+  }
+
+  collectImageRefsFromBlocks(context.explanationBlocks, "官方解析", imageRefs, externalNotices);
+
+  return { externalNotices, imageRefs };
+}
+
+function collectImageRefsFromBlocks(
+  blocks: RichContentBlock[] | null | undefined,
+  scope: string,
+  imageRefs: QuestionImageReference[],
+  externalNotices: string[]
+) {
+  if (!blocks?.length) {
+    return;
+  }
+
+  let imageIndex = 0;
+
+  for (const block of blocks) {
+    if (block.type !== "image") {
+      continue;
+    }
+
+    imageIndex += 1;
+
+    const alt = block.alt?.trim();
+    const labelPrefix = scope.startsWith("选项 ") ? `${scope} 图片` : `${scope}图片`;
+    const label = `${labelPrefix} ${imageIndex}${alt ? `：${alt}` : ""}`;
+
+    if (block.assetId) {
+      imageRefs.push({
+        assetId: block.assetId,
+        label,
+        sourceUrl: block.sourceUrl
+      });
+      continue;
+    }
+
+    if (block.sourceUrl) {
+      externalNotices.push(`${label} 未随附原图：url=${block.sourceUrl}`);
+    }
+  }
+}
+
+function buildAiInputWithQuestionImages(
+  promptInput: string,
+  visualInput: { externalNotices: string[]; images: ResolvedQuestionImage[] }
+): AiTextRequest["input"] {
+  const externalNoticeText = visualInput.externalNotices.length > 0 ? `\n\n未随附外链图片：\n${visualInput.externalNotices.map((notice) => `- ${notice}`).join("\n")}` : "";
+
+  if (visualInput.images.length === 0) {
+    return `${promptInput}${externalNoticeText}`;
+  }
+
+  const parts: AiTextInputPart[] = [
+    {
+      type: "text",
+      text: [
+        promptInput,
+        externalNoticeText,
+        "",
+        "随附图片会按“题干/选项/官方解析”的位置顺序给出。解析中如需使用图片信息，请明确引用图片中的关键文字、结构、图形关系或选项差异，不要泛泛地说“如图所示”。"
+      ]
+        .filter(Boolean)
+        .join("\n")
+    }
+  ];
+
+  for (const image of visualInput.images) {
+    parts.push(
+      {
+        type: "text",
+        text: image.label
+      },
+      {
+        type: "image",
+        mimeType: image.mimeType,
+        dataBase64: image.dataBase64,
+        filename: image.filename
+      }
+    );
+  }
+
+  return parts;
+}
+
+function questionRequiredCapability(visualInput: { images: ResolvedQuestionImage[] }) {
+  return visualInput.images.length > 0 ? "vision" : "text";
+}
+
+function imageExtension(mimeType: string) {
+  if (mimeType === "image/jpeg") {
+    return "jpg";
+  }
+
+  if (mimeType === "image/webp") {
+    return "webp";
+  }
+
+  return "png";
+}
+
+function formatBytes(bytes: number) {
+  if (bytes >= 1024 * 1024) {
+    return `${Math.round(bytes / (1024 * 1024))}MB`;
+  }
+
+  if (bytes >= 1024) {
+    return `${Math.round(bytes / 1024)}KB`;
+  }
+
+  return `${bytes}B`;
 }
 
 export async function generateAiText(request: AiTextRequest): Promise<AiTextResponse> {
@@ -1168,8 +1439,8 @@ export async function generateGeminiText(request: AiTextRequest): Promise<AiText
   };
 }
 
-async function resolveWrongNotePreset(db: AiDatabase) {
-  return resolveTaskAiPreset(db, wrongNoteTask, taskCapabilityRequirements[wrongNoteTask], {
+async function resolveWrongNotePreset(db: AiDatabase, requiredCapability = taskCapabilityRequirements[wrongNoteTask]) {
+  return resolveTaskAiPreset(db, wrongNoteTask, requiredCapability, {
     defaultMaxOutputTokens
   });
 }
@@ -1237,10 +1508,12 @@ function toWrongNoteAiContext(wrongNote: NonNullable<Awaited<ReturnType<typeof l
 
   return {
     stem: version?.stem ?? wrongNote.question.stem,
+    stemBlocks: readRichContentBlocks(payload, "stemBlocks", version?.stem ?? wrongNote.question.stem),
     options: readSingleChoiceOptions(payload) ?? [],
     userAnswer: readSubmittedAnswer(wrongNote.attemptAnswer?.userAnswer),
     correctAnswer: formatAnswerValue(readObjectiveAnswerKey(answerKey)),
     officialExplanation: version?.explanation ?? wrongNote.question.explanation,
+    explanationBlocks: readRichContentBlocks(payload, "explanationBlocks", version?.explanation ?? wrongNote.question.explanation),
     knowledgeNodes: wrongNote.question.knowledgeBindings.map((binding) => binding.knowledgeNode.title),
     mistakeTags: wrongNote.mistakeTags,
     userNotes: wrongNote.userNotes,
@@ -1256,10 +1529,12 @@ function toAttemptAnswerAiContext(answer: NonNullable<Awaited<ReturnType<typeof 
   return {
     kind: answer.question.kind,
     stem: version?.stem ?? answer.question.stem,
+    stemBlocks: readRichContentBlocks(payload, "stemBlocks", version?.stem ?? answer.question.stem),
     options: readSingleChoiceOptions(payload) ?? [],
     userAnswer: readSubmittedAnswer(answer.userAnswer),
     correctAnswer: formatAnswerValue(readObjectiveAnswerKey(answerKey)),
     officialExplanation: version?.explanation ?? answer.question.explanation,
+    explanationBlocks: readRichContentBlocks(payload, "explanationBlocks", version?.explanation ?? answer.question.explanation),
     knowledgeNodes: answer.question.knowledgeBindings.map((binding) => binding.knowledgeNode.title)
   };
 }

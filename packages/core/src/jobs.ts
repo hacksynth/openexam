@@ -421,7 +421,7 @@ async function processMaterialExtractionJob(jobId: string, payload: Prisma.JsonV
       throw new JobProcessingError(parsed.error);
     }
 
-    await createMaterialQuestionCandidates(material.id, jobId, parsed.data.questions, db);
+    await createMaterialQuestionCandidates(material.id, jobId, parsed.data.questions, db, { env });
     await db.$transaction([
       db.aiCall.update({
         where: { id: aiCall.id },

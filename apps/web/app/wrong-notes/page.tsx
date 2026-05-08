@@ -6,6 +6,7 @@ import { listWrongNotes, summarizeWrongNotes } from "@openexam/core/practice";
 import { FeedbackMessage, SelectField, SubmitButton, TextareaField, TextField } from "@openexam/core/pixel-ui";
 import { listWrongNoteReviewCardViews } from "@openexam/core/wrong-note-images";
 import { generateWrongNoteAiAnalysisAction, queueWrongNoteReviewCardAction, setWrongNoteMasteredAction, updateWrongNoteReflectionAction } from "./actions";
+import { normalizeWrongNoteFilter, wrongNoteFilterOptions, wrongNoteHref } from "./filters";
 import { AiAnalysisSubmitButton, ReviewCardSubmitButton } from "./submit-button";
 
 type WrongNotesPageProps = {
@@ -16,29 +17,24 @@ type WrongNoteListItem = Awaited<ReturnType<typeof listWrongNotes>>[number];
 type ReviewCardMap = Awaited<ReturnType<typeof listWrongNoteReviewCardViews>>;
 type ReviewCardView = ReviewCardMap extends Map<string, infer View> ? View : never;
 
-const filterOptions = [
-  { value: "all", label: "全部" },
-  { value: "pending", label: "未掌握" },
-  { value: "mastered", label: "已掌握" }
-] as const;
-
 export default async function WrongNotesPage({ searchParams }: WrongNotesPageProps) {
   const session = await requireWebSession();
   const params = await searchParams;
-  const filter = normalizeFilter(params.filter);
+  const filter = normalizeWrongNoteFilter(params.filter);
   const knowledgeNodeId = params.knowledgeNodeId?.trim() || "";
   const minErrorCount = params.minErrorCount?.trim() || "";
   const questionKind = params.questionKind?.trim() || "";
-  const currentHref = wrongNoteHref(filter, knowledgeNodeId);
+  const currentHref = wrongNoteHref({
+    filter,
+    knowledgeNodeId,
+    minErrorCount,
+    questionKind
+  });
   const allNotes = await listWrongNotes(session.user.id, {
     minErrorCount,
     questionKind
   });
-  const notes = allNotes.filter((note) => {
-    if (knowledgeNodeId && !note.knowledgeNodes.some((node) => node.id === knowledgeNodeId)) {
-      return false;
-    }
-
+  const filteredByStatus = allNotes.filter((note) => {
     if (filter === "pending") {
       return !note.mastered;
     }
@@ -49,6 +45,7 @@ export default async function WrongNotesPage({ searchParams }: WrongNotesPagePro
 
     return true;
   });
+  const notes = filteredByStatus.filter((note) => !knowledgeNodeId || note.knowledgeNodes.some((node) => node.id === knowledgeNodeId));
   const reviewCards = await listWrongNoteReviewCardViews(
     session.user.id,
     notes.map((note) => note.id)
@@ -60,7 +57,7 @@ export default async function WrongNotesPage({ searchParams }: WrongNotesPagePro
       knowledgeNodes: note.knowledgeNodes.map((node) => node.title)
     }))
   );
-  const knowledgeOptions = listKnowledgeOptions(allNotes);
+  const knowledgeOptions = listKnowledgeOptions(filteredByStatus);
 
   return (
     <AppShell section="learner" eyebrow="练习闭环" title="错题本">
@@ -85,10 +82,10 @@ export default async function WrongNotesPage({ searchParams }: WrongNotesPagePro
             </Link>
           </div>
           <div className="flex flex-wrap gap-2">
-            {filterOptions.map((option) => (
+            {wrongNoteFilterOptions.map((option) => (
               <Link
                 key={option.value}
-                href={wrongNoteHref(option.value, knowledgeNodeId) as Route}
+                href={wrongNoteHref({ filter: option.value, knowledgeNodeId, minErrorCount, questionKind }) as Route}
                 className={`status-chip px-3 py-2 ${filter === option.value ? "bg-[var(--primary)]" : ""}`}
               >
                 {option.label}
@@ -111,13 +108,13 @@ export default async function WrongNotesPage({ searchParams }: WrongNotesPagePro
             <div className="grid gap-3">
               <p className="text-sm font-bold text-[var(--muted)]">按知识点筛选</p>
               <div className="flex flex-wrap gap-2">
-                <Link href={wrongNoteHref(filter, "") as Route} className={`status-chip px-3 py-2 ${knowledgeNodeId ? "" : "bg-[var(--primary)]"}`}>
+                <Link href={wrongNoteHref({ filter, knowledgeNodeId: "", minErrorCount, questionKind }) as Route} className={`status-chip px-3 py-2 ${knowledgeNodeId ? "" : "bg-[var(--primary)]"}`}>
                   全部知识点
                 </Link>
                 {knowledgeOptions.map((node) => (
                   <Link
                     key={node.id}
-                    href={wrongNoteHref(filter, node.id) as Route}
+                    href={wrongNoteHref({ filter, knowledgeNodeId: node.id, minErrorCount, questionKind }) as Route}
                     className={`status-chip px-3 py-2 ${knowledgeNodeId === node.id ? "bg-[var(--primary)]" : ""}`}
                   >
                     {node.title} · {node.count}
@@ -192,6 +189,7 @@ function WrongNoteCard({
         <form action={setWrongNoteMasteredAction} className="self-start">
           <input name="wrongNoteId" type="hidden" value={note.id} />
           <input name="mastered" type="hidden" value={note.mastered ? "false" : "true"} />
+          <input name="returnTo" type="hidden" value={currentHref} />
           <div className="flex flex-wrap justify-start gap-2 lg:justify-end">
             <Link href={`/practice?retry=${note.questionId}` as Route} className="pixel-button whitespace-nowrap bg-white px-4 py-2">
               重练此题
@@ -275,22 +273,6 @@ function WrongNoteCard({
       </form>
     </article>
   );
-}
-
-function normalizeFilter(value: string | undefined): (typeof filterOptions)[number]["value"] {
-  return filterOptions.some((option) => option.value === value) ? (value as (typeof filterOptions)[number]["value"]) : "all";
-}
-
-function wrongNoteHref(filter: string, knowledgeNodeId: string) {
-  const params = new URLSearchParams();
-
-  params.set("filter", filter);
-
-  if (knowledgeNodeId) {
-    params.set("knowledgeNodeId", knowledgeNodeId);
-  }
-
-  return `/wrong-notes?${params.toString()}`;
 }
 
 function listKnowledgeOptions(notes: Awaited<ReturnType<typeof listWrongNotes>>) {

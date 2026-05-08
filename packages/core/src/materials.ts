@@ -1,4 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
+import { lookup } from "node:dns/promises";
+import { isIP } from "node:net";
 import path from "node:path";
 import { Prisma, QuestionKind, ReviewStatus, SourceType, Visibility, type MaterialLibraryScope } from "@prisma/client";
 import mammoth from "mammoth";
@@ -20,6 +22,44 @@ type ActionResult<T = undefined> = T extends undefined
   : { ok: true; data: T } | { ok: false; error: string };
 
 type MaterialDatabase = typeof prisma;
+type ExternalImageFetch = typeof fetch;
+type ExternalImageLookup = (hostname: string, options: { all: true }) => Promise<Array<{ address: string; family: number }>>;
+type ExternalImageDownload = {
+  bytes: Buffer;
+  mimeType: SupportedExternalImageMimeType;
+};
+type ExternalImageImportWarning = {
+  reason: string;
+  scope: string;
+  sourceUrl: string;
+};
+type ExternalImageImportCacheValue =
+  | {
+      ok: true;
+      assetId: string;
+    }
+  | {
+      ok: false;
+      reason: string;
+    };
+type ExternalImageImportContext = {
+  bytesImported: number;
+  cache: Map<string, ExternalImageImportCacheValue>;
+  enabled: boolean;
+  fetch: ExternalImageFetch;
+  imagesImported: number;
+  lookup: ExternalImageLookup;
+  maxImageBytes: number;
+  material: { id: string; ownerId: string } | null;
+  source: NodeJS.ProcessEnv;
+  writeStorageBytes: typeof writeStorageBytes;
+};
+type CreateMaterialQuestionCandidateOptions = {
+  env?: NodeJS.ProcessEnv;
+  fetch?: ExternalImageFetch;
+  lookup?: ExternalImageLookup;
+  writeStorageBytes?: typeof writeStorageBytes;
+};
 
 export type UploadedMaterialFile = {
   name: string;
@@ -67,8 +107,17 @@ export const supportedMaterialMimeTypes = [
 export const materialQuestionKinds = ["single_choice", "multiple_choice", "true_false", "blank", "short_answer", "case_analysis"] as const;
 export const materialLibraryScopes = ["personal", "platform"] as const;
 export const materialCandidatePageSizeOptions = [10, 20, 50] as const;
+const externalImageAssetSource = "material_extracted_external_image";
+const externalImageImportMaxCandidatesImages = 8;
+const externalImageImportMaxImages = 50;
+const externalImageImportMaxBytes = 100 * 1024 * 1024;
+const externalImageImportTimeoutMs = 10_000;
+const externalImageImportMaxRedirects = 3;
+const externalImageImportUserAgent = "OpenExam Image Importer";
+const supportedExternalImageMimeTypes = ["image/png", "image/jpeg", "image/webp"] as const;
 
 type MaterialCandidatePageSize = (typeof materialCandidatePageSizeOptions)[number];
+type SupportedExternalImageMimeType = (typeof supportedExternalImageMimeTypes)[number];
 
 export type ExtractedMaterialQuestion = {
   kind?: string | null;
@@ -84,6 +133,7 @@ export type ExtractedMaterialQuestion = {
   explanationBlocks?: RichContentBlock[] | null;
   referenceAnswer?: string | null;
   referenceAnswerBlocks?: RichContentBlock[] | null;
+  imageImportWarnings?: ExternalImageImportWarning[];
   difficulty?: number | null;
   knowledgeNodeId?: string | null;
   sourceRef?: string | null;
@@ -498,7 +548,15 @@ export async function readMaterialText(
   return { ok: false, error: "资料格式暂不支持。" };
 }
 
-export async function createMaterialQuestionCandidates(materialId: string, jobId: string, questions: ExtractedMaterialQuestion[], db: MaterialDatabase = prisma) {
+export async function createMaterialQuestionCandidates(
+  materialId: string,
+  jobId: string,
+  questions: ExtractedMaterialQuestion[],
+  db: MaterialDatabase = prisma,
+  options: CreateMaterialQuestionCandidateOptions = {}
+) {
+  const normalizedQuestions = await importExternalImagesForQuestions(materialId, questions, db, options);
+
   await db.materialQuestionCandidate.deleteMany({
     where: {
       materialId,
@@ -507,7 +565,7 @@ export async function createMaterialQuestionCandidates(materialId: string, jobId
   });
 
   await db.materialQuestionCandidate.createMany({
-    data: questions.map((question) => {
+    data: normalizedQuestions.map((question) => {
       const storage = toCandidateStorage(question);
 
       return {
@@ -525,6 +583,482 @@ export async function createMaterialQuestionCandidates(materialId: string, jobId
     })
   });
 }
+
+async function importExternalImagesForQuestions(
+  materialId: string,
+  questions: ExtractedMaterialQuestion[],
+  db: MaterialDatabase,
+  options: CreateMaterialQuestionCandidateOptions
+) {
+  if (!questions.some(hasExternalImageBlocks)) {
+    return questions;
+  }
+
+  const source = options.env ?? process.env;
+  const env = readEnv({ ...source, DATABASE_URL: source.DATABASE_URL ?? "postgresql://openexam:openexam@localhost:5432/openexam?schema=public" });
+  const material = env.OPENEXAM_IMPORT_EXTERNAL_IMAGES
+    ? await db.material.findUnique({
+        where: { id: materialId },
+        select: {
+          id: true,
+          ownerId: true
+        }
+      })
+    : null;
+  const context: ExternalImageImportContext = {
+    bytesImported: 0,
+    cache: new Map(),
+    enabled: env.OPENEXAM_IMPORT_EXTERNAL_IMAGES,
+    fetch: options.fetch ?? fetch,
+    imagesImported: 0,
+    lookup: options.lookup ?? lookup,
+    maxImageBytes: env.OPENEXAM_UPLOAD_MAX_BYTES,
+    material,
+    source,
+    writeStorageBytes: options.writeStorageBytes ?? writeStorageBytes
+  };
+
+  return Promise.all(questions.map((question) => importExternalImagesForQuestion(question, db, context)));
+}
+
+function hasExternalImageBlocks(question: ExtractedMaterialQuestion) {
+  return [
+    ...(question.stemBlocks ?? []),
+    ...Object.values(question.optionBlocks ?? {}).flatMap((blocks) => blocks ?? []),
+    ...(question.explanationBlocks ?? []),
+    ...(question.referenceAnswerBlocks ?? [])
+  ].some((block) => block.type === "image" && !block.assetId && Boolean(block.sourceUrl));
+}
+
+async function importExternalImagesForQuestion(question: ExtractedMaterialQuestion, db: MaterialDatabase, context: ExternalImageImportContext) {
+  const warnings: ExternalImageImportWarning[] = [];
+  let questionImageCount = 0;
+  const imported: ExtractedMaterialQuestion = { ...question };
+
+  imported.stemBlocks = await importExternalImagesInBlocks(question.stemBlocks, "stemBlocks", warnings, context, db, () => {
+    questionImageCount += 1;
+    return questionImageCount;
+  });
+
+  if (question.optionBlocks) {
+    const optionBlocks: Partial<Record<SingleChoiceAnswerKey, RichContentBlock[]>> = {};
+
+    for (const key of singleChoiceAnswerKeys) {
+      const blocks = question.optionBlocks[key];
+
+      if (blocks) {
+        optionBlocks[key] = (await importExternalImagesInBlocks(blocks, `options.${key}.blocks`, warnings, context, db, () => {
+          questionImageCount += 1;
+          return questionImageCount;
+        })) ?? blocks;
+      }
+    }
+
+    imported.optionBlocks = Object.keys(optionBlocks).length > 0 ? optionBlocks : question.optionBlocks;
+  }
+
+  imported.explanationBlocks = await importExternalImagesInBlocks(question.explanationBlocks, "explanationBlocks", warnings, context, db, () => {
+    questionImageCount += 1;
+    return questionImageCount;
+  });
+  imported.referenceAnswerBlocks = await importExternalImagesInBlocks(question.referenceAnswerBlocks, "referenceAnswerBlocks", warnings, context, db, () => {
+    questionImageCount += 1;
+    return questionImageCount;
+  });
+
+  if (warnings.length > 0) {
+    imported.imageImportWarnings = warnings;
+  }
+
+  return imported;
+}
+
+async function importExternalImagesInBlocks(
+  blocks: RichContentBlock[] | null | undefined,
+  scope: string,
+  warnings: ExternalImageImportWarning[],
+  context: ExternalImageImportContext,
+  db: MaterialDatabase,
+  nextQuestionImageCount: () => number
+) {
+  if (!blocks?.length) {
+    return blocks;
+  }
+
+  const importedBlocks: RichContentBlock[] = [];
+
+  for (const block of blocks) {
+    if (block.type !== "image" || block.assetId || !block.sourceUrl) {
+      importedBlocks.push(block);
+      continue;
+    }
+
+    const sourceUrl = block.sourceUrl;
+    const questionImageCount = nextQuestionImageCount();
+
+    if (questionImageCount > externalImageImportMaxCandidatesImages) {
+      warnings.push({
+        sourceUrl,
+        scope,
+        reason: `单个候选题图片不能超过 ${externalImageImportMaxCandidatesImages} 张，已保留外链。`
+      });
+      importedBlocks.push(block);
+      continue;
+    }
+
+    const result = await importExternalImage(sourceUrl, context, db);
+
+    if (result.ok) {
+      importedBlocks.push({ ...block, assetId: result.assetId });
+      continue;
+    }
+
+    warnings.push({
+      sourceUrl,
+      scope,
+      reason: result.reason
+    });
+    importedBlocks.push(block);
+  }
+
+  return importedBlocks;
+}
+
+async function importExternalImage(sourceUrl: string, context: ExternalImageImportContext, db: MaterialDatabase): Promise<ExternalImageImportCacheValue> {
+  const normalized = normalizeExternalImageUrl(sourceUrl);
+
+  if (!normalized.ok) {
+    return { ok: false, reason: normalized.reason };
+  }
+
+  const cached = context.cache.get(normalized.url);
+
+  if (cached) {
+    return cached;
+  }
+
+  if (!context.enabled) {
+    const disabled = { ok: false, reason: "外链图片自动导入已关闭。" } as const;
+    context.cache.set(normalized.url, disabled);
+    return disabled;
+  }
+
+  if (!context.material) {
+    const missingMaterial = { ok: false, reason: "资料不存在，无法导入外链图片。" } as const;
+    context.cache.set(normalized.url, missingMaterial);
+    return missingMaterial;
+  }
+
+  if (context.imagesImported >= externalImageImportMaxImages) {
+    const tooMany = { ok: false, reason: `单个资料任务最多导入 ${externalImageImportMaxImages} 张外链图片，已保留外链。` } as const;
+    context.cache.set(normalized.url, tooMany);
+    return tooMany;
+  }
+
+  if (context.bytesImported >= externalImageImportMaxBytes) {
+    const tooLarge = { ok: false, reason: `单个资料任务外链图片总大小超过 ${formatBytes(externalImageImportMaxBytes)}，已保留外链。` } as const;
+    context.cache.set(normalized.url, tooLarge);
+    return tooLarge;
+  }
+
+  const downloaded = await downloadExternalImage(normalized.url, context.fetch, context.lookup, context.maxImageBytes);
+
+  if (!downloaded.ok) {
+    const failed = { ok: false, reason: downloaded.error } as const;
+    context.cache.set(normalized.url, failed);
+    return failed;
+  }
+
+  if (context.bytesImported + downloaded.data.bytes.length > externalImageImportMaxBytes) {
+    const tooLarge = { ok: false, reason: `单个资料任务外链图片总大小超过 ${formatBytes(externalImageImportMaxBytes)}，已保留外链。` } as const;
+    context.cache.set(normalized.url, tooLarge);
+    return tooLarge;
+  }
+
+  const extension = externalImageExtension(downloaded.data.mimeType);
+  const sha256 = createHash("sha256").update(downloaded.data.bytes).digest("hex");
+  const storageKey = `materials/${context.material.ownerId}/extracted-images/${randomUUID()}.${extension}`;
+
+  let asset: { id: string };
+
+  try {
+    await context.writeStorageBytes({
+      storageKey,
+      bytes: downloaded.data.bytes,
+      source: context.source
+    });
+
+    asset = await db.asset.create({
+      data: {
+        ownerId: context.material.ownerId,
+        materialId: context.material.id,
+        visibility: Visibility.private,
+        mimeType: downloaded.data.mimeType,
+        sizeBytes: downloaded.data.bytes.length,
+        sha256,
+        storageKey,
+        source: externalImageAssetSource
+      },
+      select: {
+        id: true
+      }
+    });
+  } catch {
+    const failed = { ok: false, reason: "外链图片保存失败，已保留外链。" } as const;
+    context.cache.set(normalized.url, failed);
+    return failed;
+  }
+
+  const imported = { ok: true, assetId: asset.id } as const;
+
+  context.imagesImported += 1;
+  context.bytesImported += downloaded.data.bytes.length;
+  context.cache.set(normalized.url, imported);
+
+  return imported;
+}
+
+async function downloadExternalImage(
+  sourceUrl: string,
+  fetchImage: ExternalImageFetch,
+  lookupHostname: ExternalImageLookup,
+  maxBytes: number,
+  redirects = 0
+): Promise<ActionResult<ExternalImageDownload>> {
+  const urlCheck = await assertSafeExternalImageUrl(sourceUrl, lookupHostname);
+
+  if (!urlCheck.ok) {
+    return { ok: false, error: urlCheck.error };
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), externalImageImportTimeoutMs);
+
+  try {
+    const response = await fetchImage(sourceUrl, {
+      headers: {
+        accept: "image/png,image/jpeg,image/webp,*/*;q=0.1",
+        "user-agent": externalImageImportUserAgent
+      },
+      redirect: "manual",
+      signal: controller.signal
+    });
+
+    if (isRedirectStatus(response.status)) {
+      if (redirects >= externalImageImportMaxRedirects) {
+        return { ok: false, error: "外链图片重定向次数过多，已保留外链。" };
+      }
+
+      const location = response.headers.get("location");
+
+      if (!location) {
+        return { ok: false, error: "外链图片重定向缺少 Location，已保留外链。" };
+      }
+
+      return downloadExternalImage(new URL(location, sourceUrl).toString(), fetchImage, lookupHostname, maxBytes, redirects + 1);
+    }
+
+    if (!response.ok) {
+      return { ok: false, error: `外链图片下载失败 (${response.status})，已保留外链。` };
+    }
+
+    const mimeType = normalizeExternalImageMimeType(response.headers.get("content-type"));
+
+    if (!mimeType) {
+      return { ok: false, error: "外链图片格式暂不支持，请使用 PNG、JPEG 或 WebP。" };
+    }
+
+    const contentLength = parseContentLength(response.headers.get("content-length"));
+
+    if (contentLength !== null && contentLength > maxBytes) {
+      return { ok: false, error: `外链图片超过 ${formatBytes(maxBytes)}，已保留外链。` };
+    }
+
+    const bytes = await readResponseBytes(response, maxBytes);
+
+    if (!bytes.ok) {
+      return bytes;
+    }
+
+    if (!matchesExternalImageMagic(bytes.data, mimeType)) {
+      return { ok: false, error: "外链图片内容与声明格式不匹配，已保留外链。" };
+    }
+
+    return { ok: true, data: { bytes: bytes.data, mimeType } };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error && error.name === "AbortError" ? "外链图片下载超时，已保留外链。" : "外链图片下载失败，已保留外链。" };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function readResponseBytes(response: Response, maxBytes: number): Promise<ActionResult<Buffer>> {
+  if (!response.body) {
+    const bytes = Buffer.from(await response.arrayBuffer());
+
+    if (bytes.length > maxBytes) {
+      return { ok: false, error: `外链图片超过 ${formatBytes(maxBytes)}，已保留外链。` };
+    }
+
+    return { ok: true, data: bytes };
+  }
+
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+
+  while (true) {
+    const { done, value } = await reader.read();
+
+    if (done) {
+      break;
+    }
+
+    totalBytes += value.byteLength;
+
+    if (totalBytes > maxBytes) {
+      await reader.cancel();
+      return { ok: false, error: `外链图片超过 ${formatBytes(maxBytes)}，已保留外链。` };
+    }
+
+    chunks.push(value);
+  }
+
+  return { ok: true, data: Buffer.concat(chunks.map((chunk) => Buffer.from(chunk)), totalBytes) };
+}
+
+async function assertSafeExternalImageUrl(sourceUrl: string, lookupHostname: ExternalImageLookup): Promise<ActionResult> {
+  const normalized = normalizeExternalImageUrl(sourceUrl);
+
+  if (!normalized.ok) {
+    return { ok: false, error: normalized.reason };
+  }
+
+  const hostname = new URL(normalized.url).hostname;
+
+  if (isUnsafeHostname(hostname)) {
+    return { ok: false, error: "外链图片地址指向本机或内网，已保留外链。" };
+  }
+
+  const addresses = await lookupHostname(hostname, { all: true }).catch(() => []);
+
+  if (addresses.length === 0) {
+    return { ok: false, error: "外链图片域名解析失败，已保留外链。" };
+  }
+
+  if (addresses.some((address) => isPrivateIpAddress(address.address))) {
+    return { ok: false, error: "外链图片地址指向本机或内网，已保留外链。" };
+  }
+
+  return { ok: true };
+}
+
+function normalizeExternalImageUrl(sourceUrl: string): { ok: true; url: string } | { ok: false; reason: string } {
+  try {
+    const url = new URL(sourceUrl.trim());
+
+    if (url.protocol !== "https:") {
+      return { ok: false, reason: "仅支持 HTTPS 外链图片，已保留外链。" };
+    }
+
+    url.hash = "";
+    url.hostname = url.hostname.toLowerCase();
+
+    if (url.port === "443") {
+      url.port = "";
+    }
+
+    return { ok: true, url: url.toString() };
+  } catch {
+    return { ok: false, reason: "外链图片 URL 无效，已保留外链。" };
+  }
+}
+
+function isUnsafeHostname(hostname: string) {
+  const normalized = hostname.toLowerCase();
+
+  return normalized === "localhost" || normalized.endsWith(".localhost");
+}
+
+function isPrivateIpAddress(value: string) {
+  if (!isIP(value)) {
+    return false;
+  }
+
+  if (value === "::1" || value === "0:0:0:0:0:0:0:1") {
+    return true;
+  }
+
+  if (value.includes(":")) {
+    const normalized = value.toLowerCase();
+
+    return normalized.startsWith("fc") || normalized.startsWith("fd") || normalized.startsWith("fe80:") || normalized === "::";
+  }
+
+  const parts = value.split(".").map(Number);
+
+  if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) {
+    return false;
+  }
+
+  const [a, b] = parts;
+
+  return (
+    a === 0 ||
+    a === 10 ||
+    a === 127 ||
+    (a === 100 && b >= 64 && b <= 127) ||
+    (a === 169 && b === 254) ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 168) ||
+    a >= 224
+  );
+}
+
+function isRedirectStatus(status: number) {
+  return [301, 302, 303, 307, 308].includes(status);
+}
+
+function normalizeExternalImageMimeType(value: string | null): SupportedExternalImageMimeType | null {
+  const mimeType = value?.split(";")[0]?.trim().toLowerCase() ?? "";
+
+  return supportedExternalImageMimeTypes.includes(mimeType as SupportedExternalImageMimeType) ? (mimeType as SupportedExternalImageMimeType) : null;
+}
+
+function parseContentLength(value: string | null) {
+  if (!value) {
+    return null;
+  }
+
+  const parsed = Number(value);
+
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function matchesExternalImageMagic(bytes: Buffer, mimeType: SupportedExternalImageMimeType) {
+  if (mimeType === "image/png") {
+    return bytes.length >= 8 && bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+  }
+
+  if (mimeType === "image/jpeg") {
+    return bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+  }
+
+  return bytes.length >= 12 && bytes.subarray(0, 4).toString("ascii") === "RIFF" && bytes.subarray(8, 12).toString("ascii") === "WEBP";
+}
+
+function externalImageExtension(mimeType: SupportedExternalImageMimeType) {
+  if (mimeType === "image/jpeg") {
+    return "jpg";
+  }
+
+  if (mimeType === "image/webp") {
+    return "webp";
+  }
+
+  return "png";
+}
+
 
 export function validateExtractedQuestionsJson(value: string): ActionResult<{ questions: ExtractedMaterialQuestion[] }> {
   const json = extractJsonObject(value);
@@ -987,6 +1521,10 @@ function buildRichPayload(question: ExtractedMaterialQuestion, basePayload: unkn
 
   if (question.referenceAnswerBlocks?.length) {
     payload.referenceAnswerBlocks = question.referenceAnswerBlocks;
+  }
+
+  if (question.imageImportWarnings?.length) {
+    payload.imageImportWarnings = question.imageImportWarnings;
   }
 
   return toInputJsonValue(payload) ?? {};

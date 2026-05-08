@@ -3,6 +3,8 @@ import {
   buildWrongNotePrompt,
   decryptAiSecret,
   encryptAiSecret,
+  generateAttemptAnswerAiExplanation,
+  generateQuestionExplanation,
   assertAiUsageAllowed,
   generateWrongNoteAiAnalysis,
   getUserAiSettings,
@@ -167,11 +169,15 @@ describe("wrong-note AI analysis", () => {
   it("writes AI analysis and a succeeded call when generation succeeds", async () => {
     const calls: { method: string; args?: unknown }[] = [];
     const db = createAiDb(calls);
+    let input: unknown = null;
 
     await expect(
       generateWrongNoteAiAnalysis("user_1", "wrong_1", {
         db: db as never,
-        generateText: async () => ({ text: "这是一段 AI 解析。", usage: { output_tokens: 8 } })
+        generateText: async (request) => {
+          input = request.input;
+          return { text: "这是一段 AI 解析。", usage: { output_tokens: 8 } };
+        }
       })
     ).resolves.toEqual({
       ok: true,
@@ -200,6 +206,187 @@ describe("wrong-note AI analysis", () => {
           })
         })
       })
+    );
+    expect(typeof input).toBe("string");
+  });
+
+  it("sends platform question images as vision input", async () => {
+    const calls: { method: string; args?: unknown }[] = [];
+    const db = createAiDb(calls, {
+      capabilities: ["text", "vision"],
+      question: questionRecord({
+        payload: {
+          stemBlocks: [
+            { type: "text", text: "看图作答。" },
+            { type: "image", sourceUrl: "", assetId: "asset_1", alt: "ER 图" }
+          ],
+          options: [
+            { key: "A", text: "实体 A" },
+            { key: "B", text: "实体 B" }
+          ]
+        }
+      })
+    });
+    let input: unknown = null;
+
+    await expect(
+      generateQuestionExplanation("user_1", "question_1", {
+        db: db as never,
+        readAssetBytes: async () => Buffer.from("fake-png"),
+        generateText: async (request) => {
+          input = request.input;
+          return { text: "图片解析。", usage: { output_tokens: 6 } };
+        }
+      })
+    ).resolves.toMatchObject({ ok: true });
+
+    expect(Array.isArray(input)).toBe(true);
+    expect(input).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "text", text: expect.stringContaining("题干图片 1：ER 图") }),
+        expect.objectContaining({ type: "image", mimeType: "image/png", dataBase64: Buffer.from("fake-png").toString("base64") })
+      ])
+    );
+    expect(calls).toContainEqual(
+      expect.objectContaining({
+        method: "aiCall.create",
+        args: expect.objectContaining({
+          data: expect.objectContaining({
+            imageCount: 1,
+            promptVersion: "question-explain-v2"
+          })
+        })
+      })
+    );
+  });
+
+  it("fails clearly for external-only question images", async () => {
+    const calls: { method: string; args?: unknown }[] = [];
+    const db = createAiDb(calls, {
+      question: questionRecord({
+        payload: {
+          stemBlocks: [{ type: "image", sourceUrl: "https://example.com/question.png", alt: "题图" }],
+          options: [{ key: "A", text: "A" }]
+        }
+      })
+    });
+
+    await expect(
+      generateQuestionExplanation("user_1", "question_1", {
+        db: db as never,
+        generateText: async () => ({ text: "不应调用。" })
+      })
+    ).resolves.toEqual({
+      ok: false,
+      error: "这道题包含外链图片，当前 AI 解析只支持平台内图片，请先将图片导入为平台资产。"
+    });
+    expect(calls.some((call) => call.method === "aiCall.create")).toBe(false);
+  });
+
+  it("requires a vision-capable preset for image questions", async () => {
+    const calls: { method: string; args?: unknown }[] = [];
+    const db = createAiDb(calls, {
+      capabilities: ["text"],
+      question: questionRecord({
+        payload: {
+          stemBlocks: [{ type: "image", sourceUrl: "", assetId: "asset_1", alt: "题图" }],
+          options: [{ key: "A", text: "A" }]
+        }
+      })
+    });
+
+    await expect(
+      generateQuestionExplanation("user_1", "question_1", {
+        db: db as never,
+        readAssetBytes: async () => Buffer.from("fake-png"),
+        generateText: async () => ({ text: "不应调用。" })
+      })
+    ).resolves.toEqual({
+      ok: false,
+      error: "题目解析 绑定的默认模型缺少 vision capability。"
+    });
+  });
+
+  it("uses questionVersion images for wrong-note analysis", async () => {
+    const calls: { method: string; args?: unknown }[] = [];
+    const db = createAiDb(calls, {
+      capabilities: ["text", "vision"],
+      wrongNote: wrongNoteRecord({
+        attemptAnswer: {
+          userAnswer: { value: "B" },
+          questionVersion: {
+            stem: "作答时题干",
+            payload: {
+              stemBlocks: [{ type: "image", sourceUrl: "", assetId: "asset_1", alt: "作答截图" }],
+              options: [
+                { key: "A", text: "A" },
+                { key: "B", text: "B" }
+              ]
+            },
+            answerKey: { value: "A" },
+            explanation: "作答时解析"
+          }
+        }
+      })
+    });
+    let input: unknown = null;
+
+    await expect(
+      generateWrongNoteAiAnalysis("user_1", "wrong_1", {
+        db: db as never,
+        readAssetBytes: async () => Buffer.from("version-image"),
+        generateText: async (request) => {
+          input = request.input;
+          return { text: "错题图片解析。" };
+        }
+      })
+    ).resolves.toMatchObject({ ok: true });
+
+    expect(input).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "text", text: expect.stringContaining("作答时题干") }),
+        expect.objectContaining({ type: "text", text: "题干图片 1：作答截图" }),
+        expect.objectContaining({ type: "image", dataBase64: Buffer.from("version-image").toString("base64") })
+      ])
+    );
+  });
+
+  it("uses questionVersion images for attempt-answer explanations", async () => {
+    const calls: { method: string; args?: unknown }[] = [];
+    const db = createAiDb(calls, {
+      capabilities: ["text", "vision"],
+      attemptAnswer: attemptAnswerRecord({
+        questionVersion: {
+          stem: "作答记录题干",
+          payload: {
+            options: [
+              { key: "A", text: "A", blocks: [{ type: "image", sourceUrl: "", assetId: "asset_1", alt: "选项图" }] },
+              { key: "B", text: "B" }
+            ]
+          },
+          answerKey: { value: "A" },
+          explanation: "作答记录解析"
+        }
+      })
+    });
+    let input: unknown = null;
+
+    await expect(
+      generateAttemptAnswerAiExplanation("user_1", "answer_1", {
+        db: db as never,
+        readAssetBytes: async () => Buffer.from("attempt-image"),
+        generateText: async (request) => {
+          input = request.input;
+          return { text: "作答图片解析。" };
+        }
+      })
+    ).resolves.toMatchObject({ ok: true });
+
+    expect(input).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "text", text: "选项 A 图片 1：选项图" }),
+        expect.objectContaining({ type: "image", dataBase64: Buffer.from("attempt-image").toString("base64") })
+      ])
     );
   });
 
@@ -428,14 +615,21 @@ describe("AI usage limits", () => {
   });
 });
 
-function createAiDb(calls: { method: string; args?: unknown }[]) {
+type AiDbFixtureOptions = {
+  attemptAnswer?: unknown;
+  capabilities?: string[];
+  question?: unknown;
+  wrongNote?: unknown;
+};
+
+function createAiDb(calls: { method: string; args?: unknown }[], options: AiDbFixtureOptions = {}) {
   return {
     aiProviderPresetTask: {
       findUnique: async () => ({
         preset: {
           provider: "openai",
           model: "gpt-5.5",
-          capabilities: ["text"],
+          capabilities: options.capabilities ?? ["text"],
           enabled: true,
           maxTokens: 700,
           temperature: null
@@ -443,36 +637,33 @@ function createAiDb(calls: { method: string; args?: unknown }[]) {
       })
     },
     wrongNote: {
-      findFirst: async () => ({
-        id: "wrong_1",
-        errorCount: 2,
-        attemptAnswer: {
-          userAnswer: { value: "B" },
-          questionVersion: null
-        },
-        question: {
-          stem: "事务原子性是什么？",
-          payload: {
-            options: [
-              { key: "A", text: "全部成功或全部失败" },
-              { key: "B", text: "并发隔离" }
-            ]
-          },
-          answerKey: { value: "A" },
-          explanation: "原子性要求事务不可分割。",
-          versions: [],
-          knowledgeBindings: [
-            {
-              knowledgeNode: {
-                title: "事务基础"
-              }
-            }
-          ]
-        }
-      }),
+      findFirst: async () => options.wrongNote ?? wrongNoteRecord(),
       update: async (args: unknown) => {
         calls.push({ method: "wrongNote.update", args });
         return args;
+      }
+    },
+    attemptAnswer: {
+      findFirst: async () => options.attemptAnswer ?? attemptAnswerRecord(),
+      update: async (args: unknown) => {
+        calls.push({ method: "attemptAnswer.update", args });
+        return args;
+      }
+    },
+    question: {
+      findFirst: async () => options.question ?? questionRecord()
+    },
+    asset: {
+      findUnique: async (args: unknown) => {
+        calls.push({ method: "asset.findUnique", args });
+        return {
+          id: "asset_1",
+          ownerId: "user_1",
+          visibility: "private",
+          mimeType: "image/png",
+          sizeBytes: 16,
+          storageKey: "questions/user_1/asset_1.png"
+        };
       }
     },
     aiCall: {
@@ -493,5 +684,55 @@ function createAiDb(calls: { method: string; args?: unknown }[]) {
       }
     },
     $transaction: async (items: Promise<unknown>[]) => Promise.all(items)
+  };
+}
+
+function wrongNoteRecord(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "wrong_1",
+    errorCount: 2,
+    mistakeTags: [],
+    userNotes: null,
+    attemptAnswer: {
+      userAnswer: { value: "B" },
+      questionVersion: null
+    },
+    question: questionRecord(),
+    ...overrides
+  };
+}
+
+function attemptAnswerRecord(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "answer_1",
+    userAnswer: { value: "B" },
+    questionVersion: null,
+    question: questionRecord(),
+    ...overrides
+  };
+}
+
+function questionRecord(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "question_1",
+    kind: "single_choice",
+    stem: "事务原子性是什么？",
+    payload: {
+      options: [
+        { key: "A", text: "全部成功或全部失败" },
+        { key: "B", text: "并发隔离" }
+      ]
+    },
+    answerKey: { value: "A" },
+    explanation: "原子性要求事务不可分割。",
+    versions: [],
+    knowledgeBindings: [
+      {
+        knowledgeNode: {
+          title: "事务基础"
+        }
+      }
+    ],
+    ...overrides
   };
 }

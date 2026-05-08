@@ -267,6 +267,7 @@ function CandidateCard({
           <RichContent blocks={readPayloadBlocks(candidate.payload, "referenceAnswerBlocks")} fallback={readPayloadText(candidate.payload, "referenceAnswer")} textClassName="leading-7" />
         </div>
       ) : null}
+      <ImageImportWarnings payload={candidate.payload} />
       {editable ? (
         <div className="grid gap-3">
           <CandidateEditForm candidate={candidate} knowledgeNodes={knowledgeNodes} paging={paging} />
@@ -278,6 +279,27 @@ function CandidateCard({
         </div>
       ) : null}
     </article>
+  );
+}
+
+function ImageImportWarnings({ payload }: { payload: unknown }) {
+  const warnings = readImageImportWarnings(payload);
+
+  if (warnings.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="border-2 border-black bg-yellow-50 p-3 text-sm font-bold text-yellow-900">
+      <p>部分外链图片未导入平台资产，后续 AI 解析可能不可用。</p>
+      <ul className="mt-2 grid gap-1">
+        {warnings.map((warning, index) => (
+          <li className="break-words" key={`${warning.sourceUrl}-${index}`}>
+            {warning.scope}：{warning.reason}
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
@@ -427,6 +449,24 @@ function readCandidateOptionBlocks(payload: unknown, key: string) {
   const option = payload.options.find((item) => isRecord(item) && item.key === key);
 
   return isRecord(option) ? option.blocks : null;
+}
+
+function readImageImportWarnings(payload: unknown) {
+  const warnings = isRecord(payload) && Array.isArray(payload.imageImportWarnings) ? payload.imageImportWarnings : [];
+
+  return warnings
+    .map((warning) => {
+      if (!isRecord(warning)) {
+        return null;
+      }
+
+      const sourceUrl = typeof warning.sourceUrl === "string" ? warning.sourceUrl : "";
+      const scope = typeof warning.scope === "string" ? warning.scope : "图片";
+      const reason = typeof warning.reason === "string" ? warning.reason : "";
+
+      return sourceUrl && reason ? { sourceUrl, scope, reason } : null;
+    })
+    .filter((warning): warning is { reason: string; scope: string; sourceUrl: string } => Boolean(warning));
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

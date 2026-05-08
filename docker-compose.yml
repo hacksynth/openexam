@@ -29,6 +29,7 @@ x-app-environment: &app-environment
   OPENEXAM_MATERIAL_EXTRACT_CONTEXT_CHARS: "${OPENEXAM_MATERIAL_EXTRACT_CONTEXT_CHARS:-1048576}"
   OPENEXAM_MATERIAL_EXTRACT_TIMEOUT_MS: "${OPENEXAM_MATERIAL_EXTRACT_TIMEOUT_MS:-1200000}"
   OPENEXAM_MATERIAL_EXTRACT_JOB_STALE_MS: "${OPENEXAM_MATERIAL_EXTRACT_JOB_STALE_MS:-1500000}"
+  OPENEXAM_IMPORT_EXTERNAL_IMAGES: "${OPENEXAM_IMPORT_EXTERNAL_IMAGES:-true}"
   OPENEXAM_WORKER_POLL_MS: "${OPENEXAM_WORKER_POLL_MS:-3000}"
   OPENEXAM_JOB_STALE_MS: "${OPENEXAM_JOB_STALE_MS:-900000}"
 
@@ -49,6 +50,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3000/api/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
       interval: 10s
@@ -107,6 +109,7 @@ services:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
+    restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U \"${POSTGRES_USER:-openexam}\" -d \"${POSTGRES_DB:-openexam}\""]
       interval: 5s

@@ -1,6 +1,21 @@
 import { z } from "zod";
 
 const emptyStringToUndefined = (value: unknown) => (value === "" ? undefined : value);
+const booleanString = (value: unknown) => {
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+
+    if (["true", "1", "yes", "on"].includes(normalized)) {
+      return true;
+    }
+
+    if (["false", "0", "no", "off"].includes(normalized)) {
+      return false;
+    }
+  }
+
+  return value;
+};
 const optionalNonEmptyString = z.preprocess(emptyStringToUndefined, z.string().min(1).optional());
 const optionalUrl = z.preprocess(emptyStringToUndefined, z.string().url().optional());
 
@@ -17,6 +32,7 @@ const envSchema = z.object({
   OPENEXAM_MATERIAL_EXTRACT_CONTEXT_CHARS: z.coerce.number().int().positive().default(1048576),
   OPENEXAM_MATERIAL_EXTRACT_TIMEOUT_MS: z.coerce.number().int().positive().default(1200000),
   OPENEXAM_MATERIAL_EXTRACT_JOB_STALE_MS: z.coerce.number().int().positive().default(1500000),
+  OPENEXAM_IMPORT_EXTERNAL_IMAGES: z.preprocess(booleanString, z.boolean().default(true)),
   OPENEXAM_WORKER_POLL_MS: z.coerce.number().int().positive().default(3000),
   OPENEXAM_JOB_STALE_MS: z.coerce.number().int().positive().default(900000),
   OPENEXAM_WORKER_HEALTH_PATH: z.string().default("/tmp/openexam-worker-health.json"),

@@ -119,7 +119,7 @@ set -a; . ./.env; set +a; npm run db:seed
 ```sh
 docker compose build seed
 docker compose run --rm seed
-docker compose up --build
+docker compose up -d --build
 ```
 
 ## 仓库维护
