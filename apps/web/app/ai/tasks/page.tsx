@@ -1,11 +1,12 @@
 import { AppShell } from "@/components/app-shell";
+import { PaginationHeader, PaginationNav } from "@/components/pagination";
 import { requireWebSession } from "@/lib/auth";
 import { listUserAiCalls } from "@openexam/core/ai";
 import { FeedbackMessage, SubmitButton } from "@openexam/core/pixel-ui";
 import { retryAiCallAction } from "./actions";
 
 type AiTasksPageProps = {
-  searchParams: Promise<{ error?: string; notice?: string }>;
+  searchParams: Promise<{ error?: string; notice?: string; page?: string; pageSize?: string }>;
 };
 
 const statusLabels: Record<string, string> = {
@@ -31,7 +32,7 @@ const taskLabels: Record<string, string> = {
 export default async function AiTasksPage({ searchParams }: AiTasksPageProps) {
   const session = await requireWebSession();
   const params = await searchParams;
-  const calls = await listUserAiCalls(session.user.id);
+  const calls = await listUserAiCalls(session.user.id, params);
 
   return (
     <AppShell section="learner" eyebrow="AI 任务" title="AI 任务">
@@ -43,12 +44,13 @@ export default async function AiTasksPage({ searchParams }: AiTasksPageProps) {
             <p className="text-xs font-bold uppercase text-[var(--muted)]">Calls</p>
             <h2 className="mt-1 text-xl font-black">最近调用</h2>
           </div>
+          <PaginationHeader basePath="/ai/tasks" itemLabel="次" pagination={calls.pagination} params={params} />
 
-          {calls.length === 0 ? (
+          {calls.items.length === 0 ? (
             <p className="border-2 border-black bg-[var(--surface-subtle)] p-3 text-sm font-bold text-[var(--muted)]">暂无 AI 调用记录。</p>
           ) : (
             <div className="grid gap-3">
-              {calls.map((call) => (
+              {calls.items.map((call) => (
                 <article key={call.id} className="border-3 border-black bg-white p-4">
                   <div className="flex flex-wrap gap-2">
                     <span className="status-chip px-2 py-1">{taskLabels[call.taskType] ?? call.taskType}</span>
@@ -75,6 +77,7 @@ export default async function AiTasksPage({ searchParams }: AiTasksPageProps) {
               ))}
             </div>
           )}
+          <PaginationNav basePath="/ai/tasks" pagination={calls.pagination} params={params} />
         </section>
       </section>
     </AppShell>

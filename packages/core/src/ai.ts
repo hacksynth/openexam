@@ -2,6 +2,7 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:
 import { AiProvider, AiTaskType, Prisma } from "@prisma/client";
 import OpenAI from "openai";
 import { findReadableAsset, readAssetBytes as readStoredAssetBytes, type ReadableAsset } from "./assets";
+import { buildPagination, type PaginationInput } from "./pagination";
 import { formatAnswerValue, readObjectiveAnswerKey, readRichContentBlocks, readSingleChoiceOptions, type SingleChoiceOption } from "./practice";
 import { prisma } from "./prisma";
 import type { RichContentBlock } from "./rich-content";
@@ -392,28 +393,35 @@ export async function resolveAiCredential(userId: string, provider: AiProvider, 
   return { ok: false, error: `请先在个人设置中配置 ${providerLabels[provider]} API Key。` } as const;
 }
 
-export async function listUserAiCalls(userId: string, db: AiDatabase = prisma) {
+export async function listUserAiCalls(userId: string, options: PaginationInput = {}, db: AiDatabase = prisma) {
+  const where = { userId };
+  const totalItems = await db.aiCall.count({ where });
+  const pagination = buildPagination(options, totalItems);
   const calls = await db.aiCall.findMany({
-    where: { userId },
+    where,
     orderBy: [{ createdAt: "desc" }],
-    take: 30
+    skip: pagination.skip,
+    take: pagination.take
   });
 
-  return calls.map((call) => ({
-    id: call.id,
-    provider: call.provider,
-    model: call.model,
-    taskType: call.taskType,
-    promptVersion: call.promptVersion,
-    inputContextSource: call.inputContextSource,
-    status: call.status,
-    credentialSource: call.credentialSource,
-    usage: call.usage,
-    durationMs: call.updatedAt.getTime() - call.createdAt.getTime(),
-    errorSummary: call.errorSummary,
-    createdAt: call.createdAt,
-    updatedAt: call.updatedAt
-  }));
+  return {
+    pagination,
+    items: calls.map((call) => ({
+      id: call.id,
+      provider: call.provider,
+      model: call.model,
+      taskType: call.taskType,
+      promptVersion: call.promptVersion,
+      inputContextSource: call.inputContextSource,
+      status: call.status,
+      credentialSource: call.credentialSource,
+      usage: call.usage,
+      durationMs: call.updatedAt.getTime() - call.createdAt.getTime(),
+      errorSummary: call.errorSummary,
+      createdAt: call.createdAt,
+      updatedAt: call.updatedAt
+    }))
+  };
 }
 
 export async function assertAiUsageAllowed(

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { Route } from "next";
 import { AppShell } from "@/components/app-shell";
+import { PaginationHeader, PaginationNav } from "@/components/pagination";
 import { requireWebSession } from "@/lib/auth";
 import { FeedbackMessage } from "@openexam/core/pixel-ui";
 import { listAttempts } from "@openexam/core/practice";
@@ -14,12 +15,13 @@ const statusLabels: Record<string, string> = {
 };
 
 type AttemptsPageProps = {
-  searchParams: Promise<{ notice?: string; error?: string }>;
+  searchParams: Promise<{ notice?: string; error?: string; page?: string; pageSize?: string }>;
 };
 
 export default async function AttemptsPage({ searchParams }: AttemptsPageProps) {
   const session = await requireWebSession();
-  const [params, attempts] = await Promise.all([searchParams, listAttempts(session.user.id)]);
+  const params = await searchParams;
+  const attempts = await listAttempts(session.user.id, params);
 
   return (
     <AppShell section="learner" eyebrow="练习闭环" title="作答记录">
@@ -28,7 +30,7 @@ export default async function AttemptsPage({ searchParams }: AttemptsPageProps) 
         <section className="pixel-panel grid gap-4 p-5">
           <div>
             <p className="text-xs font-bold uppercase text-[var(--muted)]">Attempts</p>
-            <h2 className="mt-2 text-2xl font-black">最近 {attempts.length} 次作答</h2>
+            <h2 className="mt-2 text-2xl font-black">作答记录</h2>
             <p className="mt-1 font-bold text-[var(--muted)]">这里记录练习和试卷提交、得分、答案、解析和关联知识点。</p>
           </div>
           <div className="flex flex-wrap gap-3">
@@ -44,7 +46,9 @@ export default async function AttemptsPage({ searchParams }: AttemptsPageProps) 
           </div>
         </section>
 
-        {attempts.length === 0 ? (
+        <PaginationHeader basePath="/attempts" itemLabel="次" pagination={attempts.pagination} params={params} />
+
+        {attempts.items.length === 0 ? (
           <section className="pixel-panel grid gap-4 p-5">
             <div>
               <h2 className="text-2xl font-black">暂无作答记录</h2>
@@ -56,7 +60,7 @@ export default async function AttemptsPage({ searchParams }: AttemptsPageProps) 
           </section>
         ) : (
           <section className="grid gap-4">
-            {attempts.map((attempt) => (
+            {attempts.items.map((attempt) => (
               <article key={attempt.id} className="pixel-panel grid gap-4 p-5">
                 <div className="grid gap-3 lg:grid-cols-[1fr_auto]">
                   <div className="min-w-0">
@@ -110,6 +114,7 @@ export default async function AttemptsPage({ searchParams }: AttemptsPageProps) 
             ))}
           </section>
         )}
+        <PaginationNav basePath="/attempts" pagination={attempts.pagination} params={params} />
       </section>
     </AppShell>
   );

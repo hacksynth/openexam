@@ -15,6 +15,7 @@ import {
   wrongNoteReviewCardJobType,
   type AiImageGenerator
 } from "./wrong-note-images";
+import { buildPagination, type PaginationInput } from "./pagination";
 
 type ActionResult<T = undefined> = T extends undefined
   ? { ok: true } | { ok: false; error: string }
@@ -42,15 +43,19 @@ export type JobProcessorOptions = {
 
 export type JobMaintenanceOptions = Pick<JobProcessorOptions, "db" | "env" | "now">;
 
-export async function listJobs(filters: { status?: string | null } = {}, db: JobDatabase = prisma) {
+export async function listJobs(filters: { status?: string | null } & PaginationInput = {}, db: JobDatabase = prisma) {
   const status = normalizeJobStatus(filters.status);
+  const where = status ? { status } : {};
+  const totalItems = await db.job.count({ where });
+  const pagination = buildPagination(filters, totalItems);
   const jobs = await db.job.findMany({
-    where: status ? { status } : {},
+    where,
     include: {
       user: true
     },
     orderBy: [{ status: "asc" }, { priority: "asc" }, { runAt: "asc" }, { createdAt: "desc" }],
-    take: 100
+    skip: pagination.skip,
+    take: pagination.take
   });
   const materialIds = jobs.map((job) => readPayloadMaterialId(job.payload)).filter((id): id is string => Boolean(id));
   const wrongNoteIds = jobs.map((job) => readPayloadWrongNoteId(job.payload)).filter((id): id is string => Boolean(id));
@@ -89,7 +94,9 @@ export async function listJobs(filters: { status?: string | null } = {}, db: Job
   const materialTitles = new Map(materials.map((material) => [material.id, material.title]));
   const wrongNoteTitles = new Map(wrongNotes.map((wrongNote) => [wrongNote.id, wrongNote.question.versions[0]?.stem ?? wrongNote.question.stem]));
 
-  return jobs.map((job) => {
+  return {
+    pagination,
+    items: jobs.map((job) => {
     const materialId = readPayloadMaterialId(job.payload);
     const wrongNoteId = readPayloadWrongNoteId(job.payload);
 
@@ -113,7 +120,8 @@ export async function listJobs(filters: { status?: string | null } = {}, db: Job
       startedAt: job.startedAt,
       finishedAt: job.finishedAt
     };
-  });
+  })
+  };
 }
 
 export async function processNextJob(options: JobProcessorOptions = {}): Promise<ActionResult<{ jobId: string }>> {

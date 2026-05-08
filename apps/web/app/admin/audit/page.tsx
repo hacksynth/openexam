@@ -1,10 +1,11 @@
 import { AppShell } from "@/components/app-shell";
+import { PaginationHeader, PaginationNav } from "@/components/pagination";
 import { requireAdminSession } from "@/lib/auth";
 import { listAuditLogs } from "@openexam/core/audit";
 import { SubmitButton, TextField } from "@openexam/core/pixel-ui";
 
 type AdminAuditPageProps = {
-  searchParams: Promise<{ action?: string; entityType?: string; entityId?: string; actorId?: string }>;
+  searchParams: Promise<{ action?: string; entityType?: string; entityId?: string; actorId?: string; page?: string; pageSize?: string }>;
 };
 
 export default async function AdminAuditPage({ searchParams }: AdminAuditPageProps) {
@@ -21,6 +22,8 @@ export default async function AdminAuditPage({ searchParams }: AdminAuditPagePro
             <h2 className="mt-1 text-xl font-black">事件筛选</h2>
           </div>
           <form className="grid gap-3 lg:grid-cols-[1fr_1fr_1fr_auto]">
+            <input name="page" type="hidden" value="1" />
+            {params.pageSize ? <input name="pageSize" type="hidden" value={params.pageSize} /> : null}
             <TextField defaultValue={params.action ?? ""} label="动作" name="action" placeholder="动作" />
             <TextField defaultValue={params.entityType ?? ""} label="实体类型" name="entityType" placeholder="实体类型" />
             <TextField defaultValue={params.entityId ?? ""} label="实体 ID" name="entityId" placeholder="实体 ID" />
@@ -31,15 +34,16 @@ export default async function AdminAuditPage({ searchParams }: AdminAuditPagePro
         <section className="grid gap-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-2xl font-black">事件列表</h2>
-            <span className="status-chip px-2 py-1">当前 {logs.length} 条</span>
+            <span className="status-chip px-2 py-1">共 {logs.pagination.totalItems} 条</span>
           </div>
-          {logs.length === 0 ? (
+          <PaginationHeader basePath="/admin/audit" itemLabel="条" pagination={logs.pagination} params={params} />
+          {logs.items.length === 0 ? (
             <section className="pixel-panel p-5">
               <h2 className="text-2xl font-black">暂无审计事件</h2>
               <p className="mt-1 font-bold text-[var(--muted)]">管理端写操作会记录在这里。</p>
             </section>
           ) : (
-            logs.map((log) => (
+            logs.items.map((log) => (
               <article key={log.id} className="pixel-panel grid gap-3 p-5">
                 <div className="flex flex-wrap gap-2">
                   <span className="status-chip px-2 py-1">{log.action}</span>
@@ -54,6 +58,7 @@ export default async function AdminAuditPage({ searchParams }: AdminAuditPagePro
               </article>
             ))
           )}
+          <PaginationNav basePath="/admin/audit" pagination={logs.pagination} params={params} />
         </section>
       </section>
     </AppShell>

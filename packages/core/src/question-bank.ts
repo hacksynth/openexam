@@ -1,4 +1,5 @@
 import { Prisma, type QuestionKind, type SourceType } from "@prisma/client";
+import { buildPagination, type PaginationInput } from "./pagination";
 import { prisma } from "./prisma";
 
 const userQuestionBankInclude = {
@@ -44,6 +45,8 @@ export type UserQuestionBankSourceFilter = (typeof userQuestionBankSourceFilters
 export type UserQuestionBankFilters = {
   sourceType?: string | null;
   materialId?: string | null;
+  page?: string | number | null;
+  pageSize?: string | number | null;
 };
 
 export type UserQuestionBankItem = {
@@ -89,17 +92,21 @@ export async function listUserQuestionBank(userId: string, filters: UserQuestion
     : null;
   const materialQuestionIds = material ? compactIds(material.candidates.map((candidate) => candidate.confirmedQuestionId)) : null;
 
-  const questions = await db.question.findMany({
-    where: {
+  const where = {
       ownerId: userId,
       visibility: "private",
       deletedAt: null,
       ...(sourceType === "all" ? {} : { sourceType: sourceType as SourceType }),
       ...(materialQuestionIds ? { id: { in: materialQuestionIds } } : {})
-    },
+    } satisfies Prisma.QuestionWhereInput;
+  const totalItems = await db.question.count({ where });
+  const pagination = buildPagination(filters, totalItems);
+  const questions = await db.question.findMany({
+    where,
     include: userQuestionBankInclude,
     orderBy: [{ updatedAt: "desc" }],
-    take: 100
+    skip: pagination.skip,
+    take: pagination.take
   });
   const materialMap = await mapMaterialQuestions(questions.map((question) => question.id), userId, db);
 
@@ -112,6 +119,7 @@ export async function listUserQuestionBank(userId: string, filters: UserQuestion
         }
       : null,
     materialUnavailable: Boolean(materialId && !material),
+    pagination,
     questions: questions.map((question) => toUserQuestionBankItem(question, materialMap.get(question.id) ?? null))
   };
 }

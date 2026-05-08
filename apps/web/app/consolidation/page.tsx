@@ -1,16 +1,17 @@
 import Link from "next/link";
 import type { Route } from "next";
 import { AppShell } from "@/components/app-shell";
+import { PaginationHeader, PaginationNav } from "@/components/pagination";
 import { requireWebSession } from "@/lib/auth";
 import { FeedbackMessage, SubmitButton } from "@openexam/core/pixel-ui";
-import { listConsolidationNotes, summarizeConsolidationNotes } from "@openexam/core/practice";
+import { listConsolidationNotes } from "@openexam/core/practice";
 import { setConsolidationNoteMasteredAction } from "./actions";
 
 type ConsolidationPageProps = {
-  searchParams: Promise<{ error?: string; notice?: string; filter?: string; knowledgeNodeId?: string }>;
+  searchParams: Promise<{ error?: string; notice?: string; filter?: string; knowledgeNodeId?: string; page?: string; pageSize?: string }>;
 };
 
-type ConsolidationNoteListItem = Awaited<ReturnType<typeof listConsolidationNotes>>[number];
+type ConsolidationNoteListItem = Awaited<ReturnType<typeof listConsolidationNotes>>["items"][number];
 
 const filterOptions = [
   { value: "all", label: "全部" },
@@ -23,31 +24,13 @@ export default async function ConsolidationPage({ searchParams }: ConsolidationP
   const params = await searchParams;
   const filter = normalizeFilter(params.filter);
   const knowledgeNodeId = params.knowledgeNodeId?.trim() || "";
-  const currentHref = consolidationHref(filter, knowledgeNodeId);
-  const allNotes = await listConsolidationNotes(session.user.id);
-  const notes = allNotes.filter((note) => {
-    if (knowledgeNodeId && !note.knowledgeNodes.some((node) => node.id === knowledgeNodeId)) {
-      return false;
-    }
-
-    if (filter === "pending") {
-      return !note.mastered;
-    }
-
-    if (filter === "mastered") {
-      return note.mastered;
-    }
-
-    return true;
+  const state = await listConsolidationNotes(session.user.id, {
+    mastered: filter === "pending" ? false : filter === "mastered" ? true : undefined,
+    knowledgeNodeId,
+    page: params.page,
+    pageSize: params.pageSize
   });
-  const pendingCount = allNotes.filter((note) => !note.mastered).length;
-  const summary = summarizeConsolidationNotes(
-    allNotes.map((note) => ({
-      mastered: note.mastered,
-      knowledgeNodes: note.knowledgeNodes.map((node) => node.title)
-    }))
-  );
-  const knowledgeOptions = listKnowledgeOptions(allNotes);
+  const currentHref = consolidationHref(filter, knowledgeNodeId, params.page, params.pageSize);
 
   return (
     <AppShell section="learner" eyebrow="掌握闭环" title="待巩固">
@@ -57,7 +40,7 @@ export default async function ConsolidationPage({ searchParams }: ConsolidationP
         <section className="pixel-panel grid gap-4 p-5">
           <div>
             <p className="text-xs font-bold uppercase text-[var(--muted)]">Consolidation</p>
-            <h2 className="mt-2 text-2xl font-black">待巩固 {pendingCount} 题</h2>
+            <h2 className="mt-2 text-2xl font-black">待巩固 {state.pendingCount} 题</h2>
             <p className="mt-1 font-bold text-[var(--muted)]">答对但标记未掌握的题会进入这里，不计入错题本和正确率。</p>
           </div>
           <div className="flex flex-wrap gap-3">
@@ -78,18 +61,18 @@ export default async function ConsolidationPage({ searchParams }: ConsolidationP
             {filterOptions.map((option) => (
               <Link
                 key={option.value}
-                href={consolidationHref(option.value, knowledgeNodeId) as Route}
+                href={consolidationHref(option.value, knowledgeNodeId, 1, params.pageSize) as Route}
                 className={`status-chip px-3 py-2 ${filter === option.value ? "bg-[var(--primary)]" : ""}`}
               >
                 {option.label}
               </Link>
             ))}
           </div>
-          {summary.weakKnowledgeNodes.length > 0 ? (
+          {state.summary.weakKnowledgeNodes.length > 0 ? (
             <div className="grid gap-3 border-2 border-black bg-white p-3">
               <p className="text-sm font-bold text-[var(--muted)]">待巩固知识点</p>
               <div className="flex flex-wrap gap-2">
-                {summary.weakKnowledgeNodes.map((node) => (
+                {state.summary.weakKnowledgeNodes.map((node) => (
                   <span key={node.title} className="status-chip px-2 py-1">
                     {node.title} · {node.count}
                   </span>
@@ -97,17 +80,17 @@ export default async function ConsolidationPage({ searchParams }: ConsolidationP
               </div>
             </div>
           ) : null}
-          {knowledgeOptions.length > 0 ? (
+          {state.knowledgeOptions.length > 0 ? (
             <div className="grid gap-3">
               <p className="text-sm font-bold text-[var(--muted)]">按知识点筛选</p>
               <div className="flex flex-wrap gap-2">
-                <Link href={consolidationHref(filter, "") as Route} className={`status-chip px-3 py-2 ${knowledgeNodeId ? "" : "bg-[var(--primary)]"}`}>
+                <Link href={consolidationHref(filter, "", 1, params.pageSize) as Route} className={`status-chip px-3 py-2 ${knowledgeNodeId ? "" : "bg-[var(--primary)]"}`}>
                   全部知识点
                 </Link>
-                {knowledgeOptions.map((node) => (
+                {state.knowledgeOptions.map((node) => (
                   <Link
                     key={node.id}
-                    href={consolidationHref(filter, node.id) as Route}
+                    href={consolidationHref(filter, node.id, 1, params.pageSize) as Route}
                     className={`status-chip px-3 py-2 ${knowledgeNodeId === node.id ? "bg-[var(--primary)]" : ""}`}
                   >
                     {node.title} · {node.count}
@@ -118,7 +101,9 @@ export default async function ConsolidationPage({ searchParams }: ConsolidationP
           ) : null}
         </section>
 
-        {notes.length === 0 ? (
+        <PaginationHeader basePath="/consolidation" itemLabel="题" pagination={state.pagination} params={params} />
+
+        {state.items.length === 0 ? (
           <section className="pixel-panel grid gap-4 p-5">
             <div>
               <h2 className="text-2xl font-black">暂无待巩固题</h2>
@@ -130,11 +115,12 @@ export default async function ConsolidationPage({ searchParams }: ConsolidationP
           </section>
         ) : (
           <section className="grid gap-4">
-            {notes.map((note) => (
+            {state.items.map((note) => (
               <ConsolidationNoteCard key={note.id} currentHref={currentHref} note={note} />
             ))}
           </section>
         )}
+        <PaginationNav basePath="/consolidation" pagination={state.pagination} params={params} />
       </section>
     </AppShell>
   );
@@ -194,7 +180,7 @@ function normalizeFilter(value: string | undefined): (typeof filterOptions)[numb
   return filterOptions.some((option) => option.value === value) ? (value as (typeof filterOptions)[number]["value"]) : "all";
 }
 
-function consolidationHref(filter: string, knowledgeNodeId: string) {
+function consolidationHref(filter: string, knowledgeNodeId: string, page?: string | number, pageSize?: string | number) {
   const params = new URLSearchParams();
 
   params.set("filter", filter);
@@ -203,22 +189,15 @@ function consolidationHref(filter: string, knowledgeNodeId: string) {
     params.set("knowledgeNodeId", knowledgeNodeId);
   }
 
-  return `/consolidation?${params.toString()}`;
-}
-
-function listKnowledgeOptions(notes: Awaited<ReturnType<typeof listConsolidationNotes>>) {
-  const counts = new Map<string, { id: string; title: string; count: number }>();
-
-  for (const note of notes) {
-    for (const node of note.knowledgeNodes) {
-      const current = counts.get(node.id) ?? { id: node.id, title: node.title, count: 0 };
-
-      current.count += 1;
-      counts.set(node.id, current);
-    }
+  if (page) {
+    params.set("page", String(page));
   }
 
-  return [...counts.values()].sort((left, right) => right.count - left.count || left.title.localeCompare(right.title, "zh-CN"));
+  if (pageSize) {
+    params.set("pageSize", String(pageSize));
+  }
+
+  return `/consolidation?${params.toString()}`;
 }
 
 function formatDate(value: Date) {

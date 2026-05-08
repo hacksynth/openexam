@@ -1,4 +1,5 @@
 import { Prisma } from "@prisma/client";
+import { buildPagination, type PaginationInput } from "./pagination";
 import { prisma } from "./prisma";
 
 type AuditDatabase = typeof prisma;
@@ -16,6 +17,8 @@ export type AuditLogFilters = {
   action?: string | null;
   entityType?: string | null;
   entityId?: string | null;
+  page?: string | number | null;
+  pageSize?: string | number | null;
 };
 
 export async function writeAuditLog(input: AuditLogInput, db: AuditDatabase = prisma) {
@@ -31,28 +34,35 @@ export async function writeAuditLog(input: AuditLogInput, db: AuditDatabase = pr
 }
 
 export async function listAuditLogs(filters: AuditLogFilters = {}, db: AuditDatabase = prisma) {
+  const where = {
+    ...(filters.actorId?.trim() ? { actorId: filters.actorId.trim() } : {}),
+    ...(filters.action?.trim() ? { action: { contains: filters.action.trim(), mode: "insensitive" } } : {}),
+    ...(filters.entityType?.trim() ? { entityType: filters.entityType.trim() } : {}),
+    ...(filters.entityId?.trim() ? { entityId: filters.entityId.trim() } : {})
+  } satisfies Prisma.AuditLogWhereInput;
+  const totalItems = await db.auditLog.count({ where });
+  const pagination = buildPagination(filters, totalItems);
   const logs = await db.auditLog.findMany({
-    where: {
-      ...(filters.actorId?.trim() ? { actorId: filters.actorId.trim() } : {}),
-      ...(filters.action?.trim() ? { action: { contains: filters.action.trim(), mode: "insensitive" } } : {}),
-      ...(filters.entityType?.trim() ? { entityType: filters.entityType.trim() } : {}),
-      ...(filters.entityId?.trim() ? { entityId: filters.entityId.trim() } : {})
-    },
+    where,
     include: {
       actor: true
     },
     orderBy: [{ createdAt: "desc" }],
-    take: 100
+    skip: pagination.skip,
+    take: pagination.take
   });
 
-  return logs.map((log) => ({
-    id: log.id,
-    actorEmail: log.actor?.email ?? null,
-    actorName: log.actor?.name ?? null,
-    action: log.action,
-    entityType: log.entityType,
-    entityId: log.entityId,
-    metadata: log.metadata,
-    createdAt: log.createdAt
-  }));
+  return {
+    pagination,
+    items: logs.map((log) => ({
+      id: log.id,
+      actorEmail: log.actor?.email ?? null,
+      actorName: log.actor?.name ?? null,
+      action: log.action,
+      entityType: log.entityType,
+      entityId: log.entityId,
+      metadata: log.metadata,
+      createdAt: log.createdAt
+    }))
+  };
 }

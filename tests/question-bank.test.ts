@@ -16,6 +16,10 @@ describe("user question bank", () => {
         }
       },
       question: {
+        count: async (args: unknown) => {
+          calls.push({ method: "question.count", args });
+          return 1;
+        },
         findMany: async (args: unknown) => {
           calls.push({ method: "question.findMany", args });
           return [questionRecord()];
@@ -76,7 +80,7 @@ describe("user question bank", () => {
       }
     });
     expect(calls[1]).toMatchObject({
-      method: "question.findMany",
+      method: "question.count",
       args: {
         where: {
           ownerId: "user_1",
@@ -87,6 +91,22 @@ describe("user question bank", () => {
             in: ["question_1"]
           }
         }
+      }
+    });
+    expect(calls[2]).toMatchObject({
+      method: "question.findMany",
+      args: {
+        where: {
+          ownerId: "user_1",
+          visibility: "private",
+          deletedAt: null,
+          sourceType: "user_uploaded",
+          id: {
+            in: ["question_1"]
+          }
+        },
+        skip: 0,
+        take: 20
       }
     });
   });

@@ -1,12 +1,16 @@
 import { readTotalTokens } from "./ai";
+import { buildPagination, type PaginationInput } from "./pagination";
 import { prisma } from "./prisma";
 
 type UserDatabase = typeof prisma;
 
-export async function listAdminUsersWithAiUsage(db: UserDatabase = prisma) {
+export async function listAdminUsersWithAiUsage(options: PaginationInput = {}, db: UserDatabase = prisma) {
+  const totalItems = await db.user.count();
+  const pagination = buildPagination(options, totalItems);
   const users = await db.user.findMany({
     orderBy: [{ createdAt: "desc" }],
-    take: 100
+    skip: pagination.skip,
+    take: pagination.take
   });
   const userIds = users.map((user) => user.id);
   const calls = userIds.length
@@ -62,12 +66,15 @@ export async function listAdminUsersWithAiUsage(db: UserDatabase = prisma) {
     current.lastCalledAt = current.lastCalledAt && current.lastCalledAt > call.createdAt ? current.lastCalledAt : call.createdAt;
   }
 
-  return users.map((user) => ({
-    id: user.id,
-    email: user.email,
-    name: user.name,
-    role: user.role,
-    createdAt: user.createdAt,
-    usage: usage.get(user.id)!
-  }));
+  return {
+    pagination,
+    items: users.map((user) => ({
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      createdAt: user.createdAt,
+      usage: usage.get(user.id)!
+    }))
+  };
 }

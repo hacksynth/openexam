@@ -2,6 +2,7 @@ import { PracticeMode, Prisma, QuestionKind } from "@prisma/client";
 import { getPrimaryExamGoal, type PrimaryGoal } from "./exam-core";
 import { gradeObjectiveAnswer, type ObjectiveQuestionKind } from "./grading";
 import { generateSubjectiveScoreSuggestion } from "./subjective-scoring";
+import { buildPagination, type PaginationInput } from "./pagination";
 import { prisma } from "./prisma";
 import { normalizeRichContentBlocks, type RichContentBlock } from "./rich-content";
 
@@ -572,9 +573,12 @@ export async function getAttemptResult(userId: string, attemptId: string) {
   };
 }
 
-export async function listAttempts(userId: string) {
+export async function listAttempts(userId: string, options: PaginationInput = {}) {
+  const where = { userId };
+  const totalItems = await prisma.attempt.count({ where });
+  const pagination = buildPagination(options, totalItems);
   const attempts = await prisma.attempt.findMany({
-    where: { userId },
+    where,
     orderBy: [{ submittedAt: "desc" }, { createdAt: "desc" }],
     include: {
       answers: {
@@ -602,40 +606,44 @@ export async function listAttempts(userId: string) {
       },
       paper: true
     },
-    take: 50
+    skip: pagination.skip,
+    take: pagination.take
   });
 
-  return attempts.map((attempt) => ({
-    id: attempt.id,
-    status: attempt.status,
-    startedAt: attempt.startedAt,
-    submittedAt: attempt.submittedAt,
-    totalScore: attempt.totalScore ?? 0,
-    maxScore: attempt.maxScore ?? 0,
-    kind: attempt.paperId ? "paper" : "practice",
-    paperTitle: attempt.paper?.title ?? null,
-    goalPath: attempt.goal ? [attempt.goal.program.name, attempt.goal.track?.name, attempt.goal.cycle?.name, attempt.goal.subject?.name].filter(Boolean).join(" / ") : "未绑定目标",
-    answers: attempt.answers.map((answer) => {
-      const answerKey = readObjectiveAnswerKey(answer.questionVersion?.answerKey ?? answer.question.answerKey);
+  return {
+    pagination,
+    items: attempts.map((attempt) => ({
+      id: attempt.id,
+      status: attempt.status,
+      startedAt: attempt.startedAt,
+      submittedAt: attempt.submittedAt,
+      totalScore: attempt.totalScore ?? 0,
+      maxScore: attempt.maxScore ?? 0,
+      kind: attempt.paperId ? "paper" : "practice",
+      paperTitle: attempt.paper?.title ?? null,
+      goalPath: attempt.goal ? [attempt.goal.program.name, attempt.goal.track?.name, attempt.goal.cycle?.name, attempt.goal.subject?.name].filter(Boolean).join(" / ") : "未绑定目标",
+      answers: attempt.answers.map((answer) => {
+        const answerKey = readObjectiveAnswerKey(answer.questionVersion?.answerKey ?? answer.question.answerKey);
 
-      return {
-        id: answer.id,
-        questionId: answer.question.id,
-        isCorrect: answer.isCorrect,
-        score: answer.score ?? 0,
-        maxScore: answer.maxScore ?? 0,
-        userAnswer: readSubmittedAnswer(answer.userAnswer),
-        correctAnswer: formatAnswerValue(answerKey),
-        explanation: answer.questionVersion?.explanation ?? answer.question.explanation,
-        question: {
-          id: answer.question.id,
-          kind: answer.question.kind,
-          stem: answer.questionVersion?.stem ?? answer.question.stem,
-          knowledgeNodes: answer.question.knowledgeBindings.map((binding) => binding.knowledgeNode.title)
-        }
-      };
-    })
-  }));
+        return {
+          id: answer.id,
+          questionId: answer.question.id,
+          isCorrect: answer.isCorrect,
+          score: answer.score ?? 0,
+          maxScore: answer.maxScore ?? 0,
+          userAnswer: readSubmittedAnswer(answer.userAnswer),
+          correctAnswer: formatAnswerValue(answerKey),
+          explanation: answer.questionVersion?.explanation ?? answer.question.explanation,
+          question: {
+            id: answer.question.id,
+            kind: answer.question.kind,
+            stem: answer.questionVersion?.stem ?? answer.question.stem,
+            knowledgeNodes: answer.question.knowledgeBindings.map((binding) => binding.knowledgeNode.title)
+          }
+        };
+      })
+    }))
+  };
 }
 
 export type WrongNoteFilters = {
@@ -643,30 +651,58 @@ export type WrongNoteFilters = {
   knowledgeNodeId?: string | null;
   questionKind?: string | null;
   minErrorCount?: string | number | null;
+  page?: string | number | null;
+  pageSize?: string | number | null;
   updatedSince?: Date | null;
 };
 
 export async function listWrongNotes(userId: string, options: WrongNoteFilters = {}) {
   const minErrorCount = parsePositiveInteger(options.minErrorCount);
-  const notes = await prisma.wrongNote.findMany({
-    where: {
-      userId,
-      ...(typeof options.mastered === "boolean" ? { mastered: options.mastered } : {}),
-      errorCount: typeof minErrorCount === "number" ? { gte: minErrorCount } : { gt: 0 },
-      ...(options.updatedSince ? { updatedAt: { gte: options.updatedSince } } : {}),
-      question: {
-        ...(options.questionKind ? { kind: options.questionKind as never } : {}),
-        ...(options.knowledgeNodeId
-          ? {
-              knowledgeBindings: {
-                some: {
-                  knowledgeNodeId: options.knowledgeNodeId
-                }
+  const baseWhere = buildWrongNoteWhere(userId, {
+    minErrorCount,
+    questionKind: options.questionKind,
+    updatedSince: options.updatedSince
+  });
+  const statsWhere = {
+    ...baseWhere,
+    ...(typeof options.mastered === "boolean" ? { mastered: options.mastered } : {})
+  } satisfies Prisma.WrongNoteWhereInput;
+  const pageWhere = {
+    ...statsWhere,
+    ...(options.knowledgeNodeId
+      ? {
+          question: {
+            ...statsWhere.question,
+            knowledgeBindings: {
+              some: {
+                knowledgeNodeId: options.knowledgeNodeId
               }
             }
-          : {})
+          }
+        }
+      : {})
+  } satisfies Prisma.WrongNoteWhereInput;
+  const [totalItems, pendingCount, statNotes] = await Promise.all([
+    prisma.wrongNote.count({ where: pageWhere }),
+    prisma.wrongNote.count({ where: { ...baseWhere, mastered: false } }),
+    prisma.wrongNote.findMany({
+      where: statsWhere,
+      include: {
+        question: {
+          include: {
+            knowledgeBindings: {
+              include: {
+                knowledgeNode: true
+              }
+            }
+          }
+        }
       }
-    },
+    })
+  ]);
+  const pagination = buildPagination(options, totalItems);
+  const notes = await prisma.wrongNote.findMany({
+    where: pageWhere,
     orderBy: [{ updatedAt: "desc" }],
     include: {
       question: {
@@ -682,27 +718,88 @@ export async function listWrongNotes(userId: string, options: WrongNoteFilters =
           }
         }
       }
-    }
+    },
+    skip: pagination.skip,
+    take: pagination.take
   });
 
-  return notes.map((note) => ({
-    id: note.id,
-    questionId: note.questionId,
-    mastered: note.mastered,
-    mistakeTags: note.mistakeTags,
-    userNotes: note.userNotes,
-    manualCollectedAt: note.manualCollectedAt,
-    errorCount: note.errorCount,
-    updatedAt: note.updatedAt,
-    aiAnalysis: note.aiAnalysis,
-    stem: note.question.versions[0]?.stem ?? note.question.stem,
-    explanation: note.question.versions[0]?.explanation ?? note.question.explanation,
-    correctAnswer: formatAnswerValue(readObjectiveAnswerKey(note.question.versions[0]?.answerKey ?? note.question.answerKey)),
-    knowledgeNodes: note.question.knowledgeBindings.map((binding) => ({
-      id: binding.knowledgeNodeId,
-      title: binding.knowledgeNode.title
+  return {
+    pagination,
+    pendingCount,
+    summary: summarizeWrongNotes(
+      statNotes.map((note) => ({
+        mastered: note.mastered,
+        knowledgeNodes: note.question.knowledgeBindings.map((binding) => binding.knowledgeNode.title)
+      }))
+    ),
+    knowledgeOptions: listWrongNoteKnowledgeOptions(statNotes),
+    items: notes.map((note) => ({
+      id: note.id,
+      questionId: note.questionId,
+      mastered: note.mastered,
+      mistakeTags: note.mistakeTags,
+      userNotes: note.userNotes,
+      manualCollectedAt: note.manualCollectedAt,
+      errorCount: note.errorCount,
+      updatedAt: note.updatedAt,
+      aiAnalysis: note.aiAnalysis,
+      stem: note.question.versions[0]?.stem ?? note.question.stem,
+      explanation: note.question.versions[0]?.explanation ?? note.question.explanation,
+      correctAnswer: formatAnswerValue(readObjectiveAnswerKey(note.question.versions[0]?.answerKey ?? note.question.answerKey)),
+      knowledgeNodes: note.question.knowledgeBindings.map((binding) => ({
+        id: binding.knowledgeNodeId,
+        title: binding.knowledgeNode.title
+      }))
     }))
-  }));
+  };
+}
+
+function buildWrongNoteWhere(
+  userId: string,
+  input: {
+    minErrorCount?: number | null;
+    questionKind?: string | null;
+    updatedSince?: Date | null;
+  }
+) {
+  return {
+    userId,
+    errorCount: typeof input.minErrorCount === "number" ? { gte: input.minErrorCount } : { gt: 0 },
+    ...(input.updatedSince ? { updatedAt: { gte: input.updatedSince } } : {}),
+    question: {
+      ...(input.questionKind ? { kind: input.questionKind as never } : {})
+    }
+  } satisfies Prisma.WrongNoteWhereInput;
+}
+
+function listWrongNoteKnowledgeOptions(
+  notes: {
+    question: {
+      knowledgeBindings: {
+        knowledgeNodeId: string;
+        knowledgeNode: {
+          title: string;
+        };
+      }[];
+    };
+  }[]
+) {
+  const counts = new Map<string, { id: string; title: string; count: number }>();
+
+  for (const note of notes) {
+    for (const binding of note.question.knowledgeBindings) {
+      const current = counts.get(binding.knowledgeNodeId) ?? {
+        id: binding.knowledgeNodeId,
+        title: binding.knowledgeNode.title,
+        count: 0
+      };
+
+      current.count += 1;
+      counts.set(binding.knowledgeNodeId, current);
+    }
+  }
+
+  return [...counts.values()].sort((left, right) => right.count - left.count || left.title.localeCompare(right.title, "zh-CN"));
 }
 
 export async function syncWrongNoteForObjectiveAnswer(
@@ -969,25 +1066,51 @@ export function summarizeWrongNotes(notes: { mastered: boolean; knowledgeNodes: 
 export type ConsolidationNoteFilters = {
   mastered?: boolean;
   knowledgeNodeId?: string | null;
+  page?: string | number | null;
+  pageSize?: string | number | null;
 };
 
 export async function listConsolidationNotes(userId: string, options: ConsolidationNoteFilters = {}) {
-  const notes = await prisma.consolidationNote.findMany({
-    where: {
-      userId,
-      ...(typeof options.mastered === "boolean" ? { mastered: options.mastered } : {}),
-      question: {
-        ...(options.knowledgeNodeId
-          ? {
-              knowledgeBindings: {
-                some: {
-                  knowledgeNodeId: options.knowledgeNodeId
-                }
+  const baseWhere = { userId } satisfies Prisma.ConsolidationNoteWhereInput;
+  const statsWhere = {
+    ...baseWhere,
+    ...(typeof options.mastered === "boolean" ? { mastered: options.mastered } : {})
+  } satisfies Prisma.ConsolidationNoteWhereInput;
+  const pageWhere = {
+    ...statsWhere,
+    ...(options.knowledgeNodeId
+      ? {
+          question: {
+            knowledgeBindings: {
+              some: {
+                knowledgeNodeId: options.knowledgeNodeId
               }
             }
-          : {})
+          }
+        }
+      : {})
+  } satisfies Prisma.ConsolidationNoteWhereInput;
+  const [totalItems, pendingCount, statNotes] = await Promise.all([
+    prisma.consolidationNote.count({ where: pageWhere }),
+    prisma.consolidationNote.count({ where: { ...baseWhere, mastered: false } }),
+    prisma.consolidationNote.findMany({
+      where: statsWhere,
+      include: {
+        question: {
+          include: {
+            knowledgeBindings: {
+              include: {
+                knowledgeNode: true
+              }
+            }
+          }
+        }
       }
-    },
+    })
+  ]);
+  const pagination = buildPagination(options, totalItems);
+  const notes = await prisma.consolidationNote.findMany({
+    where: pageWhere,
     orderBy: [{ updatedAt: "desc" }],
     include: {
       attemptAnswer: {
@@ -1008,10 +1131,22 @@ export async function listConsolidationNotes(userId: string, options: Consolidat
           }
         }
       }
-    }
+    },
+    skip: pagination.skip,
+    take: pagination.take
   });
 
-  return notes.map((note) => {
+  return {
+    pagination,
+    pendingCount,
+    summary: summarizeConsolidationNotes(
+      statNotes.map((note) => ({
+        mastered: note.mastered,
+        knowledgeNodes: note.question.knowledgeBindings.map((binding) => binding.knowledgeNode.title)
+      }))
+    ),
+    knowledgeOptions: listWrongNoteKnowledgeOptions(statNotes),
+    items: notes.map((note) => {
     const version = note.attemptAnswer?.questionVersion ?? note.question.versions[0] ?? null;
 
     return {
@@ -1030,7 +1165,8 @@ export async function listConsolidationNotes(userId: string, options: Consolidat
         title: binding.knowledgeNode.title
       }))
     };
-  });
+  })
+  };
 }
 
 export async function setConsolidationNoteMastered(userId: string, consolidationNoteId: string, mastered: boolean) {

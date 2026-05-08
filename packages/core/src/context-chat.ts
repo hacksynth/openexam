@@ -2,6 +2,7 @@ import { AiTaskType, Prisma } from "@prisma/client";
 import { assertAiUsageAllowed, generateAiText, resolveAiCredential, resolveTaskAiPreset, type AiTextGenerator, type AiTextInputPart } from "./ai";
 import { formatGoalPath } from "./exam-core";
 import { readMaterialText } from "./materials";
+import { buildPagination, type PaginationInput } from "./pagination";
 import { formatAnswerValue, readObjectiveAnswerKey, readSingleChoiceOptions, readSubmittedAnswer } from "./practice";
 import { prisma } from "./prisma";
 
@@ -17,9 +18,12 @@ export type ContextChatContextType = (typeof contextChatContextTypes)[number];
 const promptVersion = "context-chat-v1";
 const defaultMaxOutputTokens = 1000;
 
-export async function listContextChatThreads(userId: string, db: ChatDatabase = prisma) {
+export async function listContextChatThreads(userId: string, options: PaginationInput = {}, db: ChatDatabase = prisma) {
+  const where = { userId };
+  const totalItems = await db.aiChatThread.count({ where });
+  const pagination = buildPagination(options, totalItems);
   const threads = await db.aiChatThread.findMany({
-    where: { userId },
+    where,
     include: {
       messages: {
         orderBy: [{ createdAt: "desc" }],
@@ -27,19 +31,23 @@ export async function listContextChatThreads(userId: string, db: ChatDatabase = 
       }
     },
     orderBy: [{ updatedAt: "desc" }],
-    take: 30
+    skip: pagination.skip,
+    take: pagination.take
   });
 
-  return threads.map((thread) => ({
-    id: thread.id,
-    title: thread.title,
-    contextType: thread.contextType,
-    contextId: thread.contextId,
-    inputContextSource: thread.inputContextSource,
-    lastMessage: thread.messages[0]?.content ?? null,
-    createdAt: thread.createdAt,
-    updatedAt: thread.updatedAt
-  }));
+  return {
+    pagination,
+    items: threads.map((thread) => ({
+      id: thread.id,
+      title: thread.title,
+      contextType: thread.contextType,
+      contextId: thread.contextId,
+      inputContextSource: thread.inputContextSource,
+      lastMessage: thread.messages[0]?.content ?? null,
+      createdAt: thread.createdAt,
+      updatedAt: thread.updatedAt
+    }))
+  };
 }
 
 export async function getContextChatThread(userId: string, threadId: string, db: ChatDatabase = prisma) {

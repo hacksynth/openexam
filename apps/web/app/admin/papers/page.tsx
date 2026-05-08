@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { Route } from "next";
 import { AppShell } from "@/components/app-shell";
+import { PaginationHeader, PaginationNav } from "@/components/pagination";
 import { requireAdminSession } from "@/lib/auth";
 import { listKnowledgeHierarchy } from "@openexam/core/exam-core";
 import { FeedbackMessage, PixelChoice, SelectField, SubmitButton, TextField } from "@openexam/core/pixel-ui";
@@ -22,6 +23,8 @@ type AdminPapersPageProps = {
     paperType?: string;
     visibility?: string;
     archived?: string;
+    page?: string;
+    pageSize?: string;
   }>;
 };
 
@@ -47,7 +50,7 @@ const archivedLabels: Record<string, string> = {
 export default async function AdminPapersPage({ searchParams }: AdminPapersPageProps) {
   await requireAdminSession();
   const params = await searchParams;
-  const [subjects, questionOptions, papers] = await Promise.all([listKnowledgeHierarchy(), listAdminPaperQuestionOptions(), listAdminPapers(params)]);
+  const [subjects, questionOptions, paperState] = await Promise.all([listKnowledgeHierarchy(), listAdminPaperQuestionOptions(), listAdminPapers(params)]);
   const subjectOptions = subjects.map((subject) => ({
     id: subject.id,
     label: `${subject.cycle.track.program.name} / ${subject.cycle.track.name} / ${subject.cycle.name} / ${subject.name}`
@@ -64,6 +67,8 @@ export default async function AdminPapersPage({ searchParams }: AdminPapersPageP
             <h2 className="mt-1 text-xl font-black">试卷筛选</h2>
           </div>
           <form className="grid gap-3 lg:grid-cols-[1.2fr_1.6fr_1fr_1fr_0.9fr_auto_auto]">
+            <input name="page" type="hidden" value="1" />
+            {params.pageSize ? <input name="pageSize" type="hidden" value={params.pageSize} /> : null}
             <TextField label="关键词" name="q" defaultValue={params.q ?? ""} placeholder="标题" />
             <SelectField label="科目" name="subjectId" defaultValue={params.subjectId ?? ""}>
               <option value="">全部科目</option>
@@ -120,15 +125,16 @@ export default async function AdminPapersPage({ searchParams }: AdminPapersPageP
         <section className="grid gap-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-2xl font-black">试卷列表</h2>
-            <span className="status-chip px-2 py-1">当前 {papers.length} 套</span>
+            <span className="status-chip px-2 py-1">共 {paperState.pagination.totalItems} 套</span>
           </div>
-          {papers.length === 0 ? (
+          <PaginationHeader basePath="/admin/papers" itemLabel="套" pagination={paperState.pagination} params={params} />
+          {paperState.items.length === 0 ? (
             <section className="pixel-panel p-5">
               <h2 className="text-2xl font-black">暂无试卷</h2>
               <p className="mt-1 font-bold text-[var(--muted)]">创建公开试卷后，学习端会按当前考试目标展示可作答试卷。</p>
             </section>
           ) : (
-            papers.map((paper) => (
+            paperState.items.map((paper) => (
               <section key={paper.id} className="pixel-panel grid gap-4 p-5">
                 <div>
                   <div className="mb-3 flex flex-wrap gap-2">
@@ -159,6 +165,7 @@ export default async function AdminPapersPage({ searchParams }: AdminPapersPageP
               </section>
             ))
           )}
+          <PaginationNav basePath="/admin/papers" pagination={paperState.pagination} params={params} />
         </section>
       </section>
     </AppShell>
@@ -175,7 +182,7 @@ function PaperForm({
 }: {
   action: (formData: FormData) => void;
   id?: string;
-  paper?: Awaited<ReturnType<typeof listAdminPapers>>[number];
+  paper?: Awaited<ReturnType<typeof listAdminPapers>>["items"][number];
   subjectOptions: { id: string; label: string }[];
   questionOptions: Awaited<ReturnType<typeof listAdminPaperQuestionOptions>>;
   submitLabel: string;

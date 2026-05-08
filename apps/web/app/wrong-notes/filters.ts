@@ -14,11 +14,15 @@ export function wrongNoteHref({
   filter,
   knowledgeNodeId,
   minErrorCount,
+  page,
+  pageSize,
   questionKind
 }: {
   filter: string;
   knowledgeNodeId: string;
   minErrorCount?: string;
+  page?: string | number;
+  pageSize?: string | number;
   questionKind?: string;
 }) {
   const params = new URLSearchParams();
@@ -35,6 +39,14 @@ export function wrongNoteHref({
 
   if (questionKind) {
     params.set("questionKind", questionKind);
+  }
+
+  if (page) {
+    params.set("page", String(page));
+  }
+
+  if (pageSize) {
+    params.set("pageSize", String(pageSize));
   }
 
   return `/wrong-notes?${params.toString()}`;

@@ -2,6 +2,7 @@ import { AiTaskType, Prisma, QuestionKind, ReviewStatus, SourceType, Visibility 
 import { assertAiUsageAllowed, generateAiText, resolveAiCredential, resolveTaskAiPreset, type AiTextGenerator } from "./ai";
 import { getLearningAnalysis } from "./analysis";
 import { validateExtractedQuestionsJson, type ExtractedMaterialQuestion, materialQuestionKinds } from "./materials";
+import { buildPagination, type PaginationInput } from "./pagination";
 import { singleChoiceAnswerKeys } from "./question-admin";
 import { prisma } from "./prisma";
 
@@ -20,40 +21,47 @@ export type GeneratePracticeQuestionsInput = {
   knowledgeNodeId?: string | null;
 };
 
-export async function listGeneratedQuestionBatches(userId: string, db: GeneratedQuestionDatabase = prisma) {
+export async function listGeneratedQuestionBatches(userId: string, options: PaginationInput = {}, db: GeneratedQuestionDatabase = prisma) {
+  const where = { userId };
+  const totalItems = await db.generatedQuestionBatch.count({ where });
+  const pagination = buildPagination(options, totalItems);
   const batches = await db.generatedQuestionBatch.findMany({
-    where: { userId },
+    where,
     include: {
       candidates: {
         orderBy: [{ createdAt: "asc" }]
       }
     },
     orderBy: [{ createdAt: "desc" }],
-    take: 20
+    skip: pagination.skip,
+    take: pagination.take
   });
 
-  return batches.map((batch) => ({
-    id: batch.id,
-    prompt: batch.prompt,
-    goalPath: batch.goalPath,
-    status: batch.status,
-    errorSummary: batch.errorSummary,
-    aiCallId: batch.aiCallId,
-    createdAt: batch.createdAt,
-    candidates: batch.candidates.map((candidate) => ({
-      id: candidate.id,
-      kind: candidate.kind,
-      stem: candidate.stem,
-      payload: candidate.payload,
-      answerKey: candidate.answerKey,
-      explanation: candidate.explanation,
-      difficulty: candidate.difficulty,
-      knowledgeNodeId: candidate.knowledgeNodeId,
-      sourceRef: candidate.sourceRef,
-      status: candidate.status,
-      confirmedQuestionId: candidate.confirmedQuestionId
+  return {
+    pagination,
+    items: batches.map((batch) => ({
+      id: batch.id,
+      prompt: batch.prompt,
+      goalPath: batch.goalPath,
+      status: batch.status,
+      errorSummary: batch.errorSummary,
+      aiCallId: batch.aiCallId,
+      createdAt: batch.createdAt,
+      candidates: batch.candidates.map((candidate) => ({
+        id: candidate.id,
+        kind: candidate.kind,
+        stem: candidate.stem,
+        payload: candidate.payload,
+        answerKey: candidate.answerKey,
+        explanation: candidate.explanation,
+        difficulty: candidate.difficulty,
+        knowledgeNodeId: candidate.knowledgeNodeId,
+        sourceRef: candidate.sourceRef,
+        status: candidate.status,
+        confirmedQuestionId: candidate.confirmedQuestionId
+      }))
     }))
-  }));
+  };
 }
 
 export async function generatePracticeQuestionCandidates(

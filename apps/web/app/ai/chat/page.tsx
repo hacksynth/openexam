@@ -1,20 +1,21 @@
 import Link from "next/link";
 import type { Route } from "next";
 import { AppShell } from "@/components/app-shell";
+import { PaginationHeader, PaginationNav } from "@/components/pagination";
 import { requireWebSession } from "@/lib/auth";
 import { getContextChatThread, listContextChatThreads } from "@openexam/core/context-chat";
 import { FeedbackMessage, SubmitButton, TextareaField } from "@openexam/core/pixel-ui";
 import { sendContextChatMessageAction } from "./actions";
 
 type ChatPageProps = {
-  searchParams: Promise<{ thread?: string; contextType?: string; contextId?: string; error?: string; notice?: string }>;
+  searchParams: Promise<{ thread?: string; contextType?: string; contextId?: string; error?: string; notice?: string; page?: string; pageSize?: string }>;
 };
 
 export default async function ContextChatPage({ searchParams }: ChatPageProps) {
   const session = await requireWebSession();
   const params = await searchParams;
   const [threads, activeThread] = await Promise.all([
-    listContextChatThreads(session.user.id),
+    listContextChatThreads(session.user.id, params),
     params.thread ? getContextChatThread(session.user.id, params.thread) : Promise.resolve(null)
   ]);
   const contextReady = Boolean(activeThread || (params.contextType && params.contextId));
@@ -67,11 +68,12 @@ export default async function ContextChatPage({ searchParams }: ChatPageProps) {
             <p className="text-xs font-bold uppercase text-[var(--muted)]">Threads</p>
             <h2 className="mt-1 text-xl font-black">最近对话</h2>
           </div>
-          {threads.length === 0 ? (
+          <PaginationHeader basePath="/ai/chat" itemLabel="个" pagination={threads.pagination} params={params} />
+          {threads.items.length === 0 ? (
             <p className="border-2 border-black bg-[var(--surface-subtle)] p-3 text-sm font-bold text-[var(--muted)]">暂无上下文对话。</p>
           ) : (
             <div className="grid gap-3">
-              {threads.map((thread) => (
+              {threads.items.map((thread) => (
                 <Link key={thread.id} href={`/ai/chat?thread=${encodeURIComponent(thread.id)}` as Route} className="border-2 border-black bg-white p-3 hover:bg-[var(--primary)]">
                   <span className="block font-black">{thread.title}</span>
                   <span className="mt-1 block text-xs font-bold text-[var(--muted)]">{thread.inputContextSource}</span>
@@ -80,6 +82,7 @@ export default async function ContextChatPage({ searchParams }: ChatPageProps) {
               ))}
             </div>
           )}
+          <PaginationNav basePath="/ai/chat" pagination={threads.pagination} params={params} />
         </section>
       </section>
     </AppShell>

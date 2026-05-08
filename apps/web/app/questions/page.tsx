@@ -3,12 +3,15 @@ import type { Route } from "next";
 import { listUserQuestionBank, userQuestionBankSourceFilters } from "@openexam/core/question-bank";
 import { SelectField, SubmitButton } from "@openexam/core/pixel-ui";
 import { AppShell } from "@/components/app-shell";
+import { PaginationHeader, PaginationNav } from "@/components/pagination";
 import { requireWebSession } from "@/lib/auth";
 
 type QuestionsPageProps = {
   searchParams: Promise<{
     sourceType?: string;
     materialId?: string;
+    page?: string;
+    pageSize?: string;
   }>;
 };
 
@@ -50,10 +53,12 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
               <p className="text-xs font-bold uppercase text-[var(--muted)]">Question Bank</p>
               <h2 className="mt-1 text-xl font-black">{state.material ? state.material.title : "我的私有题"}</h2>
             </div>
-            <span className="status-chip px-2 py-1">当前 {state.questions.length} 题</span>
+            <span className="status-chip px-2 py-1">共 {state.pagination.totalItems} 题</span>
           </div>
           <form className="flex flex-wrap items-end gap-3">
             {params.materialId ? <input name="materialId" type="hidden" value={params.materialId} /> : null}
+            <input name="page" type="hidden" value="1" />
+            {params.pageSize ? <input name="pageSize" type="hidden" value={params.pageSize} /> : null}
             <SelectField label="来源" name="sourceType" defaultValue={state.sourceType}>
               {userQuestionBankSourceFilters.map((sourceType) => (
                 <option key={sourceType} value={sourceType}>
@@ -67,6 +72,8 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
             </Link>
           </form>
         </section>
+
+        <PaginationHeader basePath="/questions" itemLabel="题" pagination={state.pagination} params={params} />
 
         {state.materialUnavailable ? (
           <section className="pixel-panel p-5">
@@ -109,6 +116,7 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
             ))}
           </section>
         )}
+        <PaginationNav basePath="/questions" pagination={state.pagination} params={params} />
       </section>
     </AppShell>
   );

@@ -1,5 +1,6 @@
 import { Prisma, type Visibility } from "@prisma/client";
 import { validateSlug } from "./exam-core";
+import { buildPagination, type PaginationInput } from "./pagination";
 import { prisma } from "./prisma";
 
 type ActionResult<T = undefined> = T extends undefined
@@ -18,6 +19,8 @@ export type AdminPaperFilters = {
   paperType?: string | null;
   visibility?: string | null;
   archived?: string | null;
+  page?: string | number | null;
+  pageSize?: string | number | null;
 };
 
 export type PaperQuestionInput = {
@@ -103,14 +106,20 @@ export function normalizeAdminPaperFilters(filters: AdminPaperFilters = {}) {
 
 export async function listAdminPapers(filters: AdminPaperFilters = {}) {
   const where = buildAdminPaperWhere(filters);
+  const totalItems = await prisma.paper.count({ where });
+  const pagination = buildPagination(filters, totalItems);
   const papers = await prisma.paper.findMany({
     where,
     include: adminPaperInclude,
     orderBy: [{ updatedAt: "desc" }],
-    take: 100
+    skip: pagination.skip,
+    take: pagination.take
   });
 
-  return papers.map(toAdminPaper);
+  return {
+    pagination,
+    items: papers.map(toAdminPaper)
+  };
 }
 
 export function buildAdminPaperWhere(filters: AdminPaperFilters = {}) {

@@ -12,6 +12,7 @@ import {
   type QuestionSourceType,
   type QuestionVisibility
 } from "./question-governance";
+import { buildPagination, type PaginationInput } from "./pagination";
 import { prisma } from "./prisma";
 
 type ActionResult<T = undefined> = T extends undefined
@@ -38,6 +39,8 @@ export type AdminQuestionFilters = {
   reviewStatus?: string | null;
   difficulty?: string | number | null;
   archived?: string | null;
+  page?: string | number | null;
+  pageSize?: string | number | null;
 };
 
 export type AdminQuestionInput = {
@@ -179,14 +182,20 @@ export async function listAdminQuestions(filters: AdminQuestionFilters = {}) {
     ...(typeof normalized.difficulty === "number" ? { difficulty: normalized.difficulty } : {})
   };
 
+  const totalItems = await prisma.question.count({ where });
+  const pagination = buildPagination(filters, totalItems);
   const questions = await prisma.question.findMany({
     where,
     include: adminQuestionInclude,
     orderBy: [{ updatedAt: "desc" }],
-    take: 100
+    skip: pagination.skip,
+    take: pagination.take
   });
 
-  return questions.map(toAdminQuestion);
+  return {
+    pagination,
+    items: questions.map(toAdminQuestion)
+  };
 }
 
 export async function createAdminQuestion(input: AdminQuestionInput): Promise<ActionResult> {

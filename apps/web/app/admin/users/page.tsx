@@ -1,10 +1,16 @@
 import { AppShell } from "@/components/app-shell";
+import { PaginationHeader, PaginationNav } from "@/components/pagination";
 import { requireAdminSession } from "@/lib/auth";
 import { listAdminUsersWithAiUsage } from "@openexam/core/users";
 
-export default async function AdminUsersPage() {
+type AdminUsersPageProps = {
+  searchParams: Promise<{ page?: string; pageSize?: string }>;
+};
+
+export default async function AdminUsersPage({ searchParams }: AdminUsersPageProps) {
   await requireAdminSession();
-  const users = await listAdminUsersWithAiUsage();
+  const params = await searchParams;
+  const users = await listAdminUsersWithAiUsage(params);
 
   return (
     <AppShell section="admin" eyebrow="用户与用量" title="用户">
@@ -12,14 +18,15 @@ export default async function AdminUsersPage() {
         <section className="grid gap-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-2xl font-black">用户列表</h2>
-            <span className="status-chip px-2 py-1">当前 {users.length} 人</span>
+            <span className="status-chip px-2 py-1">共 {users.pagination.totalItems} 人</span>
           </div>
-          {users.length === 0 ? (
+          <PaginationHeader basePath="/admin/users" itemLabel="人" pagination={users.pagination} params={params} />
+          {users.items.length === 0 ? (
             <section className="pixel-panel p-5">
               <h2 className="text-2xl font-black">暂无用户</h2>
             </section>
           ) : (
-            users.map((user) => (
+            users.items.map((user) => (
               <article key={user.id} className="pixel-panel grid gap-3 p-5">
                 <div className="flex flex-wrap gap-2">
                   <span className="status-chip px-2 py-1">{user.role === "admin" ? "管理员" : "学习者"}</span>
@@ -37,6 +44,7 @@ export default async function AdminUsersPage() {
               </article>
             ))
           )}
+          <PaginationNav basePath="/admin/users" pagination={users.pagination} params={params} />
         </section>
       </section>
     </AppShell>

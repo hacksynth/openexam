@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { Route } from "next";
 import { AppShell } from "@/components/app-shell";
+import { PaginationHeader, PaginationNav } from "@/components/pagination";
 import { requireWebSession } from "@/lib/auth";
 import { getLearningAnalysis } from "@openexam/core/analysis";
 import { listKnowledgeHierarchy } from "@openexam/core/exam-core";
@@ -9,12 +10,13 @@ import { FeedbackMessage, SelectField, SubmitButton, TextareaField, TextField } 
 import { confirmGeneratedQuestionCandidateAction, generatePracticeQuestionCandidatesAction, rejectGeneratedQuestionCandidateAction } from "./actions";
 
 type GeneratePracticePageProps = {
-  searchParams: Promise<{ error?: string; notice?: string }>;
+  searchParams: Promise<{ error?: string; notice?: string; page?: string; pageSize?: string }>;
 };
 
 export default async function GeneratePracticePage({ searchParams }: GeneratePracticePageProps) {
   const session = await requireWebSession();
-  const [params, batches, subjects, analysis] = await Promise.all([searchParams, listGeneratedQuestionBatches(session.user.id), listKnowledgeHierarchy(), getLearningAnalysis(session.user.id)]);
+  const params = await searchParams;
+  const [batches, subjects, analysis] = await Promise.all([listGeneratedQuestionBatches(session.user.id, params), listKnowledgeHierarchy(), getLearningAnalysis(session.user.id)]);
   const knowledgeOptions =
     analysis.status === "ready"
       ? subjects
@@ -72,13 +74,14 @@ export default async function GeneratePracticePage({ searchParams }: GeneratePra
               去练习
             </Link>
           </div>
-          {batches.length === 0 ? (
+          <PaginationHeader basePath="/practice/generate" itemLabel="批" pagination={batches.pagination} params={params} />
+          {batches.items.length === 0 ? (
             <section className="pixel-panel p-5">
               <h2 className="text-2xl font-black">暂无候选题</h2>
               <p className="mt-1 font-bold text-[var(--muted)]">生成后的题目需要确认，确认前不会进入练习。</p>
             </section>
           ) : (
-            batches.map((batch) => (
+            batches.items.map((batch) => (
               <article key={batch.id} className="pixel-panel grid gap-4 p-5">
                 <div className="flex flex-wrap gap-2">
                   <span className="status-chip px-2 py-1">{statusLabel(batch.status)}</span>
@@ -128,6 +131,7 @@ export default async function GeneratePracticePage({ searchParams }: GeneratePra
               </article>
             ))
           )}
+          <PaginationNav basePath="/practice/generate" pagination={batches.pagination} params={params} />
         </section>
       </section>
     </AppShell>

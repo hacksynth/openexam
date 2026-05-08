@@ -1,13 +1,14 @@
 import Link from "next/link";
 import type { Route } from "next";
 import { AppShell } from "@/components/app-shell";
+import { PaginationHeader, PaginationNav } from "@/components/pagination";
 import { requireAdminSession } from "@/lib/auth";
 import { listJobs } from "@openexam/core/jobs";
 import { FeedbackMessage, SubmitButton } from "@openexam/core/pixel-ui";
 import { processJobAction, processNextJobAction, recoverStaleJobsAction, retryJobAction } from "./actions";
 
 type AdminJobsPageProps = {
-  searchParams: Promise<{ error?: string; notice?: string; status?: string }>;
+  searchParams: Promise<{ error?: string; notice?: string; page?: string; pageSize?: string; status?: string }>;
 };
 
 const statusOptions = [
@@ -21,7 +22,7 @@ const statusOptions = [
 export default async function AdminJobsPage({ searchParams }: AdminJobsPageProps) {
   await requireAdminSession();
   const params = await searchParams;
-  const jobs = await listJobs({ status: params.status });
+  const jobs = await listJobs({ page: params.page, pageSize: params.pageSize, status: params.status });
 
   return (
     <AppShell section="admin" eyebrow="任务队列" title="任务">
@@ -43,7 +44,7 @@ export default async function AdminJobsPage({ searchParams }: AdminJobsPageProps
           </div>
           <div className="flex flex-wrap gap-2">
             {statusOptions.map((option) => (
-              <Link key={option.value || "all"} href={(option.value ? `/admin/jobs?status=${option.value}` : "/admin/jobs") as Route} className={`status-chip px-3 py-2 ${params.status === option.value || (!params.status && !option.value) ? "bg-[var(--primary)]" : ""}`}>
+              <Link key={option.value || "all"} href={(option.value ? `/admin/jobs?status=${option.value}&page=1${params.pageSize ? `&pageSize=${params.pageSize}` : ""}` : `/admin/jobs?page=1${params.pageSize ? `&pageSize=${params.pageSize}` : ""}`) as Route} className={`status-chip px-3 py-2 ${params.status === option.value || (!params.status && !option.value) ? "bg-[var(--primary)]" : ""}`}>
                 {option.label}
               </Link>
             ))}
@@ -53,15 +54,16 @@ export default async function AdminJobsPage({ searchParams }: AdminJobsPageProps
         <section className="grid gap-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-2xl font-black">任务列表</h2>
-            <span className="status-chip px-2 py-1">当前 {jobs.length} 条</span>
+            <span className="status-chip px-2 py-1">共 {jobs.pagination.totalItems} 条</span>
           </div>
-          {jobs.length === 0 ? (
+          <PaginationHeader basePath="/admin/jobs" itemLabel="条" pagination={jobs.pagination} params={params} />
+          {jobs.items.length === 0 ? (
             <section className="pixel-panel p-5">
               <h2 className="text-2xl font-black">暂无任务</h2>
               <p className="mt-1 font-bold text-[var(--muted)]">上传资料或生成错题复习卡后会创建任务。</p>
             </section>
           ) : (
-            jobs.map((job) => (
+            jobs.items.map((job) => (
               <article key={job.id} className="pixel-panel grid gap-3 p-5">
                 <div className="flex flex-wrap gap-2">
                   <span className={`status-chip px-2 py-1 ${job.status === "failed" ? "bg-[var(--danger)] text-white" : job.status === "succeeded" ? "bg-[var(--teal)]" : ""}`}>
@@ -103,6 +105,7 @@ export default async function AdminJobsPage({ searchParams }: AdminJobsPageProps
               </article>
             ))
           )}
+          <PaginationNav basePath="/admin/jobs" pagination={jobs.pagination} params={params} />
         </section>
       </section>
     </AppShell>

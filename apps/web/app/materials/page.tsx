@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { Route } from "next";
 import { AppShell } from "@/components/app-shell";
+import { PaginationHeader, PaginationNav } from "@/components/pagination";
 import { requireWebSession } from "@/lib/auth";
 import { listKnowledgeHierarchy } from "@openexam/core/exam-core";
 import { listUserMaterials } from "@openexam/core/materials";
@@ -8,12 +9,13 @@ import { FeedbackMessage, SelectField, SubmitButton, TextField } from "@openexam
 import { uploadMaterialAction } from "./actions";
 
 type MaterialsPageProps = {
-  searchParams: Promise<{ error?: string; notice?: string }>;
+  searchParams: Promise<{ error?: string; notice?: string; page?: string; pageSize?: string }>;
 };
 
 export default async function MaterialsPage({ searchParams }: MaterialsPageProps) {
   const session = await requireWebSession();
-  const [params, materials, subjects] = await Promise.all([searchParams, listUserMaterials(session.user.id), listKnowledgeHierarchy()]);
+  const params = await searchParams;
+  const [materials, subjects] = await Promise.all([listUserMaterials(session.user.id, params), listKnowledgeHierarchy()]);
   const subjectOptions = subjects.map((subject) => ({
     id: subject.id,
     label: `${subject.cycle.track.program.name} / ${subject.cycle.track.name} / ${subject.cycle.name} / ${subject.name}`
@@ -56,15 +58,16 @@ export default async function MaterialsPage({ searchParams }: MaterialsPageProps
         <section className="grid gap-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-2xl font-black">我的资料</h2>
-            <span className="status-chip px-2 py-1">当前 {materials.length} 份</span>
+            <span className="status-chip px-2 py-1">共 {materials.pagination.totalItems} 份</span>
           </div>
-          {materials.length === 0 ? (
+          <PaginationHeader basePath="/materials" itemLabel="份" pagination={materials.pagination} params={params} />
+          {materials.items.length === 0 ? (
             <section className="pixel-panel p-5">
               <h2 className="text-2xl font-black">暂无资料</h2>
               <p className="mt-1 font-bold text-[var(--muted)]">上传 TXT、Markdown、JSON、PDF、DOCX 或图片后，后台可处理抽题任务并确认候选题。</p>
             </section>
           ) : (
-            materials.map((material) => (
+            materials.items.map((material) => (
               <article key={material.id} className="pixel-panel grid gap-3 p-5">
                 <div className="flex flex-wrap gap-2">
                   <span className="status-chip px-2 py-1">{stateLabel(material.extractionState)}</span>
@@ -104,6 +107,7 @@ export default async function MaterialsPage({ searchParams }: MaterialsPageProps
               </article>
             ))
           )}
+          <PaginationNav basePath="/materials" pagination={materials.pagination} params={params} />
         </section>
       </section>
     </AppShell>

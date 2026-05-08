@@ -8,6 +8,7 @@ import { PDFParse } from "pdf-parse";
 import { extractJsonObject, materialQuestionExtractionSchema } from "./ai-output-schemas";
 import type { AiTextInputPart } from "./ai";
 import { readEnv } from "./env";
+import { buildPagination, type PaginationInput } from "./pagination";
 import { prisma } from "./prisma";
 import { singleChoiceAnswerKeys, type SingleChoiceAnswerKey } from "./question-admin";
 import {
@@ -228,37 +229,50 @@ export async function uploadMaterial(userId: string, input: UploadMaterialInput,
   }
 }
 
-export async function listUserMaterials(userId: string, db: MaterialDatabase = prisma) {
+export async function listUserMaterials(userId: string, options: PaginationInput = {}, db: MaterialDatabase = prisma) {
+  const where = { ownerId: userId, libraryScope: "personal" } satisfies Prisma.MaterialWhereInput;
+  const totalItems = await db.material.count({ where });
+  const pagination = buildPagination(options, totalItems);
   const materials = await db.material.findMany({
-    where: { ownerId: userId, libraryScope: "personal" },
+    where,
     include: {
       candidates: true
     },
     orderBy: [{ createdAt: "desc" }],
-    take: 100
+    skip: pagination.skip,
+    take: pagination.take
   });
   const jobs = await listMaterialJobs(materials.map((material) => material.id), db);
 
-  return materials.map((material) => toMaterialView(material, jobs.get(material.id)));
+  return {
+    pagination,
+    items: materials.map((material) => toMaterialView(material, jobs.get(material.id)))
+  };
 }
 
-export async function listAdminMaterials(db: MaterialDatabase = prisma) {
+export async function listAdminMaterials(options: PaginationInput = {}, db: MaterialDatabase = prisma) {
+  const totalItems = await db.material.count();
+  const pagination = buildPagination(options, totalItems);
   const materials = await db.material.findMany({
     include: {
       owner: true,
       candidates: true
     },
     orderBy: [{ createdAt: "desc" }],
-    take: 100
+    skip: pagination.skip,
+    take: pagination.take
   });
   const jobs = await listMaterialJobs(materials.map((material) => material.id), db);
 
-  return materials.map((material) => ({
-    ...toMaterialView(material, jobs.get(material.id)),
-    libraryScope: material.libraryScope,
-    ownerEmail: material.owner.email,
-    ownerName: material.owner.name
-  }));
+  return {
+    pagination,
+    items: materials.map((material) => ({
+      ...toMaterialView(material, jobs.get(material.id)),
+      libraryScope: material.libraryScope,
+      ownerEmail: material.owner.email,
+      ownerName: material.owner.name
+    }))
+  };
 }
 
 export async function listMaterialQuestionCandidates(materialId: string | undefined, db: MaterialDatabase = prisma) {
