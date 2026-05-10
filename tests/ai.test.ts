@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   buildWrongNotePrompt,
   decryptAiSecret,
@@ -9,8 +9,10 @@ import {
   generateWrongNoteAiAnalysis,
   getUserAiSettings,
   getAdminAiCredentialSettings,
+  listUserAiProviderModels,
   modelForCredential,
   retryFailedAiCall,
+  saveAdminAiCredential,
   saveUserProviderKey,
   upsertAiProviderPreset,
   providerKeyHint,
@@ -309,6 +311,186 @@ describe("AI provider settings", () => {
         })
       })
     );
+  });
+
+  it("updates BYOK metadata without replacing a saved key when API key is blank", async () => {
+    const calls: { method: string; args?: unknown }[] = [];
+    const db = {
+      userProviderKey: {
+        findUnique: async (args: unknown) => {
+          calls.push({ method: "userProviderKey.findUnique", args });
+          return {
+            encryptedKey: "encrypted-existing",
+            keyHint: "sk-...ting",
+            baseUrl: "http://old.example/v1",
+            apiMode: "chat",
+            defaultModel: "old-model"
+          };
+        },
+        update: async (args: unknown) => {
+          calls.push({ method: "userProviderKey.update", args });
+          return args;
+        }
+      }
+    };
+
+    await expect(
+      saveUserProviderKey(
+        "user_1",
+        {
+          provider: "openai",
+          apiKey: "",
+          baseUrl: "http://new.example/v1",
+          apiMode: "responses",
+          defaultModel: "new-model"
+        },
+        db as never,
+        { AI_KEY_ENCRYPTION_SECRET: "test-secret" }
+      )
+    ).resolves.toEqual({ ok: true });
+
+    expect(calls).toContainEqual(
+      expect.objectContaining({
+        method: "userProviderKey.update",
+        args: expect.objectContaining({
+          data: {
+            baseUrl: "http://new.example/v1",
+            apiMode: "responses",
+            defaultModel: "new-model"
+          }
+        })
+      })
+    );
+    expect(calls.some((call) => call.method === "userProviderKey.upsert")).toBe(false);
+  });
+
+  it("requires a new BYOK key before saving when no key exists yet", async () => {
+    const db = {
+      userProviderKey: {
+        findUnique: async () => null
+      }
+    };
+
+    await expect(
+      saveUserProviderKey(
+        "user_1",
+        {
+          provider: "openai",
+          apiKey: "",
+          baseUrl: "http://127.0.0.1:8317/v1",
+          apiMode: "responses",
+          defaultModel: "gpt-5.5"
+        },
+        db as never,
+        { AI_KEY_ENCRYPTION_SECRET: "test-secret" }
+      )
+    ).resolves.toEqual({
+      ok: false,
+      error: "请先输入有效的 OpenAI API Key。"
+    });
+  });
+
+  it("reuses a saved BYOK key when listing models with a blank API key field", async () => {
+    const env = { AI_KEY_ENCRYPTION_SECRET: "test-secret" };
+    const encrypted = encryptAiSecret("sk-saved-key", env);
+    const db = {
+      userProviderKey: {
+        findUnique: async () => ({
+          encryptedKey: encrypted.ok ? encrypted.data.encrypted : "",
+          keyHint: "sk-...-key",
+          baseUrl: "http://saved.example/v1",
+          apiMode: "chat",
+          defaultModel: "saved-model"
+        })
+      }
+    };
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ data: [{ id: "gpt-test" }] }), {
+        headers: { "content-type": "application/json" },
+        status: 200
+      })
+    );
+
+    try {
+      await expect(
+        listUserAiProviderModels(
+          "user_1",
+          {
+            provider: "openai",
+            apiKey: "",
+            baseUrl: "http://form.example/v1",
+            apiMode: "responses"
+          },
+          db as never,
+          env
+        )
+      ).resolves.toEqual({
+        ok: true,
+        data: {
+          models: [{ id: "gpt-test", label: "gpt-test" }]
+        }
+      });
+      const [, init] = fetchSpy.mock.calls[0] ?? [];
+      const headers = init && "headers" in init ? new Headers(init.headers) : new Headers();
+
+      expect(fetchSpy.mock.calls[0]?.[0]).toBe("http://form.example/v1/models");
+      expect(headers.get("authorization")).toBe("Bearer sk-saved-key");
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it("updates admin credential metadata without replacing a saved platform key when API key is blank", async () => {
+    const calls: { method: string; args?: unknown }[] = [];
+    const db = {
+      adminAiCredential: {
+        findUnique: async (args: unknown) => {
+          calls.push({ method: "adminAiCredential.findUnique", args });
+          return {
+            encryptedKey: "encrypted-existing",
+            keyHint: "sk-...ting",
+            baseUrl: "http://old.example/v1",
+            apiMode: "chat",
+            defaultModel: "old-model"
+          };
+        },
+        update: async (args: unknown) => {
+          calls.push({ method: "adminAiCredential.update", args });
+          return args;
+        }
+      }
+    };
+
+    await expect(
+      saveAdminAiCredential(
+        {
+          provider: "openai",
+          apiKey: "",
+          baseUrl: "http://new.example/v1",
+          apiMode: "responses",
+          defaultModel: "new-model",
+          updatedById: "admin_1"
+        },
+        db as never,
+        { AI_KEY_ENCRYPTION_SECRET: "test-secret" }
+      )
+    ).resolves.toEqual({ ok: true });
+
+    expect(calls).toContainEqual(
+      expect.objectContaining({
+        method: "adminAiCredential.update",
+        args: expect.objectContaining({
+          data: {
+            baseUrl: "http://new.example/v1",
+            apiMode: "responses",
+            defaultModel: "new-model",
+            lastTestedModel: "new-model",
+            updatedById: "admin_1"
+          }
+        })
+      })
+    );
+    expect(calls.some((call) => call.method === "adminAiCredential.upsert")).toBe(false);
   });
 
   it("uses the BYOK default model for text tasks only", () => {

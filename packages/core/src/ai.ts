@@ -332,10 +332,41 @@ export async function saveUserProviderKey(
   db: AiDatabase = prisma,
   env: NodeJS.ProcessEnv = process.env
 ): Promise<ActionResult> {
-  const parsed = parseAiProviderCredentialInput(input);
+  const parsed = parseAiProviderCredentialMetadataInput(input, { requireDefaultModel: true });
 
   if (!parsed.ok) {
     return parsed;
+  }
+
+  if (!parsed.data.apiKey) {
+    const savedKey = await db.userProviderKey.findUnique({
+      where: {
+        userId_provider: {
+          userId,
+          provider: parsed.data.provider
+        }
+      }
+    });
+
+    if (!savedKey) {
+      return { ok: false, error: `请先输入有效的 ${providerLabels[parsed.data.provider]} API Key。` };
+    }
+
+    await db.userProviderKey.update({
+      where: {
+        userId_provider: {
+          userId,
+          provider: parsed.data.provider
+        }
+      },
+      data: {
+        baseUrl: parsed.data.baseUrl,
+        apiMode: parsed.data.apiMode,
+        defaultModel: parsed.data.defaultModel
+      }
+    });
+
+    return { ok: true };
   }
 
   const encrypted = encryptAiSecret(parsed.data.apiKey, env);
@@ -481,10 +512,37 @@ export async function saveAdminAiCredential(
   db: AiDatabase = prisma,
   env: NodeJS.ProcessEnv = process.env
 ): Promise<ActionResult> {
-  const parsed = parseAiProviderCredentialInput(input);
+  const parsed = parseAiProviderCredentialMetadataInput(input, { requireDefaultModel: true });
 
   if (!parsed.ok) {
     return parsed;
+  }
+
+  if (!parsed.data.apiKey) {
+    const savedCredential = await db.adminAiCredential.findUnique({
+      where: {
+        provider: parsed.data.provider
+      }
+    });
+
+    if (!savedCredential) {
+      return { ok: false, error: `请先输入有效的 ${providerLabels[parsed.data.provider]} API Key 后保存平台凭据。` };
+    }
+
+    await db.adminAiCredential.update({
+      where: {
+        provider: parsed.data.provider
+      },
+      data: {
+        baseUrl: parsed.data.baseUrl,
+        apiMode: parsed.data.apiMode,
+        defaultModel: parsed.data.defaultModel,
+        lastTestedModel: parsed.data.testModel ?? parsed.data.defaultModel,
+        updatedById: input.updatedById?.trim() || null
+      }
+    });
+
+    return { ok: true };
   }
 
   const encrypted = encryptAiSecret(parsed.data.apiKey, env);
@@ -521,6 +579,35 @@ export async function saveAdminAiCredential(
   return { ok: true };
 }
 
+export async function listUserAiProviderModels(
+  userId: string,
+  input: { provider: string; apiKey: string; baseUrl: string; apiMode?: string | null },
+  db: AiDatabase = prisma,
+  env: NodeJS.ProcessEnv = process.env
+): Promise<ActionResult<{ models: AiProviderModel[] }>> {
+  const credential = await resolveUserAiCredentialFormInput(userId, input, db, env);
+
+  if (!credential.ok) {
+    return credential;
+  }
+
+  return listResolvedAiProviderModels(credential.data);
+}
+
+export async function listAdminAiCredentialModels(
+  input: { provider: string; apiKey: string; baseUrl: string; apiMode?: string | null },
+  db: AiDatabase = prisma,
+  env: NodeJS.ProcessEnv = process.env
+): Promise<ActionResult<{ models: AiProviderModel[] }>> {
+  const credential = await resolveAdminAiCredentialFormInput(input, db, env);
+
+  if (!credential.ok) {
+    return credential;
+  }
+
+  return listResolvedAiProviderModels(credential.data);
+}
+
 export async function listAiProviderModels(input: { provider: string; apiKey: string; baseUrl: string; apiMode?: string | null }): Promise<ActionResult<{ models: AiProviderModel[] }>> {
   const provider = parseAiProvider(input.provider);
   const apiKey = input.apiKey.trim();
@@ -538,13 +625,48 @@ export async function listAiProviderModels(input: { provider: string; apiKey: st
     return { ok: false, error: "请输入 Base URL。" };
   }
 
-  try {
-    const models = await fetchAiProviderModels({ provider, apiKey, baseURL });
+  return listResolvedAiProviderModels({ provider, apiKey, baseUrl: baseURL });
+}
 
-    return { ok: true, data: { models } };
-  } catch (error) {
-    return { ok: false, error: formatAiError(error) };
+export async function testUserAiProviderCredential(
+  userId: string,
+  input: AiProviderCredentialInput,
+  db: AiDatabase = prisma,
+  env: NodeJS.ProcessEnv = process.env
+): Promise<ActionResult<{ text: string }>> {
+  const credential = await resolveUserAiCredentialFormInput(userId, input, db, env);
+
+  if (!credential.ok) {
+    return credential;
   }
+
+  const testModel = normalizeCredentialModel(input.testModel ?? input.defaultModel ?? credential.data.defaultModel);
+
+  if (!testModel) {
+    return { ok: false, error: "请选择或输入用于测试连接的模型。" };
+  }
+
+  return testResolvedAiProviderCredential({ ...credential.data, testModel });
+}
+
+export async function testAdminAiCredential(
+  input: AiProviderCredentialInput,
+  db: AiDatabase = prisma,
+  env: NodeJS.ProcessEnv = process.env
+): Promise<ActionResult<{ text: string }>> {
+  const credential = await resolveAdminAiCredentialFormInput(input, db, env);
+
+  if (!credential.ok) {
+    return credential;
+  }
+
+  const testModel = normalizeCredentialModel(input.testModel ?? input.defaultModel ?? credential.data.defaultModel);
+
+  if (!testModel) {
+    return { ok: false, error: "请选择或输入用于测试连接的模型。" };
+  }
+
+  return testResolvedAiProviderCredential({ ...credential.data, testModel });
 }
 
 export async function testAiProviderCredential(input: AiProviderCredentialInput, env: NodeJS.ProcessEnv = process.env): Promise<ActionResult<{ text: string }>> {
@@ -554,13 +676,45 @@ export async function testAiProviderCredential(input: AiProviderCredentialInput,
     return parsed;
   }
 
+  return testResolvedAiProviderCredential({
+    provider: parsed.data.provider,
+    apiKey: parsed.data.apiKey,
+    baseUrl: parsed.data.baseUrl,
+    apiMode: parsed.data.apiMode,
+    defaultModel: null,
+    testModel: parsed.data.testModel
+  });
+}
+
+async function listResolvedAiProviderModels(input: {
+  provider: AiProvider;
+  apiKey: string;
+  baseUrl: string;
+}): Promise<ActionResult<{ models: AiProviderModel[] }>> {
+  try {
+    const models = await fetchAiProviderModels({ provider: input.provider, apiKey: input.apiKey, baseURL: input.baseUrl });
+
+    return { ok: true, data: { models } };
+  } catch (error) {
+    return { ok: false, error: formatAiError(error) };
+  }
+}
+
+async function testResolvedAiProviderCredential(input: {
+  provider: AiProvider;
+  apiKey: string;
+  baseUrl: string;
+  apiMode: string | null;
+  defaultModel: string | null;
+  testModel: string;
+}): Promise<ActionResult<{ text: string }>> {
   try {
     const result = await generateAiText({
-      provider: parsed.data.provider,
-      apiKey: parsed.data.apiKey,
-      baseURL: parsed.data.baseUrl,
-      apiMode: parsed.data.apiMode,
-      model: parsed.data.testModel,
+      provider: input.provider,
+      apiKey: input.apiKey,
+      baseURL: input.baseUrl,
+      apiMode: input.apiMode,
+      model: input.testModel,
       instructions: "Return only the word ok.",
       input: "ping",
       maxOutputTokens: 8,
@@ -578,6 +732,110 @@ export async function testAiProviderCredential(input: AiProviderCredentialInput,
   } catch (error) {
     return { ok: false, error: formatAiError(error) };
   }
+}
+
+async function resolveUserAiCredentialFormInput(
+  userId: string,
+  input: AiProviderCredentialInput | { provider: string; apiKey: string; baseUrl: string; apiMode?: string | null },
+  db: AiDatabase,
+  env: NodeJS.ProcessEnv
+): Promise<ActionResult<{ provider: AiProvider; apiKey: string; baseUrl: string; apiMode: string | null; defaultModel: string | null }>> {
+  const parsed = parseAiProviderCredentialMetadataInput(input, { requireDefaultModel: false });
+
+  if (!parsed.ok) {
+    return parsed;
+  }
+
+  if (parsed.data.apiKey) {
+    return {
+      ok: true,
+      data: {
+        provider: parsed.data.provider,
+        apiKey: parsed.data.apiKey,
+        baseUrl: parsed.data.baseUrl,
+        apiMode: parsed.data.apiMode,
+        defaultModel: parsed.data.defaultModel
+      }
+    };
+  }
+
+  const savedKey = await db.userProviderKey.findUnique({
+    where: {
+      userId_provider: {
+        userId,
+        provider: parsed.data.provider
+      }
+    }
+  });
+
+  if (!savedKey) {
+    return { ok: false, error: `请输入有效的 ${providerLabels[parsed.data.provider]} API Key。` };
+  }
+
+  const decrypted = decryptAiSecret(savedKey.encryptedKey, env);
+
+  if (!decrypted.ok) {
+    return decrypted;
+  }
+
+  return {
+    ok: true,
+    data: {
+      provider: parsed.data.provider,
+      apiKey: decrypted.data.plaintext,
+      baseUrl: parsed.data.baseUrl,
+      apiMode: parsed.data.apiMode,
+      defaultModel: parsed.data.defaultModel ?? normalizeCredentialModel(savedKey.defaultModel)
+    }
+  };
+}
+
+async function resolveAdminAiCredentialFormInput(
+  input: AiProviderCredentialInput | { provider: string; apiKey: string; baseUrl: string; apiMode?: string | null },
+  db: AiDatabase,
+  env: NodeJS.ProcessEnv
+): Promise<ActionResult<{ provider: AiProvider; apiKey: string; baseUrl: string; apiMode: string | null; defaultModel: string | null }>> {
+  const parsed = parseAiProviderCredentialMetadataInput(input, { requireDefaultModel: false });
+
+  if (!parsed.ok) {
+    return parsed;
+  }
+
+  if (parsed.data.apiKey) {
+    return {
+      ok: true,
+      data: {
+        provider: parsed.data.provider,
+        apiKey: parsed.data.apiKey,
+        baseUrl: parsed.data.baseUrl,
+        apiMode: parsed.data.apiMode,
+        defaultModel: parsed.data.defaultModel
+      }
+    };
+  }
+
+  let credential: AiProviderCredential | null;
+
+  try {
+    credential = await resolvePlatformAiCredential(parsed.data.provider, db, env);
+  } catch (error) {
+    return { ok: false, error: formatAiError(error) };
+  }
+
+  if (!credential) {
+    return { ok: false, error: `请输入有效的 ${providerLabels[parsed.data.provider]} API Key。` };
+  }
+
+  return {
+    ok: true,
+    data: {
+      provider: parsed.data.provider,
+      apiKey: credential.apiKey,
+      baseUrl: parsed.data.baseUrl,
+      apiMode: parsed.data.apiMode,
+      defaultModel: parsed.data.defaultModel ?? credential.defaultModel
+    }
+  };
 }
 
 async function resolvePlatformAiCredential(provider: AiProvider, db: AiDatabase, env: NodeJS.ProcessEnv): Promise<AiProviderCredential | null> {
@@ -1961,25 +2219,30 @@ function parseAiProvider(value: string | null | undefined) {
   return supportedAiProviders.includes(normalized as AiProvider) ? (normalized as AiProvider) : null;
 }
 
-function parseAiProviderCredentialInput(input: AiProviderCredentialInput): ActionResult<{
+function parseAiProviderCredentialMetadataInput(
+  input: AiProviderCredentialInput | { provider: string; apiKey: string; baseUrl: string; apiMode?: string | null },
+  options: { requireDefaultModel: boolean }
+): ActionResult<{
   provider: AiProvider;
-  apiKey: string;
+  apiKey: string | null;
   baseUrl: string;
   apiMode: string | null;
-  defaultModel: string;
+  defaultModel: string | null;
   testModel: string | null;
 }> {
   const provider = parseAiProvider(input.provider);
   const apiKey = input.apiKey.trim();
   const baseUrl = normalizeBaseUrl(input.baseUrl);
-  const defaultModel = normalizeCredentialModel(input.defaultModel ?? input.testModel);
-  const testModel = normalizeCredentialModel(input.testModel);
+  const inputDefaultModel = "defaultModel" in input ? input.defaultModel : null;
+  const inputTestModel = "testModel" in input ? input.testModel : null;
+  const defaultModel = normalizeCredentialModel(inputDefaultModel) ?? normalizeCredentialModel(inputTestModel);
+  const testModel = normalizeCredentialModel(inputTestModel);
 
   if (!provider) {
     return { ok: false, error: "请选择有效的 AI Provider。" };
   }
 
-  if (apiKey.length < 8) {
+  if (apiKey && apiKey.length < 8) {
     return { ok: false, error: `请输入有效的 ${providerLabels[provider]} API Key。` };
   }
 
@@ -1993,7 +2256,7 @@ function parseAiProviderCredentialInput(input: AiProviderCredentialInput): Actio
     return { ok: false, error: "Base URL 格式无效。" };
   }
 
-  if (!defaultModel) {
+  if (options.requireDefaultModel && !defaultModel) {
     return { ok: false, error: "请选择或输入默认模型。" };
   }
 
@@ -2001,11 +2264,42 @@ function parseAiProviderCredentialInput(input: AiProviderCredentialInput): Actio
     ok: true,
     data: {
       provider,
-      apiKey,
+      apiKey: apiKey || null,
       baseUrl,
       apiMode: normalizeAiApiMode(provider, input.apiMode),
       defaultModel,
       testModel
+    }
+  };
+}
+
+function parseAiProviderCredentialInput(input: AiProviderCredentialInput): ActionResult<{
+  provider: AiProvider;
+  apiKey: string;
+  baseUrl: string;
+  apiMode: string | null;
+  defaultModel: string;
+  testModel: string | null;
+}> {
+  const parsed = parseAiProviderCredentialMetadataInput(input, { requireDefaultModel: true });
+
+  if (!parsed.ok) {
+    return parsed;
+  }
+
+  if (!parsed.data.apiKey) {
+    return { ok: false, error: `请输入有效的 ${providerLabels[parsed.data.provider]} API Key。` };
+  }
+
+  return {
+    ok: true,
+    data: {
+      provider: parsed.data.provider,
+      apiKey: parsed.data.apiKey,
+      baseUrl: parsed.data.baseUrl,
+      apiMode: parsed.data.apiMode,
+      defaultModel: parsed.data.defaultModel ?? "",
+      testModel: parsed.data.testModel
     }
   };
 }
@@ -2026,7 +2320,7 @@ function parseAiProviderCredentialTestInput(input: AiProviderCredentialInput): A
     return parsed;
   }
 
-  const testModel = normalizeCredentialModel(input.testModel ?? input.defaultModel);
+  const testModel = normalizeCredentialModel(input.testModel) ?? normalizeCredentialModel(input.defaultModel);
 
   if (!testModel) {
     return { ok: false, error: "请选择或输入用于测试连接的模型。" };

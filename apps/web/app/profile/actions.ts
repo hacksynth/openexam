@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { Route } from "next";
-import { deleteUserProviderKey, listAiProviderModels, saveUserProviderKey, testAiProviderCredential } from "@openexam/core/ai";
+import { deleteUserProviderKey, listUserAiProviderModels, saveUserProviderKey, testUserAiProviderCredential } from "@openexam/core/ai";
 import { requireWebSession } from "@/lib/auth";
 
 export type AiCredentialActionState = {
@@ -27,9 +27,9 @@ export async function saveProviderKeyAction(formData: FormData) {
 }
 
 export async function listProviderModelsAction(_previousState: AiCredentialActionState, formData: FormData): Promise<AiCredentialActionState> {
-  await requireWebSession();
+  const session = await requireWebSession();
   const provider = value(formData, "provider") || "openai";
-  const result = await listAiProviderModels({
+  const result = await listUserAiProviderModels(session.user.id, {
     provider,
     apiKey: value(formData, "apiKey"),
     baseUrl: value(formData, "baseUrl"),
@@ -47,9 +47,9 @@ export async function listProviderModelsAction(_previousState: AiCredentialActio
 }
 
 export async function testProviderKeyAction(_previousState: AiCredentialActionState, formData: FormData): Promise<AiCredentialActionState> {
-  await requireWebSession();
+  const session = await requireWebSession();
   const provider = value(formData, "provider") || "openai";
-  const result = await testAiProviderCredential({
+  const result = await testUserAiProviderCredential(session.user.id, {
     provider,
     apiKey: value(formData, "apiKey"),
     baseUrl: value(formData, "baseUrl"),

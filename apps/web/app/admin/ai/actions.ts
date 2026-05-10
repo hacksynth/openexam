@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { Route } from "next";
-import { listAiProviderModels, saveAdminAiCredential, setAiProviderPresetEnabled, testAiProviderCredential, upsertAiProviderPreset } from "@openexam/core/ai";
+import { listAdminAiCredentialModels, saveAdminAiCredential, setAiProviderPresetEnabled, testAdminAiCredential, upsertAiProviderPreset } from "@openexam/core/ai";
 import { writeAuditLog } from "@openexam/core/audit";
 import { requireAdminSession } from "@/lib/auth";
 
@@ -40,7 +40,7 @@ export async function saveAdminAiCredentialAction(formData: FormData) {
 export async function listAdminAiCredentialModelsAction(_previousState: AiCredentialActionState, formData: FormData): Promise<AiCredentialActionState> {
   await requireAdminSession();
   const provider = value(formData, "provider");
-  const result = await listAiProviderModels({
+  const result = await listAdminAiCredentialModels({
     provider,
     apiKey: value(formData, "apiKey"),
     baseUrl: value(formData, "baseUrl"),
@@ -60,7 +60,7 @@ export async function listAdminAiCredentialModelsAction(_previousState: AiCreden
 export async function testAdminAiCredentialAction(_previousState: AiCredentialActionState, formData: FormData): Promise<AiCredentialActionState> {
   await requireAdminSession();
   const provider = value(formData, "provider");
-  const result = await testAiProviderCredential({
+  const result = await testAdminAiCredential({
     provider,
     apiKey: value(formData, "apiKey"),
     baseUrl: value(formData, "baseUrl"),

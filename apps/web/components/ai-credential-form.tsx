@@ -12,6 +12,7 @@ export type AiCredentialFormState = {
 export type AiCredentialProviderView = {
   apiMode?: string | null;
   baseUrl?: string | null;
+  configured?: boolean | null;
   defaultModel?: string | null;
   label: string;
   provider: string;
@@ -42,6 +43,7 @@ export function AiCredentialForm({
   const fetchedModels = modelState.models ?? [];
   const models = useMemo(() => mergeModelOptions([provider.defaultModel, selectedModel], fetchedModels), [provider.defaultModel, fetchedModels, selectedModel]);
   const isManualModel = Boolean(selectedModel && modelState.models?.length && !modelState.models.some((model) => model.id === selectedModel));
+  const apiKeyPlaceholder = provider.configured ? "留空使用已配置 Key" : provider.provider === "openai" ? "sk-..." : "输入 provider key";
 
   useEffect(() => {
     if (selectedModel || !models[0]) {
@@ -55,7 +57,7 @@ export function AiCredentialForm({
     <form action={saveAction} className="grid gap-3">
       <input name="provider" type="hidden" value={provider.provider} />
       <div className="grid gap-3 lg:grid-cols-2">
-        <TextField autoComplete="off" label={provider.provider === "openai" ? "API Key" : `${provider.label} Key`} name="apiKey" onChange={(event) => setApiKey(event.target.value)} placeholder={provider.provider === "openai" ? "sk-..." : "输入 provider key"} required type="password" value={apiKey} />
+        <TextField autoComplete="off" label={provider.provider === "openai" ? "API Key" : `${provider.label} Key`} name="apiKey" onChange={(event) => setApiKey(event.target.value)} placeholder={apiKeyPlaceholder} type="password" value={apiKey} />
         <TextField label="Base URL" name="baseUrl" onChange={(event) => setBaseUrl(event.target.value)} placeholder={defaultBaseUrl(provider.provider)} required value={baseUrl} />
       </div>
       <div className="grid gap-3 lg:grid-cols-2">
@@ -93,7 +95,7 @@ function ModelSelector({
   setSelectedModel: (value: string) => void;
 }) {
   const selector = (
-    <TextField label="默认模型" name="defaultModel" placeholder="输入模型名" required value={selectedModel} onChange={(event) => setSelectedModel(event.target.value)} />
+    <TextField label="默认模型" name="defaultModel" placeholder="输入模型名" value={selectedModel} onChange={(event) => setSelectedModel(event.target.value)} />
   );
 
   if (!showModelPicker) {
