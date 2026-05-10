@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { Route } from "next";
-import { deleteUserProviderKey, saveUserProviderKey } from "@openexam/core/ai";
+import { deleteUserProviderKey, listAiProviderModels, saveUserProviderKey } from "@openexam/core/ai";
 import { requireWebSession } from "@/lib/auth";
 
 export async function saveProviderKeyAction(formData: FormData) {
@@ -11,10 +11,32 @@ export async function saveProviderKeyAction(formData: FormData) {
   const provider = value(formData, "provider") || "openai";
   const result = await saveUserProviderKey(session.user.id, {
     provider,
-    apiKey: value(formData, "apiKey")
+    apiKey: value(formData, "apiKey"),
+    baseUrl: value(formData, "baseUrl"),
+    apiMode: value(formData, "apiMode"),
+    testModel: value(formData, "testModel")
   });
 
   finish(result, `${providerLabel(provider)} API Key 已保存。`);
+}
+
+export async function listProviderModelsAction(formData: FormData) {
+  await requireWebSession();
+  const provider = value(formData, "provider") || "openai";
+  const result = await listAiProviderModels({
+    provider,
+    apiKey: value(formData, "apiKey"),
+    baseUrl: value(formData, "baseUrl"),
+    apiMode: value(formData, "apiMode")
+  });
+
+  if (!result.ok) {
+    finish(result, "");
+  }
+
+  const models = result.data.models.slice(0, 30).map((model) => model.id).join(" / ") || "未返回模型。";
+
+  finish({ ok: true }, `${providerLabel(provider)} 模型：${models}`);
 }
 
 export async function saveOpenAiKeyAction(formData: FormData) {

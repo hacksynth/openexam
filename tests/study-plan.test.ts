@@ -20,7 +20,8 @@ describe("study plan generation", () => {
 
     expect(prompt.instructions).toContain("严格 JSON");
     expect(prompt.input).toContain("目标 ID：goal_1");
-    expect(prompt.input).toContain("计划窗口：2026-05-05 至 2026-05-18");
+    expect(prompt.input).toContain("计划窗口：2026-05-05 至 2026-05-17");
+    expect(prompt.input).toContain("考试当天不纳入计划");
     expect(prompt.input).toContain("事务基础");
     expect(prompt.input).toContain("未掌握错题3");
     expect(prompt.input).toContain("待巩固题：2");
@@ -43,7 +44,9 @@ describe("study plan generation", () => {
     expect(buildStudyPlanWindow(new Date("2026-05-06T00:00:00.000Z"), now)).toMatchObject({
       ok: true,
       data: {
-        days: 2
+        days: 1,
+        endDate: new Date("2026-05-05T00:00:00.000Z"),
+        remainingDays: 1
       }
     });
     expect(buildStudyPlanWindow(new Date("2026-08-20T00:00:00.000Z"), now)).toMatchObject({
@@ -69,7 +72,7 @@ describe("study plan generation", () => {
       parseStudyPlanAiOutput(
         JSON.stringify({
           ...planPayload(),
-          tasks: Array.from({ length: 14 }, (_, index) => ({
+          tasks: Array.from({ length: 13 }, (_, index) => ({
             day: 1,
             scheduledDate: `2026-05-${String(index + 5).padStart(2, "0")}`,
             title: "集中练习事务基础",
@@ -113,7 +116,8 @@ describe("study plan generation", () => {
             goalId: "goal_1",
             status: "active",
             windowStartDate: new Date("2026-05-05T00:00:00.000Z"),
-            windowEndDate: new Date("2026-05-18T00:00:00.000Z"),
+            windowEndDate: new Date("2026-05-17T00:00:00.000Z"),
+            targetDateSnapshot: new Date("2026-05-18T00:00:00.000Z"),
             revisions: expect.objectContaining({
               create: expect.objectContaining({
                 trigger: "initial_generate",
@@ -250,6 +254,71 @@ describe("study plan generation", () => {
           data: expect.objectContaining({
             status: "failed"
           })
+        })
+      })
+    );
+  });
+
+  it("rejects AI plans that include exam-day tasks", () => {
+    const payload = {
+      ...planPayload(),
+      tasks: [
+        ...planPayload().tasks,
+        {
+          day: 14,
+          scheduledDate: "2026-05-18",
+          title: "考试当天轻量复盘",
+          kind: "knowledge_review" as const,
+          minutes: 20,
+          knowledgeNodeIds: ["node_db"]
+        }
+      ]
+    };
+
+    expect(parseStudyPlanAiOutput(JSON.stringify(payload), validationOptions())).toEqual({
+      ok: false,
+      error: "AI 学习计划不能安排考试当天任务。"
+    });
+  });
+
+  it("includes pending exam-day tasks in adjustment decisions", async () => {
+    const calls: { method: string; args?: unknown }[] = [];
+    const db = createStudyPlanDb(calls, existingPlanWithExamDayTask());
+
+    await expect(
+      generateStudyPlan("user_1", {
+        db: db as never,
+        generateText: async () => ({
+          text: JSON.stringify(
+            planPayload({
+              decisions: [
+                { taskId: "task_old", status: "carried_over", reason: "并入新计划" },
+                { taskId: "task_exam_day", status: "skipped", reason: "考试当天不纳入计划" }
+              ]
+            })
+          )
+        }),
+        now
+      })
+    ).resolves.toEqual({
+      ok: true,
+      data: {
+        action: "adjusted",
+        planId: "plan_existing",
+        aiCallId: "call_1"
+      }
+    });
+    expect(calls).toContainEqual(
+      expect.objectContaining({
+        method: "studyPlanTask.updateMany",
+        args: expect.objectContaining({
+          where: expect.objectContaining({
+            id: "task_exam_day",
+            status: "pending"
+          }),
+          data: {
+            status: "skipped"
+          }
         })
       })
     );
@@ -441,7 +510,7 @@ function createStudyPlanDb(calls: { method: string; args?: unknown }[], activePl
         studyPlanTask: {
           createMany: async (args: unknown) => {
             calls.push({ method: "studyPlanTask.createMany", args });
-            return { count: 14 };
+            return { count: 13 };
           },
           updateMany: async (args: unknown) => {
             calls.push({ method: "studyPlanTask.updateMany", args });
@@ -558,7 +627,7 @@ function existingPlan() {
     status: "active",
     generatedAt: now,
     windowStartDate: now,
-    windowEndDate: targetDate,
+    windowEndDate: new Date("2026-05-17T00:00:00.000Z"),
     targetDateSnapshot: targetDate,
     dailyMinutesSnapshot: 45,
     lastAdjustedAt: now,
@@ -589,6 +658,34 @@ function existingPlan() {
   };
 }
 
+function existingPlanWithExamDayTask() {
+  const plan = existingPlan();
+
+  return {
+    ...plan,
+    tasks: [
+      ...plan.tasks,
+      {
+        id: "task_exam_day",
+        planId: "plan_existing",
+        day: 14,
+        scheduledDate: targetDate,
+        title: "考试当天复盘",
+        kind: "knowledge_review",
+        minutes: 20,
+        status: "pending",
+        subjectId: null,
+        knowledgeNodeIds: ["node_db"],
+        paperId: null,
+        materialId: null,
+        completedAt: null,
+        createdAt: now,
+        updatedAt: now
+      }
+    ]
+  };
+}
+
 function planPayload(
   input: {
     decisions?: { reason?: string; status: "carried_over" | "skipped"; taskId: string }[];
@@ -599,14 +696,14 @@ function planPayload(
   return {
     goalId: "goal_1",
     generatedAt: "2026-05-05T00:00:00.000Z",
-    days: 14,
+    days: 13,
     decisions: input.decisions ?? [],
-    tasks: Array.from({ length: 14 }, (_, index) => ({
+    tasks: Array.from({ length: 13 }, (_, index) => ({
       day: index + 1,
       scheduledDate: `2026-05-${String(index + 5).padStart(2, "0")}`,
       title: `第 ${index + 1} 天复习事务基础`,
-      kind: index === 13 ? ("knowledge_review" as const) : ("practice" as const),
-      minutes: index === 13 ? 20 : 45,
+      kind: "practice" as const,
+      minutes: 45,
       ...(input.relationPlaceholders
         ? {
             subjectId: "可选",

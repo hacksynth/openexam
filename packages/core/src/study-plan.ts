@@ -28,7 +28,7 @@ type StudyPlanOutputValidation = {
   windowStartDate: Date;
 };
 
-const studyPlanPromptVersion = "study-plan-generate-v3";
+const studyPlanPromptVersion = "study-plan-generate-v4";
 const defaultMaxOutputTokens = 3200;
 const maxPlanWindowDays = 30;
 const millisecondsPerDay = 86_400_000;
@@ -204,6 +204,7 @@ export async function generateStudyPlan(
       provider: preset.provider,
       apiKey: credential?.ok ? credential.data.apiKey : "test-key",
       baseURL: credential?.ok ? credential.data.baseURL : null,
+      apiMode: credential?.ok ? credential.data.apiMode : null,
       model: preset.model,
       instructions: prompt.instructions,
       input: prompt.input,
@@ -411,7 +412,8 @@ export async function abandonCurrentStudyPlan(userId: string, db: StudyPlanDatab
 }
 
 function toStudyPlanView(plan: StudyPlanRecord) {
-  const visibleTasks = plan.tasks.filter((task) => task.status === pendingTaskStatus || task.status === completedTaskStatus);
+  const tasks = plan.tasks.map((task) => toStudyPlanTaskView(plan, task));
+  const visibleTasks = tasks.filter((task) => task.isCurrentWindowTask && (task.status === pendingTaskStatus || task.status === completedTaskStatus));
   const completedCount = visibleTasks.filter((task) => task.status === completedTaskStatus).length;
 
   return {
@@ -429,7 +431,7 @@ function toStudyPlanView(plan: StudyPlanRecord) {
     completedCount,
     taskCount: visibleTasks.length,
     historicalTaskCount: plan.tasks.length - visibleTasks.length,
-    tasks: plan.tasks.map((task) => toStudyPlanTaskView(plan, task))
+    tasks
   };
 }
 
@@ -446,6 +448,12 @@ export function getStudyPlanAdjustmentReasons(
 
   if (plan.dailyMinutesSnapshot && plan.dailyMinutesSnapshot !== analysis.goal.dailyMinutes) {
     reasons.push("每日学习时间已变化");
+  }
+
+  const targetDate = analysis.goal.targetDate;
+
+  if (targetDate && plan.tasks.some((task) => task.scheduledDate && task.status === pendingTaskStatus && dateKey(task.scheduledDate) === dateKey(targetDate))) {
+    reasons.push("当前计划包含考试当天任务");
   }
 
   if (sourceStats) {
@@ -489,7 +497,7 @@ export function buildStudyPlanWindow(targetDate: Date | null | undefined, now = 
     return { ok: false, error: "考试日期是今天，建议直接进入练习或错题复盘。" };
   }
 
-  const remainingDays = daysUntilTarget + 1;
+  const remainingDays = daysUntilTarget;
   const days = Math.min(remainingDays, maxPlanWindowDays);
 
   return {
@@ -549,9 +557,9 @@ export function buildStudyPlanPrompt(
       "status 只能用于 decisions，且只能是 carried_over 或 skipped。新 tasks 默认都是 pending。",
       "subjectId、paperId、materialId 是可选字段；没有真实数据库 ID 时必须省略，不要输出“可选”、中文说明或占位符。",
       `计划窗口：${dateKey(window.startDate)} 至 ${dateKey(window.endDate)}，共 ${window.days} 天。`,
-      `剩余备考天数：${window.remainingDays} 天；当前只生成最多 ${maxPlanWindowDays} 天的近期计划。`,
+      `考前可计划天数：${window.remainingDays} 天；当前只生成最多 ${maxPlanWindowDays} 天的近期计划。`,
       `每日可用时间：${analysis.goal.dailyMinutes} 分钟；每天 1-3 个任务，总分钟数不得超过每日可用时间的 120%。`,
-      `考试日期：${dateKey(window.targetDate)}。如果计划覆盖考试当天，当天只安排 wrong_note_review、consolidation_review 或 knowledge_review，且总时长不超过 60 分钟。`,
+      `考试日期：${dateKey(window.targetDate)}。考试当天不纳入计划，tasks 不得包含考试日期当天的 scheduledDate。`,
       "每天至少 1 个任务，优先安排薄弱知识点、未掌握错题、待巩固题和适量整卷练习。",
       isAdjustment ? "decisions 必须覆盖下方所有待处理旧任务；用户已完成或已跳过的任务不要恢复。" : "decisions 必须输出空数组。",
       "",
@@ -646,9 +654,14 @@ function validateStudyPlanOutput(plan: StudyPlan, options: StudyPlanOutputValida
   }
 
   const dailyTasks = new Map<string, StudyPlan["tasks"]>();
+  const targetDateKey = dateKey(options.targetDate);
 
   for (const task of plan.tasks) {
     const scheduledDate = dateFromKey(task.scheduledDate);
+
+    if (task.scheduledDate === targetDateKey) {
+      return { ok: false, error: "AI 学习计划不能安排考试当天任务。" };
+    }
 
     if (scheduledDate.getTime() < options.windowStartDate.getTime() || scheduledDate.getTime() > options.windowEndDate.getTime()) {
       return { ok: false, error: "AI 学习计划包含窗口外任务。" };
@@ -663,9 +676,7 @@ function validateStudyPlanOutput(plan: StudyPlan, options: StudyPlanOutputValida
     dailyTasks.set(task.scheduledDate, [...(dailyTasks.get(task.scheduledDate) ?? []), task]);
   }
 
-  const targetDateKey = dateKey(options.targetDate);
-
-  for (const [scheduledDate, tasks] of dailyTasks.entries()) {
+  for (const tasks of dailyTasks.values()) {
     if (tasks.length < 1 || tasks.length > 3) {
       return { ok: false, error: "AI 学习计划每天必须包含 1 到 3 个任务。" };
     }
@@ -674,16 +685,6 @@ function validateStudyPlanOutput(plan: StudyPlan, options: StudyPlanOutputValida
 
     if (totalMinutes > Math.ceil(options.dailyMinutes * 1.2)) {
       return { ok: false, error: "AI 学习计划超出每日可用时间。" };
-    }
-
-    if (scheduledDate === targetDateKey) {
-      if (tasks.some((task) => task.kind !== "wrong_note_review" && task.kind !== "consolidation_review" && task.kind !== "knowledge_review")) {
-        return { ok: false, error: "考试当天只能安排轻量复盘任务。" };
-      }
-
-      if (totalMinutes > Math.min(60, Math.ceil(options.dailyMinutes * 0.5))) {
-        return { ok: false, error: "考试当天复盘时间过长。" };
-      }
     }
   }
 
@@ -707,11 +708,13 @@ function toStudyPlanTaskCreate(task: StudyPlan["tasks"][number]) {
 
 function toStudyPlanTaskView(plan: StudyPlanRecord, task: StudyPlanTaskRecord) {
   const status = normalizeTaskStatus(task.status, task.completedAt);
+  const scheduledDate = taskDate(task, plan);
 
   return {
     id: task.id,
     day: task.day,
-    scheduledDate: taskDate(task, plan),
+    scheduledDate,
+    isCurrentWindowTask: isTaskInPlanWindow(plan, scheduledDate),
     status,
     title: task.title,
     kind: task.kind,
@@ -731,9 +734,28 @@ function getAdjustableTasks(plan: StudyPlanRecord) {
 
 function formatAdjustableTaskForPrompt(task: StudyPlanTaskRecord, plan: StudyPlanRecord | null, window: StudyPlanWindow) {
   const scheduledDate = taskDate(task, plan);
-  const timing = scheduledDate.getTime() < window.startDate.getTime() ? "逾期" : "待安排";
+  const timing =
+    dateKey(scheduledDate) === dateKey(window.targetDate)
+      ? "考试当天"
+      : scheduledDate.getTime() < window.startDate.getTime()
+        ? "逾期"
+        : scheduledDate.getTime() > window.endDate.getTime()
+          ? "窗口外"
+          : "待安排";
 
   return `${task.id} ${timing} ${dateKey(scheduledDate)} 第${task.day}天 ${task.kind} ${task.minutes}分钟 ${task.title}`;
+}
+
+function isTaskInPlanWindow(plan: StudyPlanRecord, scheduledDate: Date) {
+  if (plan.targetDateSnapshot && dateKey(scheduledDate) === dateKey(plan.targetDateSnapshot)) {
+    return false;
+  }
+
+  if (!plan.windowStartDate || !plan.windowEndDate) {
+    return true;
+  }
+
+  return scheduledDate.getTime() >= plan.windowStartDate.getTime() && scheduledDate.getTime() <= plan.windowEndDate.getTime();
 }
 
 function taskDate(task: Pick<StudyPlanTaskRecord, "day" | "scheduledDate">, plan: Pick<StudyPlanRecord, "generatedAt" | "windowStartDate"> | null) {

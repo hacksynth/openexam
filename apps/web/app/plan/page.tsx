@@ -81,7 +81,7 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
                 {plan.latestRevision?.note ? <p className="border-2 border-black bg-[var(--surface-subtle)] p-3 font-bold text-[var(--muted)]">{plan.latestRevision.note}</p> : null}
 
                 <section className="grid gap-4">
-                  {groupTasksByDay(plan.tasks.filter((task) => task.status === "pending" || task.status === "completed")).map((day) => (
+                  {groupTasksByDay(plan.tasks.filter((task) => task.isCurrentWindowTask && (task.status === "pending" || task.status === "completed"))).map((day) => (
                     <article key={day.day} className="pixel-panel grid gap-4 p-5">
                       <div className="flex flex-wrap items-center justify-between gap-3">
                         <h2 className="text-xl font-black">第 {day.day} 天</h2>
@@ -145,7 +145,7 @@ export default async function PlanPage({ searchParams }: PlanPageProps) {
                     </div>
                     <div className="grid gap-2">
                       {plan.tasks
-                        .filter((task) => task.status === "carried_over" || task.status === "skipped")
+                        .filter((task) => !task.isCurrentWindowTask || task.status === "carried_over" || task.status === "skipped")
                         .slice(0, 8)
                         .map((task) => (
                           <div key={task.id} className="flex flex-wrap items-center gap-2 border-2 border-black bg-white p-3">
@@ -244,7 +244,7 @@ function PlanActions({
             </Link>
           </div>
           <p className="font-bold text-[var(--muted)]">
-            备考剩余 {windowResult.data.remainingDays} 天，当前计划覆盖 {windowResult.data.days} 天。
+            考前可计划 {windowResult.data.remainingDays} 天，当前计划覆盖 {windowResult.data.days} 天。
           </p>
         </>
       )}

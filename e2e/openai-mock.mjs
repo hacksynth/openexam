@@ -261,7 +261,6 @@ function buildMockTextResponse(input) {
   if (isPlan) {
     const windowMatch = input.match(/计划窗口：(\d{4}-\d{2}-\d{2}) 至 (\d{4}-\d{2}-\d{2})，共 (\d+) 天/);
     const startDate = windowMatch?.[1] ?? "2026-05-05";
-    const targetDate = (input.match(/考试日期：(\d{4}-\d{2}-\d{2})/)?.[1] ?? windowMatch?.[2]) || "2026-05-18";
     const days = Math.max(1, Math.min(30, Number(windowMatch?.[3] ?? 14)));
     const decisionIds = [...input.matchAll(/(task_[a-zA-Z0-9_-]+)/g)].map((match) => match[1]);
 
@@ -276,14 +275,13 @@ function buildMockTextResponse(input) {
       })),
       tasks: Array.from({ length: days }, (_, index) => {
         const scheduledDate = addDays(startDate, index);
-        const isExamDay = scheduledDate === targetDate;
 
         return {
           day: index + 1,
           scheduledDate,
           title: `第 ${index + 1} 天复习事务基础并完成单选练习`,
-          kind: isExamDay ? "knowledge_review" : index % 5 === 4 ? "wrong_note_review" : "practice",
-          minutes: isExamDay ? 20 : 45,
+          kind: index % 5 === 4 ? "wrong_note_review" : "practice",
+          minutes: 45,
           knowledgeNodeIds: knowledgeNodeId ? [knowledgeNodeId] : []
         };
       })

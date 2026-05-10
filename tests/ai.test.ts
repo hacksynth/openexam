@@ -8,11 +8,13 @@ import {
   assertAiUsageAllowed,
   generateWrongNoteAiAnalysis,
   getUserAiSettings,
+  getAdminAiCredentialSettings,
   retryFailedAiCall,
   upsertAiProviderPreset,
   providerKeyHint,
   resolveAiEncryptionSecret,
-  resolveOpenAiCredential
+  resolveOpenAiCredential,
+  testAiProviderCredential
 } from "@openexam/core/ai";
 
 describe("AI key encryption", () => {
@@ -57,7 +59,9 @@ describe("OpenAI credential resolution", () => {
       userProviderKey: {
         findUnique: async () => ({
           encryptedKey: encrypted.ok ? encrypted.data.encrypted : "",
-          keyHint: "sk-...-key"
+          keyHint: "sk-...-key",
+          baseUrl: "http://127.0.0.1:8317/v1",
+          apiMode: "responses"
         })
       }
     };
@@ -66,15 +70,42 @@ describe("OpenAI credential resolution", () => {
       ok: true,
       data: {
         apiKey: "sk-user-key",
-        baseURL: null,
+        baseURL: "http://127.0.0.1:8317/v1",
+        apiMode: "responses",
         source: "byok"
       }
+    });
+  });
+
+  it("requires saved BYOK credentials to include a base URL", async () => {
+    const env = {
+      AI_KEY_ENCRYPTION_SECRET: "test-secret",
+      OPENAI_API_KEY: "sk-platform-key"
+    };
+    const encrypted = encryptAiSecret("sk-user-key", env);
+    const db = {
+      userProviderKey: {
+        findUnique: async () => ({
+          encryptedKey: encrypted.ok ? encrypted.data.encrypted : "",
+          keyHint: "sk-...-key",
+          baseUrl: null,
+          apiMode: null
+        })
+      }
+    };
+
+    await expect(resolveOpenAiCredential("user_1", db as never, env)).resolves.toEqual({
+      ok: false,
+      error: "OpenAI BYOK 缺少 Base URL，请在个人设置中重新保存 API Key 和 Base URL。"
     });
   });
 
   it("falls back to the platform key and fails clearly when no key exists", async () => {
     const db = {
       userProviderKey: {
+        findUnique: async () => null
+      },
+      adminAiCredential: {
         findUnique: async () => null
       }
     };
@@ -83,7 +114,8 @@ describe("OpenAI credential resolution", () => {
       ok: true,
       data: {
         apiKey: "sk-platform-key",
-        baseURL: null,
+        baseURL: "https://api.openai.com/v1",
+        apiMode: "chat",
         source: "platform"
       }
     });
@@ -96,6 +128,9 @@ describe("OpenAI credential resolution", () => {
   it("passes configured OpenAI-compatible base URLs with credentials", async () => {
     const db = {
       userProviderKey: {
+        findUnique: async () => null
+      },
+      adminAiCredential: {
         findUnique: async () => null
       }
     };
@@ -110,6 +145,40 @@ describe("OpenAI credential resolution", () => {
       data: {
         apiKey: "sk-platform-key",
         baseURL: "http://127.0.0.1:8317/v1",
+        apiMode: "chat",
+        source: "platform"
+      }
+    });
+  });
+
+  it("prefers admin platform credentials over env credentials", async () => {
+    const env = {
+      AI_KEY_ENCRYPTION_SECRET: "test-secret",
+      OPENAI_API_KEY: "sk-env-key",
+      OPENAI_BASE_URL: "http://env.example/v1"
+    };
+    const encrypted = encryptAiSecret("sk-admin-key", env);
+    const db = {
+      userProviderKey: {
+        findUnique: async () => null
+      },
+      adminAiCredential: {
+        findUnique: async () => ({
+          encryptedKey: encrypted.ok ? encrypted.data.encrypted : "",
+          keyHint: "sk-...-key",
+          baseUrl: "http://admin.example/v1",
+          apiMode: "responses",
+          updatedAt: new Date("2026-05-05T00:00:00.000Z")
+        })
+      }
+    };
+
+    await expect(resolveOpenAiCredential("user_1", db as never, env)).resolves.toEqual({
+      ok: true,
+      data: {
+        apiKey: "sk-admin-key",
+        baseURL: "http://admin.example/v1",
+        apiMode: "responses",
         source: "platform"
       }
     });
@@ -124,9 +193,14 @@ describe("AI provider settings", () => {
           {
             provider: "anthropic",
             keyHint: "sk-...ude",
+            baseUrl: "https://api.anthropic.com",
+            apiMode: null,
             updatedAt: new Date("2026-05-05T00:00:00.000Z")
           }
         ]
+      },
+      adminAiCredential: {
+        findMany: async () => []
       }
     };
 
@@ -137,10 +211,47 @@ describe("AI provider settings", () => {
       })
     ).resolves.toMatchObject({
       providers: [
-        { provider: "openai", label: "OpenAI", configured: false, platformAvailable: true },
-        { provider: "anthropic", label: "Claude", configured: true, keyHint: "sk-...ude", platformAvailable: false },
-        { provider: "gemini", label: "Gemini", configured: false, platformAvailable: true }
+        { provider: "openai", label: "OpenAI", configured: false, platformAvailable: true, platformSource: "env" },
+        { provider: "anthropic", label: "Claude", configured: true, keyHint: "sk-...ude", baseUrl: "https://api.anthropic.com", platformAvailable: false },
+        { provider: "gemini", label: "Gemini", configured: false, platformAvailable: true, platformSource: "env" }
       ]
+    });
+  });
+
+  it("returns admin credential settings with env fallback source", async () => {
+    const db = {
+      adminAiCredential: {
+        findMany: async () => []
+      }
+    };
+
+    const settings = await getAdminAiCredentialSettings(db as never, {
+      OPENAI_API_KEY: "sk-platform",
+      OPENAI_BASE_URL: "http://127.0.0.1:8317/v1",
+      OPENAI_API_MODE: "responses"
+    });
+
+    expect(settings.providers[0]).toMatchObject({
+      provider: "openai",
+      configured: true,
+      source: "env",
+      baseUrl: "http://127.0.0.1:8317/v1",
+      apiMode: "responses"
+    });
+  });
+
+  it("validates credential test inputs before making requests", async () => {
+    await expect(
+      testAiProviderCredential({
+        provider: "openai",
+        apiKey: "sk-test-key",
+        baseUrl: "",
+        apiMode: "responses",
+        testModel: "gpt-5.5"
+      })
+    ).resolves.toEqual({
+      ok: false,
+      error: "请输入 Base URL。"
     });
   });
 });

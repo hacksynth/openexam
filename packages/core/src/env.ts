@@ -26,6 +26,7 @@ const envSchema = z.object({
   AI_KEY_ENCRYPTION_SECRET: optionalNonEmptyString,
   OPENAI_API_KEY: z.string().optional(),
   OPENAI_BASE_URL: optionalUrl,
+  OPENAI_API_MODE: z.preprocess(emptyStringToUndefined, z.enum(["chat", "responses"]).optional()),
   OPENEXAM_DAILY_AI_CALL_LIMIT: z.coerce.number().int().positive().default(50),
   OPENEXAM_DAILY_PLATFORM_TOKEN_LIMIT: z.coerce.number().int().positive().default(100000),
   OPENEXAM_UPLOAD_MAX_BYTES: z.coerce.number().int().positive().default(10485760),

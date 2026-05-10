@@ -123,14 +123,14 @@ export default async function PlanDetailPage({ params, searchParams }: PlanDetai
                       </Link>
                       {plan.status === "active" ? (
                         <>
-                          {(task.status === "pending" || task.status === "completed") ? (
+                          {task.isCurrentWindowTask && (task.status === "pending" || task.status === "completed") ? (
                             <form action={setStudyPlanTaskCompletedAction}>
                               <input name="taskId" type="hidden" value={task.id} />
                               <input name="completed" type="hidden" value={task.status === "completed" ? "false" : "true"} />
                               <SubmitButton className="px-3 py-2" label={task.status === "completed" ? "取消完成" : "标记完成"} />
                             </form>
                           ) : null}
-                          {task.status === "pending" ? (
+                          {task.isCurrentWindowTask && task.status === "pending" ? (
                             <form action={skipStudyPlanTaskAction}>
                               <input name="taskId" type="hidden" value={task.id} />
                               <SubmitButton className="bg-white px-3 py-2" label="跳过" />

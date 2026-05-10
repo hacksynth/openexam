@@ -73,6 +73,7 @@ export async function generateSubjectiveScoreSuggestion(
       provider: preset.provider,
       apiKey: credential?.ok ? credential.data.apiKey : "test-key",
       baseURL: credential?.ok ? credential.data.baseURL : null,
+      apiMode: credential?.ok ? credential.data.apiMode : null,
       model: preset.model,
       instructions: prompt.instructions,
       input: prompt.input,

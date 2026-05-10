@@ -133,6 +133,7 @@ model User {
   assets           Asset[]
   aiCalls          AiCall[]
   aiChatThreads    AiChatThread[]
+  adminAiCredentials AdminAiCredential[] @relation("AdminAiCredentialUpdater")
   diagnoses        LearningDiagnosis[]
   generatedBatches GeneratedQuestionBatch[]
   jobs             Job[]
@@ -560,10 +561,28 @@ model UserProviderKey {
   provider     AiProvider
   encryptedKey String
   keyHint      String?
+  baseUrl      String?
+  apiMode      String?
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
   @@unique([userId, provider])
+}
+
+model AdminAiCredential {
+  id              String     @id @default(cuid())
+  provider        AiProvider @unique
+  encryptedKey    String
+  keyHint         String?
+  baseUrl         String
+  apiMode         String?
+  lastTestedModel String?
+  updatedById     String?
+  updatedBy       User?      @relation("AdminAiCredentialUpdater", fields: [updatedById], references: [id])
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  @@index([updatedById])
 }
 
 model AiProviderPreset {

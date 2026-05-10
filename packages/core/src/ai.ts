@@ -23,6 +23,7 @@ type AssetBytesReader = (asset: Pick<ReadableAsset, "storageKey">, env: NodeJS.P
 
 export type AiTextRequest = {
   provider?: AiProvider;
+  apiMode?: string | null;
   apiKey: string;
   baseURL?: string | null;
   model: string;
@@ -59,6 +60,7 @@ export type AiCredentialResult =
       data: {
         apiKey: string;
         baseURL: string | null;
+        apiMode: string | null;
         source: "byok" | "platform";
       };
     }
@@ -127,6 +129,28 @@ export type AiProviderPresetInput = {
   enabled?: string | boolean | null;
 };
 
+export type AiProviderCredentialInput = {
+  provider: string;
+  apiKey: string;
+  baseUrl: string;
+  apiMode?: string | null;
+  testModel?: string | null;
+};
+
+export type AiProviderModel = {
+  id: string;
+  label: string;
+};
+
+type AiProviderCredential = {
+  apiKey: string;
+  baseURL: string | null;
+  apiMode: string | null;
+  keyHint: string | null;
+  source: "admin" | "env";
+  updatedAt: Date | null;
+};
+
 export type ResolvedAiTaskPreset = {
   provider: AiProvider;
   model: string;
@@ -151,6 +175,9 @@ const providerLabels: Record<AiProvider, string> = {
   [AiProvider.anthropic]: "Claude",
   [AiProvider.gemini]: "Gemini"
 };
+const openAiApiModeChat = "chat";
+const openAiApiModeResponses = "responses";
+const defaultOpenAiApiMode = openAiApiModeChat;
 const platformKeyEnv: Record<AiProvider, string> = {
   [AiProvider.openai]: "OPENAI_API_KEY",
   [AiProvider.anthropic]: "ANTHROPIC_API_KEY",
@@ -258,27 +285,37 @@ export function decryptAiSecret(encryptedValue: string, env: NodeJS.ProcessEnv =
 }
 
 export async function getUserAiSettings(userId: string, db: AiDatabase = prisma, env: NodeJS.ProcessEnv = process.env) {
-  const keys = await db.userProviderKey.findMany({
-    where: {
-      userId,
-      provider: {
-        in: [...supportedAiProviders]
+  const [keys, platformCredentials] = await Promise.all([
+    db.userProviderKey.findMany({
+      where: {
+        userId,
+        provider: {
+          in: [...supportedAiProviders]
+        }
       }
-    }
-  });
+    }),
+    readPlatformCredentialSummaries(db, env)
+  ]);
   const keyByProvider = new Map(keys.map((key) => [key.provider, key]));
+  const platformByProvider = new Map(platformCredentials.map((credential) => [credential.provider, credential]));
 
   return {
     providers: supportedAiProviders.map((provider) => {
       const key = keyByProvider.get(provider);
+      const platform = platformByProvider.get(provider);
 
       return {
         provider,
         label: providerLabels[provider],
         configured: Boolean(key),
         keyHint: key?.keyHint ?? null,
+        baseUrl: key?.baseUrl ?? null,
+        apiMode: normalizeAiApiMode(provider, key?.apiMode ?? null),
+        needsBaseUrl: Boolean(key && !key.baseUrl),
         updatedAt: key?.updatedAt ?? null,
-        platformAvailable: Boolean(env[platformKeyEnv[provider]]?.trim())
+        platformAvailable: Boolean(platform),
+        platformSource: platform?.source ?? null,
+        platformBaseUrl: platform?.baseURL ?? null
       };
     })
   };
@@ -286,22 +323,32 @@ export async function getUserAiSettings(userId: string, db: AiDatabase = prisma,
 
 export async function saveUserProviderKey(
   userId: string,
-  input: { provider: string; apiKey: string },
+  input: AiProviderCredentialInput,
   db: AiDatabase = prisma,
   env: NodeJS.ProcessEnv = process.env
 ): Promise<ActionResult> {
-  const provider = parseAiProvider(input.provider);
-  const apiKey = input.apiKey.trim();
+  const parsed = parseAiProviderCredentialInput(input);
 
-  if (!provider) {
-    return { ok: false, error: "请选择有效的 AI Provider。" };
+  if (!parsed.ok) {
+    return parsed;
   }
 
-  if (apiKey.length < 8) {
-    return { ok: false, error: `请输入有效的 ${providerLabels[provider]} API Key。` };
+  const test = await testAiProviderCredential(
+    {
+      provider: parsed.data.provider,
+      apiKey: parsed.data.apiKey,
+      baseUrl: parsed.data.baseUrl,
+      apiMode: parsed.data.apiMode,
+      testModel: parsed.data.testModel
+    },
+    env
+  );
+
+  if (!test.ok) {
+    return test;
   }
 
-  const encrypted = encryptAiSecret(apiKey, env);
+  const encrypted = encryptAiSecret(parsed.data.apiKey, env);
 
   if (!encrypted.ok) {
     return encrypted;
@@ -311,18 +358,22 @@ export async function saveUserProviderKey(
     where: {
       userId_provider: {
         userId,
-        provider
+        provider: parsed.data.provider
       }
     },
     update: {
       encryptedKey: encrypted.data.encrypted,
-      keyHint: providerKeyHint(apiKey)
+      keyHint: providerKeyHint(parsed.data.apiKey),
+      baseUrl: parsed.data.baseUrl,
+      apiMode: parsed.data.apiMode
     },
     create: {
       userId,
-      provider,
+      provider: parsed.data.provider,
       encryptedKey: encrypted.data.encrypted,
-      keyHint: providerKeyHint(apiKey)
+      keyHint: providerKeyHint(parsed.data.apiKey),
+      baseUrl: parsed.data.baseUrl,
+      apiMode: parsed.data.apiMode
     }
   });
 
@@ -361,6 +412,12 @@ export async function resolveAiCredential(userId: string, provider: AiProvider, 
   });
 
   if (savedKey) {
+    const baseURL = normalizeBaseUrl(savedKey.baseUrl);
+
+    if (!baseURL) {
+      return { ok: false, error: `${providerLabels[provider]} BYOK 缺少 Base URL，请在个人设置中重新保存 API Key 和 Base URL。` };
+    }
+
     const decrypted = decryptAiSecret(savedKey.encryptedKey, env);
 
     if (!decrypted.ok) {
@@ -371,26 +428,267 @@ export async function resolveAiCredential(userId: string, provider: AiProvider, 
       ok: true,
       data: {
         apiKey: decrypted.data.plaintext,
-        baseURL: normalizeBaseUrl(env[platformBaseUrlEnv[provider]]),
+        baseURL,
+        apiMode: normalizeAiApiMode(provider, savedKey.apiMode),
         source: "byok" as const
       }
     };
   }
 
-  const platformKey = env[platformKeyEnv[provider]]?.trim();
+  let platformCredential: AiProviderCredential | null;
 
-  if (platformKey) {
+  try {
+    platformCredential = await resolvePlatformAiCredential(provider, db, env);
+  } catch (error) {
+    return { ok: false, error: formatAiError(error) };
+  }
+
+  if (platformCredential) {
     return {
       ok: true,
       data: {
-        apiKey: platformKey,
-        baseURL: normalizeBaseUrl(env[platformBaseUrlEnv[provider]]),
+        apiKey: platformCredential.apiKey,
+        baseURL: platformCredential.baseURL,
+        apiMode: platformCredential.apiMode,
         source: "platform" as const
       }
     };
   }
 
   return { ok: false, error: `请先在个人设置中配置 ${providerLabels[provider]} API Key。` } as const;
+}
+
+export async function getAdminAiCredentialSettings(db: AiDatabase = prisma, env: NodeJS.ProcessEnv = process.env) {
+  const credentials = await readPlatformCredentialSummaries(db, env);
+  const byProvider = new Map(credentials.map((credential) => [credential.provider, credential]));
+
+  return {
+    providers: supportedAiProviders.map((provider) => {
+      const credential = byProvider.get(provider);
+
+      return {
+        provider,
+        label: providerLabels[provider],
+        configured: Boolean(credential),
+        source: credential?.source ?? null,
+        keyHint: credential?.keyHint ?? null,
+        baseUrl: credential?.baseURL ?? defaultProviderBaseUrl(provider),
+        apiMode: normalizeAiApiMode(provider, credential?.apiMode ?? null),
+        updatedAt: credential?.updatedAt ?? null,
+        lastTestedModel: credential?.lastTestedModel ?? null
+      };
+    })
+  };
+}
+
+export async function saveAdminAiCredential(
+  input: AiProviderCredentialInput & { updatedById?: string | null },
+  db: AiDatabase = prisma,
+  env: NodeJS.ProcessEnv = process.env
+): Promise<ActionResult> {
+  const parsed = parseAiProviderCredentialInput(input);
+
+  if (!parsed.ok) {
+    return parsed;
+  }
+
+  const test = await testAiProviderCredential(
+    {
+      provider: parsed.data.provider,
+      apiKey: parsed.data.apiKey,
+      baseUrl: parsed.data.baseUrl,
+      apiMode: parsed.data.apiMode,
+      testModel: parsed.data.testModel
+    },
+    env
+  );
+
+  if (!test.ok) {
+    return test;
+  }
+
+  const encrypted = encryptAiSecret(parsed.data.apiKey, env);
+
+  if (!encrypted.ok) {
+    return encrypted;
+  }
+
+  await db.adminAiCredential.upsert({
+    where: {
+      provider: parsed.data.provider
+    },
+    update: {
+      encryptedKey: encrypted.data.encrypted,
+      keyHint: providerKeyHint(parsed.data.apiKey),
+      baseUrl: parsed.data.baseUrl,
+      apiMode: parsed.data.apiMode,
+      lastTestedModel: parsed.data.testModel,
+      updatedById: input.updatedById?.trim() || null
+    },
+    create: {
+      provider: parsed.data.provider,
+      encryptedKey: encrypted.data.encrypted,
+      keyHint: providerKeyHint(parsed.data.apiKey),
+      baseUrl: parsed.data.baseUrl,
+      apiMode: parsed.data.apiMode,
+      lastTestedModel: parsed.data.testModel,
+      updatedById: input.updatedById?.trim() || null
+    }
+  });
+
+  return { ok: true };
+}
+
+export async function listAiProviderModels(input: { provider: string; apiKey: string; baseUrl: string; apiMode?: string | null }): Promise<ActionResult<{ models: AiProviderModel[] }>> {
+  const provider = parseAiProvider(input.provider);
+  const apiKey = input.apiKey.trim();
+  const baseURL = normalizeBaseUrl(input.baseUrl);
+
+  if (!provider) {
+    return { ok: false, error: "请选择有效的 AI Provider。" };
+  }
+
+  if (apiKey.length < 8) {
+    return { ok: false, error: `请输入有效的 ${providerLabels[provider]} API Key。` };
+  }
+
+  if (!baseURL) {
+    return { ok: false, error: "请输入 Base URL。" };
+  }
+
+  try {
+    const models = await fetchAiProviderModels({ provider, apiKey, baseURL });
+
+    return { ok: true, data: { models } };
+  } catch (error) {
+    return { ok: false, error: formatAiError(error) };
+  }
+}
+
+async function resolvePlatformAiCredential(provider: AiProvider, db: AiDatabase, env: NodeJS.ProcessEnv): Promise<AiProviderCredential | null> {
+  const saved = await db.adminAiCredential.findUnique({
+    where: {
+      provider
+    }
+  });
+
+  if (saved) {
+    const decrypted = decryptAiSecret(saved.encryptedKey, env);
+
+    if (!decrypted.ok) {
+      throw new Error(decrypted.error);
+    }
+
+    return {
+      apiKey: decrypted.data.plaintext,
+      baseURL: normalizeBaseUrl(saved.baseUrl),
+      apiMode: normalizeAiApiMode(provider, saved.apiMode),
+      keyHint: saved.keyHint ?? null,
+      source: "admin",
+      updatedAt: saved.updatedAt
+    };
+  }
+
+  const apiKey = env[platformKeyEnv[provider]]?.trim();
+
+  if (!apiKey) {
+    return null;
+  }
+
+  return {
+    apiKey,
+    baseURL: normalizeBaseUrl(env[platformBaseUrlEnv[provider]]) ?? defaultProviderBaseUrl(provider),
+    apiMode: normalizeAiApiMode(provider, env[platformApiModeEnv(provider)]),
+    keyHint: providerKeyHint(apiKey),
+    source: "env",
+    updatedAt: null
+  };
+}
+
+async function readPlatformCredentialSummaries(db: AiDatabase, env: NodeJS.ProcessEnv) {
+  const saved = await db.adminAiCredential.findMany({
+    where: {
+      provider: {
+        in: [...supportedAiProviders]
+      }
+    }
+  });
+  const savedByProvider = new Map(saved.map((credential) => [credential.provider, credential]));
+  const credentials: Array<{
+    provider: AiProvider;
+    baseURL: string | null;
+    apiMode: string | null;
+    keyHint: string | null;
+    source: "admin" | "env";
+    updatedAt: Date | null;
+    lastTestedModel?: string | null;
+  }> = [];
+
+  for (const provider of supportedAiProviders) {
+    const credential = savedByProvider.get(provider);
+
+    if (credential) {
+      credentials.push({
+        provider,
+        baseURL: normalizeBaseUrl(credential.baseUrl),
+        apiMode: normalizeAiApiMode(provider, credential.apiMode),
+        keyHint: credential.keyHint ?? null,
+        source: "admin",
+        updatedAt: credential.updatedAt,
+        lastTestedModel: credential.lastTestedModel
+      });
+      continue;
+    }
+
+    const envKey = env[platformKeyEnv[provider]]?.trim();
+
+    if (envKey) {
+      credentials.push({
+        provider,
+        baseURL: normalizeBaseUrl(env[platformBaseUrlEnv[provider]]) ?? defaultProviderBaseUrl(provider),
+        apiMode: normalizeAiApiMode(provider, env[platformApiModeEnv(provider)]),
+        keyHint: providerKeyHint(envKey),
+        source: "env",
+        updatedAt: null,
+        lastTestedModel: null
+      });
+    }
+  }
+
+  return credentials;
+}
+
+export async function testAiProviderCredential(input: AiProviderCredentialInput, env: NodeJS.ProcessEnv = process.env): Promise<ActionResult<{ text: string }>> {
+  const parsed = parseAiProviderCredentialInput(input);
+
+  if (!parsed.ok) {
+    return parsed;
+  }
+
+  try {
+    const result = await generateAiText({
+      provider: parsed.data.provider,
+      apiKey: parsed.data.apiKey,
+      baseURL: parsed.data.baseUrl,
+      apiMode: parsed.data.apiMode,
+      model: parsed.data.testModel,
+      instructions: "Return only the word ok.",
+      input: "ping",
+      maxOutputTokens: 8,
+      temperature: 0,
+      timeoutMs: 15000,
+      maxRetries: 0
+    });
+    const text = result.text.trim();
+
+    if (!text) {
+      return { ok: false, error: "AI 连接测试没有返回内容。" };
+    }
+
+    return { ok: true, data: { text } };
+  } catch (error) {
+    return { ok: false, error: formatAiError(error) };
+  }
 }
 
 export async function listUserAiCalls(userId: string, options: PaginationInput = {}, db: AiDatabase = prisma) {
@@ -728,6 +1026,7 @@ export async function generateWrongNoteAiAnalysis(
         provider: preset.provider,
         apiKey: credential?.ok ? credential.data.apiKey : "test-key",
         baseURL: credential?.ok ? credential.data.baseURL : normalizeBaseUrl(env[platformBaseUrlEnv[preset.provider]]),
+        apiMode: credential?.ok ? credential.data.apiMode : normalizeAiApiMode(preset.provider, env[platformApiModeEnv(preset.provider)]),
         model: preset.model,
         instructions: prompt.instructions,
         input: aiInput,
@@ -848,6 +1147,7 @@ export async function generateAttemptAnswerAiExplanation(
         provider: preset.provider,
         apiKey: credential?.ok ? credential.data.apiKey : "test-key",
         baseURL: credential?.ok ? credential.data.baseURL : normalizeBaseUrl(env[platformBaseUrlEnv[preset.provider]]),
+        apiMode: credential?.ok ? credential.data.apiMode : normalizeAiApiMode(preset.provider, env[platformApiModeEnv(preset.provider)]),
         model: preset.model,
         instructions: prompt.instructions,
         input: aiInput,
@@ -994,6 +1294,7 @@ export async function generateQuestionExplanation(
         provider: preset.provider,
         apiKey: credential?.ok ? credential.data.apiKey : "test-key",
         baseURL: credential?.ok ? credential.data.baseURL : normalizeBaseUrl(env[platformBaseUrlEnv[preset.provider]]),
+        apiMode: credential?.ok ? credential.data.apiMode : normalizeAiApiMode(preset.provider, env[platformApiModeEnv(preset.provider)]),
         model: preset.model,
         instructions: prompt.instructions,
         input: aiInput,
@@ -1609,20 +1910,96 @@ function readFakeAiResponse(env: NodeJS.ProcessEnv) {
   return env.OPENEXAM_FAKE_AI_RESPONSE?.trim() || null;
 }
 
-function normalizeOpenAiBaseUrl(value: string | null | undefined) {
-  return normalizeBaseUrl(value);
-}
-
 function normalizeBaseUrl(value: string | null | undefined) {
   const normalized = value?.trim();
 
   return normalized || null;
 }
 
+function defaultProviderBaseUrl(provider: AiProvider) {
+  if (provider === AiProvider.openai) {
+    return "https://api.openai.com/v1";
+  }
+
+  if (provider === AiProvider.anthropic) {
+    return "https://api.anthropic.com";
+  }
+
+  return "https://generativelanguage.googleapis.com/v1beta";
+}
+
+function platformApiModeEnv(provider: AiProvider) {
+  return `${platformKeyEnv[provider].replace(/_API_KEY$/, "")}_API_MODE`;
+}
+
+function normalizeAiApiMode(provider: AiProvider, value: string | null | undefined) {
+  if (provider !== AiProvider.openai) {
+    return null;
+  }
+
+  const normalized = value?.trim().toLowerCase().replaceAll("_", "-");
+
+  if (normalized === openAiApiModeResponses || normalized === "response") {
+    return openAiApiModeResponses;
+  }
+
+  if (normalized === openAiApiModeChat || normalized === "chat-completions" || normalized === "chat_completions") {
+    return openAiApiModeChat;
+  }
+
+  return defaultOpenAiApiMode;
+}
+
 function parseAiProvider(value: string | null | undefined) {
   const normalized = value?.trim();
 
   return supportedAiProviders.includes(normalized as AiProvider) ? (normalized as AiProvider) : null;
+}
+
+function parseAiProviderCredentialInput(input: AiProviderCredentialInput): ActionResult<{
+  provider: AiProvider;
+  apiKey: string;
+  baseUrl: string;
+  apiMode: string | null;
+  testModel: string;
+}> {
+  const provider = parseAiProvider(input.provider);
+  const apiKey = input.apiKey.trim();
+  const baseUrl = normalizeBaseUrl(input.baseUrl);
+  const testModel = input.testModel?.trim();
+
+  if (!provider) {
+    return { ok: false, error: "请选择有效的 AI Provider。" };
+  }
+
+  if (apiKey.length < 8) {
+    return { ok: false, error: `请输入有效的 ${providerLabels[provider]} API Key。` };
+  }
+
+  if (!baseUrl) {
+    return { ok: false, error: "请输入 Base URL。" };
+  }
+
+  try {
+    new URL(baseUrl);
+  } catch {
+    return { ok: false, error: "Base URL 格式无效。" };
+  }
+
+  if (!testModel) {
+    return { ok: false, error: "请输入用于测试连接的模型名称。" };
+  }
+
+  return {
+    ok: true,
+    data: {
+      provider,
+      apiKey,
+      baseUrl,
+      apiMode: normalizeAiApiMode(provider, input.apiMode),
+      testModel
+    }
+  };
 }
 
 function parseCapabilities(value: string | string[] | null | undefined, provider: AiProvider | null): ActionResult<string[]> {
@@ -1913,13 +2290,119 @@ function sleepAiRetry(ms: number) {
 }
 
 function shouldUseOpenAiChatCompletions(request: AiTextRequest) {
-  const baseUrl = request.baseURL?.trim().toLowerCase();
+  return normalizeAiApiMode(AiProvider.openai, request.apiMode) === openAiApiModeChat;
+}
 
-  if (!baseUrl) {
-    return false;
+async function fetchAiProviderModels({
+  provider,
+  apiKey,
+  baseURL
+}: {
+  provider: AiProvider;
+  apiKey: string;
+  baseURL: string;
+}): Promise<AiProviderModel[]> {
+  if (provider === AiProvider.openai) {
+    const client = new OpenAI({
+      apiKey,
+      baseURL,
+      timeout: 15000,
+      maxRetries: 0
+    });
+    const response = await client.models.list();
+
+    return response.data
+      .map((model) => ({ id: model.id, label: model.id }))
+      .sort((left, right) => left.id.localeCompare(right.id));
   }
 
-  return !baseUrl.includes("api.openai.com");
+  if (provider === AiProvider.anthropic) {
+    const normalizedBaseUrl = baseURL.replace(/\/$/, "");
+    const { response, body } = await fetchJsonWithAiRequestOptions(
+      `${normalizedBaseUrl}/v1/models`,
+      {
+        provider,
+        apiKey,
+        baseURL,
+        model: "models",
+        instructions: "",
+        input: "",
+        timeoutMs: 15000,
+        maxRetries: 0
+      },
+      {
+        method: "GET",
+        headers: {
+          "x-api-key": apiKey,
+          "anthropic-version": "2023-06-01"
+        }
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(readProviderError(body, `Anthropic 模型列表请求失败 (${response.status})。`));
+    }
+
+    return readProviderModels(body);
+  }
+
+  const normalizedBaseUrl = baseURL.replace(/\/$/, "");
+  const { response, body } = await fetchJsonWithAiRequestOptions(
+    `${normalizedBaseUrl}/models`,
+    {
+      provider,
+      apiKey,
+      baseURL,
+      model: "models",
+      instructions: "",
+      input: "",
+      timeoutMs: 15000,
+      maxRetries: 0
+    },
+    {
+      method: "GET",
+      headers: {
+        "x-goog-api-key": apiKey
+      }
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(readProviderError(body, `Gemini 模型列表请求失败 (${response.status})。`));
+  }
+
+  return readProviderModels(body);
+}
+
+function readProviderModels(value: unknown): AiProviderModel[] {
+  if (!value || typeof value !== "object") {
+    return [];
+  }
+
+  const data = (value as { data?: unknown; models?: unknown }).data ?? (value as { models?: unknown }).models;
+
+  if (!Array.isArray(data)) {
+    return [];
+  }
+
+  return data
+    .map((item) => {
+      if (typeof item === "string") {
+        return { id: item, label: item };
+      }
+
+      if (!item || typeof item !== "object") {
+        return null;
+      }
+
+      const record = item as { id?: unknown; name?: unknown; displayName?: unknown };
+      const id = typeof record.id === "string" ? record.id : typeof record.name === "string" ? record.name : "";
+      const label = typeof record.displayName === "string" ? record.displayName : id;
+
+      return id ? { id, label } : null;
+    })
+    .filter((model): model is AiProviderModel => Boolean(model))
+    .sort((left, right) => left.id.localeCompare(right.id));
 }
 
 function toOpenAiResponseInput(input: AiTextRequest["input"]) {
