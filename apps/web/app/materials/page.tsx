@@ -6,7 +6,7 @@ import { requireWebSession } from "@/lib/auth";
 import { listKnowledgeHierarchy } from "@openexam/core/exam-core";
 import { listUserMaterials } from "@openexam/core/materials";
 import { FeedbackMessage, SelectField, SubmitButton, TextField } from "@openexam/core/pixel-ui";
-import { uploadMaterialAction } from "./actions";
+import { retryMaterialExtractionAction, uploadMaterialAction } from "./actions";
 
 type MaterialsPageProps = {
   searchParams: Promise<{ error?: string; notice?: string; page?: string; pageSize?: string }>;
@@ -79,7 +79,18 @@ export default async function MaterialsPage({ searchParams }: MaterialsPageProps
                 </div>
                 <h2 className="break-words text-xl font-black">{material.title}</h2>
                 <p className="text-sm font-bold text-[var(--muted)]">{material.mimeType}</p>
-                {material.extractionError || material.latestJob?.error ? <p className="border-2 border-black bg-red-50 p-3 text-sm font-bold text-red-700">{material.extractionError || material.latestJob?.error}</p> : null}
+                {material.extractionError || material.latestJob?.error ? (
+                  <div className="grid gap-2 border-2 border-black bg-red-50 p-3 text-sm font-bold text-red-700">
+                    <p>{friendlyExtractionError(material.extractionError || material.latestJob?.error)}</p>
+                    {material.latestJob?.status === "failed" ? (
+                      <form action={retryMaterialExtractionAction}>
+                        <input name="materialId" type="hidden" value={material.id} />
+                        <input name="jobId" type="hidden" value={material.latestJob.id} />
+                        <SubmitButton className="w-fit bg-white px-3 py-2 text-black" label="重新抽题" />
+                      </form>
+                    ) : null}
+                  </div>
+                ) : null}
                 {material.candidateCount > material.pendingCandidateCount ? (
                   <div className="flex flex-wrap gap-3">
                     <Link href={`/practice?material=${encodeURIComponent(material.id)}` as Route} className="pixel-button w-fit bg-white px-4 py-2">
@@ -128,4 +139,24 @@ function methodLabel(value: string) {
 
 function formatBytes(value: number) {
   return value >= 1024 * 1024 ? `${(value / 1024 / 1024).toFixed(1)}MB` : `${Math.ceil(value / 1024)}KB`;
+}
+
+function friendlyExtractionError(value: string | null | undefined) {
+  if (!value) {
+    return null;
+  }
+
+  if (value.includes("AI 抽题结果") || value.includes("格式无效") || value.includes("不是有效 JSON")) {
+    return "AI 抽题没有生成可用题目。可以稍后重试；如果连续失败，请联系管理员检查模型输出格式。";
+  }
+
+  if (value.includes("timeout") || value.includes("超时")) {
+    return "AI 抽题处理时间过长。可以稍后重试，或上传更短的资料。";
+  }
+
+  if (value.includes("API Key") || value.includes("401") || value.includes("403")) {
+    return "AI 服务暂时不可用。请稍后重试，或联系管理员检查 AI 配置。";
+  }
+
+  return "资料抽题失败。可以稍后重试；如果持续失败，请联系管理员。";
 }

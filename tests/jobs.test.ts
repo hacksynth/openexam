@@ -164,6 +164,109 @@ describe("job claiming", () => {
       await rm(storageRoot, { force: true, recursive: true });
     }
   });
+
+  it("stores raw AI output in the job result when material extraction format validation fails", async () => {
+    const storageRoot = await mkdtemp(path.join(os.tmpdir(), "openexam-job-material-"));
+
+    try {
+      await writeFile(path.join(storageRoot, "input.txt"), "题干：事务原子性是什么？\nA. 全部成功或全部失败\n答案：A", "utf8");
+
+      const calls: { method: string; args?: unknown }[] = [];
+      const job = {
+        ...jobRecord,
+        type: materialJobType,
+        payload: { materialId: "material_1" }
+      };
+      const db = {
+        job: {
+          findFirst: async (args: unknown) => {
+            calls.push({ method: "job.findFirst", args });
+            return job;
+          },
+          updateMany: async (args: unknown) => {
+            calls.push({ method: "job.updateMany", args });
+            return { count: 1 };
+          },
+          findUnique: async () => job,
+          update: async (args: unknown) => {
+            calls.push({ method: "job.update", args });
+            return args;
+          }
+        },
+        material: {
+          findUnique: async () => ({
+            id: "material_1",
+            ownerId: "user_1",
+            title: "资料",
+            mimeType: "text/plain",
+            storageKey: "input.txt",
+            bindingScope: null
+          }),
+          update: async (args: unknown) => {
+            calls.push({ method: "material.update", args });
+            return args;
+          }
+        },
+        aiProviderPresetTask: {
+          findUnique: async () => ({
+            preset: {
+              provider: "openai",
+              model: "gpt-test",
+              capabilities: ["json"],
+              enabled: true,
+              maxTokens: 8192,
+              temperature: null
+            }
+          })
+        },
+        knowledgeNode: {
+          findMany: async () => []
+        },
+        aiCall: {
+          create: async (args: unknown) => {
+            calls.push({ method: "aiCall.create", args });
+            return { id: "call_1" };
+          },
+          update: async (args: unknown) => {
+            calls.push({ method: "aiCall.update", args });
+            return args;
+          }
+        },
+        $transaction: async (items: Promise<unknown>[]) => Promise.all(items)
+      };
+      const rawOutput = JSON.stringify({ questions: [{ stem: "事务原子性是什么？", options: { A: "全部成功或全部失败" }, answer: "E" }] });
+
+      await expect(
+        processJob("job_1", {
+          db: db as never,
+          env: {
+            DATABASE_URL: "postgresql://openexam:openexam@localhost:5432/openexam?schema=public",
+            LOCAL_STORAGE_DIR: storageRoot
+          },
+          generateText: async () => ({ text: rawOutput })
+        })
+      ).resolves.toEqual({
+        ok: false,
+        error: "AI 抽题结果格式无效：字段 questions.0.options.B 不符合要求。"
+      });
+      expect(calls).toContainEqual(
+        expect.objectContaining({
+          method: "job.update",
+          args: expect.objectContaining({
+            data: expect.objectContaining({
+              result: expect.objectContaining({
+                aiOutput: rawOutput,
+                error: "AI 抽题结果格式无效：字段 questions.0.options.B 不符合要求。",
+                model: "gpt-test"
+              })
+            })
+          })
+        })
+      );
+    } finally {
+      await rm(storageRoot, { force: true, recursive: true });
+    }
+  });
 });
 
 describe("stale job recovery", () => {

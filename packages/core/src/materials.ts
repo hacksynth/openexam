@@ -229,6 +229,75 @@ export async function uploadMaterial(userId: string, input: UploadMaterialInput,
   }
 }
 
+export async function retryUserMaterialExtractionJob(
+  userId: string,
+  input: { jobId?: string | null; materialId?: string | null },
+  db: MaterialDatabase = prisma
+): Promise<ActionResult> {
+  const materialId = optionalText(input.materialId);
+  const jobId = optionalText(input.jobId);
+
+  if (!materialId || !jobId) {
+    return { ok: false, error: "请选择要重试的资料抽题任务。" };
+  }
+
+  const material = await db.material.findFirst({
+    where: {
+      id: materialId,
+      ownerId: userId,
+      libraryScope: "personal"
+    },
+    select: {
+      id: true
+    }
+  });
+
+  if (!material) {
+    return { ok: false, error: "资料不存在或无权重试。" };
+  }
+
+  const job = await db.job.findFirst({
+    where: {
+      id: jobId,
+      userId,
+      type: materialJobType,
+      status: "failed"
+    }
+  });
+
+  if (!job || readPayloadMaterialId(job.payload) !== material.id) {
+    return { ok: false, error: "只能重试当前资料的失败抽题任务。" };
+  }
+
+  await db.$transaction([
+    db.material.update({
+      where: {
+        id: material.id
+      },
+      data: {
+        extractionState: "queued",
+        extractionError: null
+      }
+    }),
+    db.job.update({
+      where: {
+        id: job.id
+      },
+      data: {
+        status: "queued",
+        error: null,
+        result: Prisma.JsonNull,
+        progress: 0,
+        runAt: new Date(),
+        startedAt: null,
+        finishedAt: null
+      }
+    })
+  ]);
+
+  return { ok: true };
+}
+
 export async function listUserMaterials(userId: string, options: PaginationInput = {}, db: MaterialDatabase = prisma) {
   const where = { ownerId: userId, libraryScope: "personal" } satisfies Prisma.MaterialWhereInput;
   const totalItems = await db.material.count({ where });
@@ -1078,23 +1147,24 @@ export function validateExtractedQuestionsJson(value: string): ActionResult<{ qu
   const json = extractJsonObject(value);
 
   if (!json) {
-    return { ok: false, error: "AI 抽题结果不是有效 JSON。" };
+    return { ok: false, error: "AI 抽题结果不是有效 JSON：未找到 JSON 对象。" };
   }
 
   try {
-    const parsed = materialQuestionExtractionSchema.safeParse(JSON.parse(json));
+    const raw = JSON.parse(json);
+    const parsed = materialQuestionExtractionSchema.safeParse(raw);
 
     if (!parsed.success) {
-      return { ok: false, error: "AI 抽题结果格式无效。" };
+      return { ok: false, error: formatExtractionSchemaError(raw, parsed.error.issues[0]?.path.join(".") || "root") };
     }
 
     const questions: ExtractedMaterialQuestion[] = [];
 
-    for (const item of parsed.data.questions) {
-      const question = parseExtractedQuestion(item);
+    for (const [index, item] of parsed.data.questions.entries()) {
+      const question = parseExtractedQuestion(item, index);
 
       if (!question.ok) {
-        return { ok: false, error: "AI 抽题结果格式无效。" };
+        return question;
       }
 
       questions.push(question.data);
@@ -1106,9 +1176,25 @@ export function validateExtractedQuestionsJson(value: string): ActionResult<{ qu
         questions
       }
     };
-  } catch {
-    return { ok: false, error: "AI 抽题结果不是有效 JSON。" };
+  } catch (error) {
+    return { ok: false, error: `AI 抽题结果不是有效 JSON：${error instanceof Error ? error.message : "JSON.parse 失败"}。` };
   }
+}
+
+function formatExtractionSchemaError(value: unknown, path: string) {
+  if (!isPlainObject(value)) {
+    return "AI 抽题结果格式无效：根节点必须是对象，形如 {\"questions\":[...]}。";
+  }
+
+  if (!Array.isArray(value.questions)) {
+    return "AI 抽题结果格式无效：缺少 questions 数组。";
+  }
+
+  if (value.questions.length === 0) {
+    return "AI 抽题结果格式无效：questions 至少需要 1 道题。";
+  }
+
+  return `AI 抽题结果格式无效：字段 ${path} 不符合要求。`;
 }
 
 export async function listMaterialKnowledgeOptions(bindingScope: string | null, db: MaterialDatabase = prisma) {
@@ -1160,9 +1246,11 @@ function findMaterialForProcessing(materialId: string, db: MaterialDatabase) {
   });
 }
 
-function parseExtractedQuestion(value: unknown): ActionResult<ExtractedMaterialQuestion> {
+function parseExtractedQuestion(value: unknown, index = 0): ActionResult<ExtractedMaterialQuestion> {
+  const label = `第 ${index + 1} 题`;
+
   if (!isPlainObject(value)) {
-    return { ok: false, error: "AI 抽题结果格式无效。" };
+    return { ok: false, error: `AI 抽题结果格式无效：${label} 必须是对象。` };
   }
 
   const rawStem = textValue(value.stem);
@@ -1181,12 +1269,16 @@ function parseExtractedQuestion(value: unknown): ActionResult<ExtractedMaterialQ
   const referenceAnswerBlocks = readOptionalRichContentBlocks(value.referenceAnswerBlocks, referenceAnswer);
 
   if (!stem) {
-    return { ok: false, error: "AI 抽题结果格式无效。" };
+    return { ok: false, error: `AI 抽题结果格式无效：${label} 缺少 stem 题干。` };
   }
 
   if (kind === QuestionKind.single_choice) {
-    if (!choiceContent || !singleChoiceAnswerKeys.includes(String(answer).toUpperCase() as SingleChoiceAnswerKey)) {
-      return { ok: false, error: "AI 抽题结果格式无效。" };
+    if (!choiceContent) {
+      return { ok: false, error: `AI 抽题结果格式无效：${label} 单选题必须包含 A/B/C/D 四个非空选项。` };
+    }
+
+    if (!singleChoiceAnswerKeys.includes(String(answer).toUpperCase() as SingleChoiceAnswerKey)) {
+      return { ok: false, error: `AI 抽题结果格式无效：${label} 单选题 answer 必须是 A/B/C/D。` };
     }
 
     return {

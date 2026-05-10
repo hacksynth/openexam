@@ -60,11 +60,15 @@ describe("material question extraction", () => {
   it("rejects invalid extraction JSON", () => {
     expect(validateExtractedQuestionsJson("{not json")).toEqual({
       ok: false,
-      error: "AI 抽题结果不是有效 JSON。"
+      error: expect.stringContaining("AI 抽题结果不是有效 JSON")
     });
     expect(validateExtractedQuestionsJson(JSON.stringify({ questions: [] }))).toEqual({
       ok: false,
-      error: "AI 抽题结果格式无效。"
+      error: "AI 抽题结果格式无效：questions 至少需要 1 道题。"
+    });
+    expect(validateExtractedQuestionsJson(JSON.stringify({ questions: [{ stem: "题干", options: { A: "A" }, answer: "E" }] }))).toEqual({
+      ok: false,
+      error: "AI 抽题结果格式无效：字段 questions.0.options.B 不符合要求。"
     });
   });
 

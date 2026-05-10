@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { Route } from "next";
-import { uploadMaterial } from "@openexam/core/materials";
+import { retryUserMaterialExtractionJob, uploadMaterial } from "@openexam/core/materials";
 import { requireWebSession } from "@/lib/auth";
 
 export async function uploadMaterialAction(formData: FormData) {
@@ -28,6 +28,22 @@ export async function uploadMaterialAction(formData: FormData) {
   }
 
   redirect(`/materials?notice=${encodeURIComponent("资料已上传，抽题任务已进入队列。")}` as Route);
+}
+
+export async function retryMaterialExtractionAction(formData: FormData) {
+  const session = await requireWebSession();
+  const result = await retryUserMaterialExtractionJob(session.user.id, {
+    materialId: value(formData, "materialId"),
+    jobId: value(formData, "jobId")
+  });
+
+  revalidatePath("/materials" as Route);
+
+  if (!result.ok) {
+    redirect(`/materials?error=${encodeURIComponent(result.error)}` as Route);
+  }
+
+  redirect(`/materials?notice=${encodeURIComponent("抽题任务已重新排队。")}` as Route);
 }
 
 function value(formData: FormData, name: string) {

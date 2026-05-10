@@ -233,6 +233,7 @@ async function processClaimedJob(job: Prisma.JobGetPayload<object>, options: Job
         status: "failed",
         error: message,
         progress: 0,
+        ...(error instanceof JobProcessingError && error.result ? { result: error.result } : {}),
         finishedAt: new Date()
       }
     });
@@ -428,7 +429,12 @@ async function processMaterialExtractionJob(jobId: string, payload: Prisma.JsonV
     const parsed = validateExtractedQuestionsJson(result.text);
 
     if (!parsed.ok) {
-      throw new JobProcessingError(parsed.error);
+      throw new JobProcessingError(parsed.error, {
+        aiOutput: truncateText(result.text, 12000),
+        error: parsed.error,
+        model,
+        promptVersion: materialExtractionPromptVersion
+      });
     }
 
     await createMaterialQuestionCandidates(material.id, jobId, parsed.data.questions, db, { env });
@@ -457,6 +463,7 @@ async function processMaterialExtractionJob(jobId: string, payload: Prisma.JsonV
     };
   } catch (error) {
     const message = formatMaterialExtractionError(error, preset.model, timeoutMs);
+    const failureResult = error instanceof JobProcessingError ? error.result : undefined;
 
     await db.$transaction([
       db.aiCall.update({
@@ -476,7 +483,7 @@ async function processMaterialExtractionJob(jobId: string, payload: Prisma.JsonV
       })
     ]);
 
-    throw new JobProcessingError(message);
+    throw new JobProcessingError(message, failureResult);
   }
 }
 
@@ -515,7 +522,15 @@ function normalizeJobStatus(value: string | null | undefined) {
   return normalized as "queued" | "running" | "succeeded" | "failed" | "canceled";
 }
 
-class JobProcessingError extends Error {}
+class JobProcessingError extends Error {
+  result?: Prisma.InputJsonValue;
+
+  constructor(message: string, result?: Prisma.InputJsonValue) {
+    super(message);
+    this.name = "JobProcessingError";
+    this.result = result;
+  }
+}
 
 type ClaimResult = { ok: true; job: Prisma.JobGetPayload<object> } | { ok: false; error: string };
 
@@ -548,6 +563,10 @@ function formatMaterialExtractionError(error: unknown, model: string, timeoutMs:
   }
 
   return error instanceof Error ? error.message : "AI 抽题失败。";
+}
+
+function truncateText(value: string, maxLength: number) {
+  return value.length > maxLength ? `${value.slice(0, maxLength)}\n...[truncated ${value.length - maxLength} chars]` : value;
 }
 
 function isTimeoutError(error: unknown) {
