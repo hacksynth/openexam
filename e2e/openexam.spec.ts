@@ -400,7 +400,7 @@ async function saveLearnerOpenAiKey(page: Page, apiKey: string) {
 }
 
 function openAiCredentialForm(page: Page) {
-  return page.locator("section").filter({ hasText: "OpenAI API Key" }).first();
+  return page.locator("section.pixel-panel").filter({ has: page.getByRole("heading", { name: "OpenAI API Key" }) }).first();
 }
 
 async function waitForWrongNoteReviewCard(page: Page, expectedText: string) {
