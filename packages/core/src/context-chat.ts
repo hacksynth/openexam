@@ -1,5 +1,5 @@
 import { AiTaskType, Prisma } from "@prisma/client";
-import { assertAiUsageAllowed, generateAiText, resolveAiCredential, resolveTaskAiPreset, type AiTextGenerator, type AiTextInputPart } from "./ai";
+import { assertAiUsageAllowed, generateAiText, modelForCredential, resolveAiCredential, resolveTaskAiPreset, type AiTextGenerator, type AiTextInputPart } from "./ai";
 import { formatGoalPath } from "./exam-core";
 import { readMaterialText } from "./materials";
 import { buildPagination, type PaginationInput } from "./pagination";
@@ -133,6 +133,7 @@ export async function sendContextChatMessage(
     }
   }
 
+  const model = modelForCredential(preset, credential);
   const history = await db.aiChatMessage.findMany({
     where: { threadId: thread.id },
     orderBy: [{ createdAt: "desc" }],
@@ -150,7 +151,7 @@ export async function sendContextChatMessage(
     data: {
       userId,
       provider: preset.provider,
-      model: preset.model,
+      model,
       taskType: AiTaskType.chat_with_context,
       promptVersion,
       inputContextSource: context.source,
@@ -175,7 +176,7 @@ export async function sendContextChatMessage(
       apiKey: credential?.ok ? credential.data.apiKey : "test-key",
       baseURL: credential?.ok ? credential.data.baseURL : null,
       apiMode: credential?.ok ? credential.data.apiMode : null,
-      model: preset.model,
+      model,
       instructions: prompt.instructions,
       input: aiInput,
       maxOutputTokens: preset.maxOutputTokens,

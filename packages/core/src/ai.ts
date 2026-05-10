@@ -61,6 +61,7 @@ export type AiCredentialResult =
         apiKey: string;
         baseURL: string | null;
         apiMode: string | null;
+        defaultModel: string | null;
         source: "byok" | "platform";
       };
     }
@@ -134,6 +135,7 @@ export type AiProviderCredentialInput = {
   apiKey: string;
   baseUrl: string;
   apiMode?: string | null;
+  defaultModel?: string | null;
   testModel?: string | null;
 };
 
@@ -146,6 +148,7 @@ type AiProviderCredential = {
   apiKey: string;
   baseURL: string | null;
   apiMode: string | null;
+  defaultModel: string | null;
   keyHint: string | null;
   source: "admin" | "env";
   updatedAt: Date | null;
@@ -311,11 +314,13 @@ export async function getUserAiSettings(userId: string, db: AiDatabase = prisma,
         keyHint: key?.keyHint ?? null,
         baseUrl: key?.baseUrl ?? null,
         apiMode: normalizeAiApiMode(provider, key?.apiMode ?? null),
+        defaultModel: key?.defaultModel ?? null,
         needsBaseUrl: Boolean(key && !key.baseUrl),
         updatedAt: key?.updatedAt ?? null,
         platformAvailable: Boolean(platform),
         platformSource: platform?.source ?? null,
-        platformBaseUrl: platform?.baseURL ?? null
+        platformBaseUrl: platform?.baseURL ?? null,
+        platformDefaultModel: platform?.defaultModel ?? null
       };
     })
   };
@@ -331,21 +336,6 @@ export async function saveUserProviderKey(
 
   if (!parsed.ok) {
     return parsed;
-  }
-
-  const test = await testAiProviderCredential(
-    {
-      provider: parsed.data.provider,
-      apiKey: parsed.data.apiKey,
-      baseUrl: parsed.data.baseUrl,
-      apiMode: parsed.data.apiMode,
-      testModel: parsed.data.testModel
-    },
-    env
-  );
-
-  if (!test.ok) {
-    return test;
   }
 
   const encrypted = encryptAiSecret(parsed.data.apiKey, env);
@@ -365,7 +355,8 @@ export async function saveUserProviderKey(
       encryptedKey: encrypted.data.encrypted,
       keyHint: providerKeyHint(parsed.data.apiKey),
       baseUrl: parsed.data.baseUrl,
-      apiMode: parsed.data.apiMode
+      apiMode: parsed.data.apiMode,
+      defaultModel: parsed.data.defaultModel
     },
     create: {
       userId,
@@ -373,7 +364,8 @@ export async function saveUserProviderKey(
       encryptedKey: encrypted.data.encrypted,
       keyHint: providerKeyHint(parsed.data.apiKey),
       baseUrl: parsed.data.baseUrl,
-      apiMode: parsed.data.apiMode
+      apiMode: parsed.data.apiMode,
+      defaultModel: parsed.data.defaultModel
     }
   });
 
@@ -430,6 +422,7 @@ export async function resolveAiCredential(userId: string, provider: AiProvider, 
         apiKey: decrypted.data.plaintext,
         baseURL,
         apiMode: normalizeAiApiMode(provider, savedKey.apiMode),
+        defaultModel: normalizeCredentialModel(savedKey.defaultModel),
         source: "byok" as const
       }
     };
@@ -450,6 +443,7 @@ export async function resolveAiCredential(userId: string, provider: AiProvider, 
         apiKey: platformCredential.apiKey,
         baseURL: platformCredential.baseURL,
         apiMode: platformCredential.apiMode,
+        defaultModel: platformCredential.defaultModel,
         source: "platform" as const
       }
     };
@@ -474,6 +468,7 @@ export async function getAdminAiCredentialSettings(db: AiDatabase = prisma, env:
         keyHint: credential?.keyHint ?? null,
         baseUrl: credential?.baseURL ?? defaultProviderBaseUrl(provider),
         apiMode: normalizeAiApiMode(provider, credential?.apiMode ?? null),
+        defaultModel: credential?.defaultModel ?? null,
         updatedAt: credential?.updatedAt ?? null,
         lastTestedModel: credential?.lastTestedModel ?? null
       };
@@ -492,21 +487,6 @@ export async function saveAdminAiCredential(
     return parsed;
   }
 
-  const test = await testAiProviderCredential(
-    {
-      provider: parsed.data.provider,
-      apiKey: parsed.data.apiKey,
-      baseUrl: parsed.data.baseUrl,
-      apiMode: parsed.data.apiMode,
-      testModel: parsed.data.testModel
-    },
-    env
-  );
-
-  if (!test.ok) {
-    return test;
-  }
-
   const encrypted = encryptAiSecret(parsed.data.apiKey, env);
 
   if (!encrypted.ok) {
@@ -522,7 +502,8 @@ export async function saveAdminAiCredential(
       keyHint: providerKeyHint(parsed.data.apiKey),
       baseUrl: parsed.data.baseUrl,
       apiMode: parsed.data.apiMode,
-      lastTestedModel: parsed.data.testModel,
+      defaultModel: parsed.data.defaultModel,
+      lastTestedModel: parsed.data.testModel ?? parsed.data.defaultModel,
       updatedById: input.updatedById?.trim() || null
     },
     create: {
@@ -531,7 +512,8 @@ export async function saveAdminAiCredential(
       keyHint: providerKeyHint(parsed.data.apiKey),
       baseUrl: parsed.data.baseUrl,
       apiMode: parsed.data.apiMode,
-      lastTestedModel: parsed.data.testModel,
+      defaultModel: parsed.data.defaultModel,
+      lastTestedModel: parsed.data.testModel ?? parsed.data.defaultModel,
       updatedById: input.updatedById?.trim() || null
     }
   });
@@ -565,101 +547,8 @@ export async function listAiProviderModels(input: { provider: string; apiKey: st
   }
 }
 
-async function resolvePlatformAiCredential(provider: AiProvider, db: AiDatabase, env: NodeJS.ProcessEnv): Promise<AiProviderCredential | null> {
-  const saved = await db.adminAiCredential.findUnique({
-    where: {
-      provider
-    }
-  });
-
-  if (saved) {
-    const decrypted = decryptAiSecret(saved.encryptedKey, env);
-
-    if (!decrypted.ok) {
-      throw new Error(decrypted.error);
-    }
-
-    return {
-      apiKey: decrypted.data.plaintext,
-      baseURL: normalizeBaseUrl(saved.baseUrl),
-      apiMode: normalizeAiApiMode(provider, saved.apiMode),
-      keyHint: saved.keyHint ?? null,
-      source: "admin",
-      updatedAt: saved.updatedAt
-    };
-  }
-
-  const apiKey = env[platformKeyEnv[provider]]?.trim();
-
-  if (!apiKey) {
-    return null;
-  }
-
-  return {
-    apiKey,
-    baseURL: normalizeBaseUrl(env[platformBaseUrlEnv[provider]]) ?? defaultProviderBaseUrl(provider),
-    apiMode: normalizeAiApiMode(provider, env[platformApiModeEnv(provider)]),
-    keyHint: providerKeyHint(apiKey),
-    source: "env",
-    updatedAt: null
-  };
-}
-
-async function readPlatformCredentialSummaries(db: AiDatabase, env: NodeJS.ProcessEnv) {
-  const saved = await db.adminAiCredential.findMany({
-    where: {
-      provider: {
-        in: [...supportedAiProviders]
-      }
-    }
-  });
-  const savedByProvider = new Map(saved.map((credential) => [credential.provider, credential]));
-  const credentials: Array<{
-    provider: AiProvider;
-    baseURL: string | null;
-    apiMode: string | null;
-    keyHint: string | null;
-    source: "admin" | "env";
-    updatedAt: Date | null;
-    lastTestedModel?: string | null;
-  }> = [];
-
-  for (const provider of supportedAiProviders) {
-    const credential = savedByProvider.get(provider);
-
-    if (credential) {
-      credentials.push({
-        provider,
-        baseURL: normalizeBaseUrl(credential.baseUrl),
-        apiMode: normalizeAiApiMode(provider, credential.apiMode),
-        keyHint: credential.keyHint ?? null,
-        source: "admin",
-        updatedAt: credential.updatedAt,
-        lastTestedModel: credential.lastTestedModel
-      });
-      continue;
-    }
-
-    const envKey = env[platformKeyEnv[provider]]?.trim();
-
-    if (envKey) {
-      credentials.push({
-        provider,
-        baseURL: normalizeBaseUrl(env[platformBaseUrlEnv[provider]]) ?? defaultProviderBaseUrl(provider),
-        apiMode: normalizeAiApiMode(provider, env[platformApiModeEnv(provider)]),
-        keyHint: providerKeyHint(envKey),
-        source: "env",
-        updatedAt: null,
-        lastTestedModel: null
-      });
-    }
-  }
-
-  return credentials;
-}
-
 export async function testAiProviderCredential(input: AiProviderCredentialInput, env: NodeJS.ProcessEnv = process.env): Promise<ActionResult<{ text: string }>> {
-  const parsed = parseAiProviderCredentialInput(input);
+  const parsed = parseAiProviderCredentialTestInput(input);
 
   if (!parsed.ok) {
     return parsed;
@@ -689,6 +578,104 @@ export async function testAiProviderCredential(input: AiProviderCredentialInput,
   } catch (error) {
     return { ok: false, error: formatAiError(error) };
   }
+}
+
+async function resolvePlatformAiCredential(provider: AiProvider, db: AiDatabase, env: NodeJS.ProcessEnv): Promise<AiProviderCredential | null> {
+  const saved = await db.adminAiCredential.findUnique({
+    where: {
+      provider
+    }
+  });
+
+  if (saved) {
+    const decrypted = decryptAiSecret(saved.encryptedKey, env);
+
+    if (!decrypted.ok) {
+      throw new Error(decrypted.error);
+    }
+
+    return {
+      apiKey: decrypted.data.plaintext,
+      baseURL: normalizeBaseUrl(saved.baseUrl),
+      apiMode: normalizeAiApiMode(provider, saved.apiMode),
+      defaultModel: normalizeCredentialModel(saved.defaultModel),
+      keyHint: saved.keyHint ?? null,
+      source: "admin",
+      updatedAt: saved.updatedAt
+    };
+  }
+
+  const apiKey = env[platformKeyEnv[provider]]?.trim();
+
+  if (!apiKey) {
+    return null;
+  }
+
+  return {
+    apiKey,
+    baseURL: normalizeBaseUrl(env[platformBaseUrlEnv[provider]]) ?? defaultProviderBaseUrl(provider),
+    apiMode: normalizeAiApiMode(provider, env[platformApiModeEnv(provider)]),
+    defaultModel: null,
+    keyHint: providerKeyHint(apiKey),
+    source: "env",
+    updatedAt: null
+  };
+}
+
+async function readPlatformCredentialSummaries(db: AiDatabase, env: NodeJS.ProcessEnv) {
+  const saved = await db.adminAiCredential.findMany({
+    where: {
+      provider: {
+        in: [...supportedAiProviders]
+      }
+    }
+  });
+  const savedByProvider = new Map(saved.map((credential) => [credential.provider, credential]));
+  const credentials: Array<{
+    provider: AiProvider;
+    baseURL: string | null;
+    apiMode: string | null;
+    defaultModel: string | null;
+    keyHint: string | null;
+    source: "admin" | "env";
+    updatedAt: Date | null;
+    lastTestedModel?: string | null;
+  }> = [];
+
+  for (const provider of supportedAiProviders) {
+    const credential = savedByProvider.get(provider);
+
+    if (credential) {
+      credentials.push({
+        provider,
+        baseURL: normalizeBaseUrl(credential.baseUrl),
+        apiMode: normalizeAiApiMode(provider, credential.apiMode),
+        defaultModel: normalizeCredentialModel(credential.defaultModel),
+        keyHint: credential.keyHint ?? null,
+        source: "admin",
+        updatedAt: credential.updatedAt,
+        lastTestedModel: credential.lastTestedModel
+      });
+      continue;
+    }
+
+    const envKey = env[platformKeyEnv[provider]]?.trim();
+
+    if (envKey) {
+      credentials.push({
+        provider,
+        baseURL: normalizeBaseUrl(env[platformBaseUrlEnv[provider]]) ?? defaultProviderBaseUrl(provider),
+        apiMode: normalizeAiApiMode(provider, env[platformApiModeEnv(provider)]),
+        defaultModel: null,
+        keyHint: providerKeyHint(envKey),
+        source: "env",
+        updatedAt: null,
+        lastTestedModel: null
+      });
+    }
+  }
+
+  return credentials;
 }
 
 export async function listUserAiCalls(userId: string, options: PaginationInput = {}, db: AiDatabase = prisma) {
@@ -885,6 +872,10 @@ export async function resolveTaskAiPreset(
   };
 }
 
+export function modelForCredential(preset: Pick<ResolvedAiTaskPreset, "model">, credential: AiCredentialResult | null | undefined) {
+  return credential?.ok && credential.data.source === "byok" && credential.data.defaultModel ? credential.data.defaultModel : preset.model;
+}
+
 export async function setAiProviderPresetEnabled(id: string, enabled: boolean, db: AiDatabase = prisma): Promise<ActionResult> {
   const presetId = id.trim();
 
@@ -975,12 +966,13 @@ export async function generateWrongNoteAiAnalysis(
   }
 
   const preset = presetResult.data;
+  let model = preset.model;
   const aiInput = buildAiInputWithQuestionImages(prompt.input, visualInput.data);
   const aiCall = await db.aiCall.create({
     data: {
       userId,
       provider: preset.provider,
-      model: preset.model,
+      model,
       taskType: wrongNoteTask,
       promptVersion: wrongNotePromptVersion,
       inputContextSource: `wrong_note:${wrongNote.id}`,
@@ -1007,6 +999,7 @@ export async function generateWrongNoteAiAnalysis(
       }
 
       if (credential?.ok) {
+        model = modelForCredential(preset, credential);
         const usageAllowed = await assertAiUsageAllowed(userId, credential.data.source, db, env);
 
         if (!usageAllowed.ok) {
@@ -1017,6 +1010,7 @@ export async function generateWrongNoteAiAnalysis(
         await db.aiCall.update({
           where: { id: aiCall.id },
           data: {
+            model,
             credentialSource: credential.data.source
           }
         });
@@ -1027,7 +1021,7 @@ export async function generateWrongNoteAiAnalysis(
         apiKey: credential?.ok ? credential.data.apiKey : "test-key",
         baseURL: credential?.ok ? credential.data.baseURL : normalizeBaseUrl(env[platformBaseUrlEnv[preset.provider]]),
         apiMode: credential?.ok ? credential.data.apiMode : normalizeAiApiMode(preset.provider, env[platformApiModeEnv(preset.provider)]),
-        model: preset.model,
+        model,
         instructions: prompt.instructions,
         input: aiInput,
         maxOutputTokens: preset.maxOutputTokens,
@@ -1096,12 +1090,13 @@ export async function generateAttemptAnswerAiExplanation(
   }
 
   const preset = presetResult.data;
+  let model = preset.model;
   const aiInput = buildAiInputWithQuestionImages(prompt.input, visualInput.data);
   const aiCall = await db.aiCall.create({
     data: {
       userId,
       provider: preset.provider,
-      model: preset.model,
+      model,
       taskType: wrongNoteTask,
       promptVersion: questionPromptVersion,
       inputContextSource: `attempt_answer:${answer.id}`,
@@ -1128,6 +1123,7 @@ export async function generateAttemptAnswerAiExplanation(
       }
 
       if (credential?.ok) {
+        model = modelForCredential(preset, credential);
         const usageAllowed = await assertAiUsageAllowed(userId, credential.data.source, db, env);
 
         if (!usageAllowed.ok) {
@@ -1138,6 +1134,7 @@ export async function generateAttemptAnswerAiExplanation(
         await db.aiCall.update({
           where: { id: aiCall.id },
           data: {
+            model,
             credentialSource: credential.data.source
           }
         });
@@ -1148,7 +1145,7 @@ export async function generateAttemptAnswerAiExplanation(
         apiKey: credential?.ok ? credential.data.apiKey : "test-key",
         baseURL: credential?.ok ? credential.data.baseURL : normalizeBaseUrl(env[platformBaseUrlEnv[preset.provider]]),
         apiMode: credential?.ok ? credential.data.apiMode : normalizeAiApiMode(preset.provider, env[platformApiModeEnv(preset.provider)]),
-        model: preset.model,
+        model,
         instructions: prompt.instructions,
         input: aiInput,
         maxOutputTokens: preset.maxOutputTokens,
@@ -1245,13 +1242,14 @@ export async function generateQuestionExplanation(
   }
 
   const preset = presetResult.data;
+  let model = preset.model;
   const aiInput = buildAiInputWithQuestionImages(prompt.input, visualInput.data);
 
   const aiCall = await db.aiCall.create({
     data: {
       userId,
       provider: preset.provider,
-      model: preset.model,
+      model,
       taskType: wrongNoteTask,
       promptVersion: questionPromptVersion,
       inputContextSource: `question:${question.id}`,
@@ -1277,6 +1275,7 @@ export async function generateQuestionExplanation(
       }
 
       if (credential?.ok) {
+        model = modelForCredential(preset, credential);
         const usageAllowed = await assertAiUsageAllowed(userId, credential.data.source, db, env);
 
         if (!usageAllowed.ok) {
@@ -1286,7 +1285,7 @@ export async function generateQuestionExplanation(
 
         await db.aiCall.update({
           where: { id: aiCall.id },
-          data: { credentialSource: credential.data.source }
+          data: { model, credentialSource: credential.data.source }
         });
       }
 
@@ -1295,7 +1294,7 @@ export async function generateQuestionExplanation(
         apiKey: credential?.ok ? credential.data.apiKey : "test-key",
         baseURL: credential?.ok ? credential.data.baseURL : normalizeBaseUrl(env[platformBaseUrlEnv[preset.provider]]),
         apiMode: credential?.ok ? credential.data.apiMode : normalizeAiApiMode(preset.provider, env[platformApiModeEnv(preset.provider)]),
-        model: preset.model,
+        model,
         instructions: prompt.instructions,
         input: aiInput,
         maxOutputTokens: preset.maxOutputTokens,
@@ -1916,6 +1915,12 @@ function normalizeBaseUrl(value: string | null | undefined) {
   return normalized || null;
 }
 
+function normalizeCredentialModel(value: string | null | undefined) {
+  const normalized = value?.trim();
+
+  return normalized || null;
+}
+
 function defaultProviderBaseUrl(provider: AiProvider) {
   if (provider === AiProvider.openai) {
     return "https://api.openai.com/v1";
@@ -1961,12 +1966,14 @@ function parseAiProviderCredentialInput(input: AiProviderCredentialInput): Actio
   apiKey: string;
   baseUrl: string;
   apiMode: string | null;
-  testModel: string;
+  defaultModel: string;
+  testModel: string | null;
 }> {
   const provider = parseAiProvider(input.provider);
   const apiKey = input.apiKey.trim();
   const baseUrl = normalizeBaseUrl(input.baseUrl);
-  const testModel = input.testModel?.trim();
+  const defaultModel = normalizeCredentialModel(input.defaultModel ?? input.testModel);
+  const testModel = normalizeCredentialModel(input.testModel);
 
   if (!provider) {
     return { ok: false, error: "请选择有效的 AI Provider。" };
@@ -1986,8 +1993,8 @@ function parseAiProviderCredentialInput(input: AiProviderCredentialInput): Actio
     return { ok: false, error: "Base URL 格式无效。" };
   }
 
-  if (!testModel) {
-    return { ok: false, error: "请输入用于测试连接的模型名称。" };
+  if (!defaultModel) {
+    return { ok: false, error: "请选择或输入默认模型。" };
   }
 
   return {
@@ -1997,6 +2004,41 @@ function parseAiProviderCredentialInput(input: AiProviderCredentialInput): Actio
       apiKey,
       baseUrl,
       apiMode: normalizeAiApiMode(provider, input.apiMode),
+      defaultModel,
+      testModel
+    }
+  };
+}
+
+function parseAiProviderCredentialTestInput(input: AiProviderCredentialInput): ActionResult<{
+  provider: AiProvider;
+  apiKey: string;
+  baseUrl: string;
+  apiMode: string | null;
+  testModel: string;
+}> {
+  const parsed = parseAiProviderCredentialInput({
+    ...input,
+    defaultModel: input.defaultModel ?? input.testModel
+  });
+
+  if (!parsed.ok) {
+    return parsed;
+  }
+
+  const testModel = normalizeCredentialModel(input.testModel ?? input.defaultModel);
+
+  if (!testModel) {
+    return { ok: false, error: "请选择或输入用于测试连接的模型。" };
+  }
+
+  return {
+    ok: true,
+    data: {
+      provider: parsed.data.provider,
+      apiKey: parsed.data.apiKey,
+      baseUrl: parsed.data.baseUrl,
+      apiMode: parsed.data.apiMode,
       testModel
     }
   };

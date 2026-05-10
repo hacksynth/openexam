@@ -1,5 +1,5 @@
 import { AiTaskType, Prisma, QuestionKind, ReviewStatus, SourceType, Visibility } from "@prisma/client";
-import { assertAiUsageAllowed, generateAiText, resolveAiCredential, resolveTaskAiPreset, type AiTextGenerator } from "./ai";
+import { assertAiUsageAllowed, generateAiText, modelForCredential, resolveAiCredential, resolveTaskAiPreset, type AiTextGenerator } from "./ai";
 import { getLearningAnalysis } from "./analysis";
 import { validateExtractedQuestionsJson, type ExtractedMaterialQuestion, materialQuestionKinds } from "./materials";
 import { buildPagination, type PaginationInput } from "./pagination";
@@ -123,6 +123,7 @@ export async function generatePracticeQuestionCandidates(
     }
   }
 
+  const model = modelForCredential(preset, credential);
   const batch = await db.generatedQuestionBatch.create({
     data: {
       userId,
@@ -138,7 +139,7 @@ export async function generatePracticeQuestionCandidates(
     data: {
       userId,
       provider: preset.provider,
-      model: preset.model,
+      model,
       taskType: AiTaskType.generate_practice_questions,
       promptVersion,
       inputContextSource: `generated_question_batch:${batch.id}`,
@@ -154,7 +155,7 @@ export async function generatePracticeQuestionCandidates(
       apiKey: credential?.ok ? credential.data.apiKey : "test-key",
       baseURL: credential?.ok ? credential.data.baseURL : null,
       apiMode: credential?.ok ? credential.data.apiMode : null,
-      model: preset.model,
+      model,
       instructions: prompt.instructions,
       input: prompt.input,
       maxOutputTokens: preset.maxOutputTokens,

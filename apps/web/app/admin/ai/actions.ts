@@ -3,12 +3,18 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { Route } from "next";
-import { listAiProviderModels, saveAdminAiCredential, setAiProviderPresetEnabled, upsertAiProviderPreset } from "@openexam/core/ai";
+import { listAiProviderModels, saveAdminAiCredential, setAiProviderPresetEnabled, testAiProviderCredential, upsertAiProviderPreset } from "@openexam/core/ai";
 import { writeAuditLog } from "@openexam/core/audit";
 import { requireAdminSession } from "@/lib/auth";
 
 type Result = Awaited<ReturnType<typeof upsertAiProviderPreset>>;
 type ActionResult = { ok: true } | { ok: false; error: string };
+
+export type AiCredentialActionState = {
+  error?: string;
+  models?: { id: string; label: string }[];
+  notice?: string;
+};
 
 export async function saveAdminAiCredentialAction(formData: FormData) {
   const session = await requireAdminSession();
@@ -18,19 +24,20 @@ export async function saveAdminAiCredentialAction(formData: FormData) {
     apiKey: value(formData, "apiKey"),
     baseUrl: value(formData, "baseUrl"),
     apiMode: value(formData, "apiMode"),
-    testModel: value(formData, "testModel"),
+    defaultModel: value(formData, "defaultModel"),
     updatedById: session.user.id
   });
 
   await auditIfOk(session.user.id, result, "ai_credential.upsert", provider || null, {
     provider,
     baseUrl: value(formData, "baseUrl"),
-    apiMode: value(formData, "apiMode")
+    apiMode: value(formData, "apiMode"),
+    defaultModel: value(formData, "defaultModel")
   });
-  finish(result, "平台 AI 凭据已测试并保存。");
+  finish(result, "平台 AI 凭据已保存。");
 }
 
-export async function listAdminAiCredentialModelsAction(formData: FormData) {
+export async function listAdminAiCredentialModelsAction(_previousState: AiCredentialActionState, formData: FormData): Promise<AiCredentialActionState> {
   await requireAdminSession();
   const provider = value(formData, "provider");
   const result = await listAiProviderModels({
@@ -41,12 +48,28 @@ export async function listAdminAiCredentialModelsAction(formData: FormData) {
   });
 
   if (!result.ok) {
-    finish(result, "");
+    return { error: result.error };
   }
 
-  const models = result.data.models.slice(0, 30).map((model) => model.id).join(" / ") || "未返回模型。";
+  return {
+    models: result.data.models,
+    notice: result.data.models.length > 0 ? `已获取 ${result.data.models.length} 个模型。` : "未返回模型。"
+  };
+}
 
-  finish({ ok: true }, `模型：${models}`);
+export async function testAdminAiCredentialAction(_previousState: AiCredentialActionState, formData: FormData): Promise<AiCredentialActionState> {
+  await requireAdminSession();
+  const provider = value(formData, "provider");
+  const result = await testAiProviderCredential({
+    provider,
+    apiKey: value(formData, "apiKey"),
+    baseUrl: value(formData, "baseUrl"),
+    apiMode: value(formData, "apiMode"),
+    defaultModel: value(formData, "defaultModel"),
+    testModel: value(formData, "defaultModel")
+  });
+
+  return result.ok ? { notice: "平台 AI 凭据连接测试通过。" } : { error: result.error };
 }
 
 export async function upsertAiProviderPresetAction(formData: FormData) {

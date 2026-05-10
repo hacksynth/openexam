@@ -9,7 +9,9 @@ import {
   generateWrongNoteAiAnalysis,
   getUserAiSettings,
   getAdminAiCredentialSettings,
+  modelForCredential,
   retryFailedAiCall,
+  saveUserProviderKey,
   upsertAiProviderPreset,
   providerKeyHint,
   resolveAiEncryptionSecret,
@@ -61,7 +63,8 @@ describe("OpenAI credential resolution", () => {
           encryptedKey: encrypted.ok ? encrypted.data.encrypted : "",
           keyHint: "sk-...-key",
           baseUrl: "http://127.0.0.1:8317/v1",
-          apiMode: "responses"
+          apiMode: "responses",
+          defaultModel: "user-model"
         })
       }
     };
@@ -72,6 +75,7 @@ describe("OpenAI credential resolution", () => {
         apiKey: "sk-user-key",
         baseURL: "http://127.0.0.1:8317/v1",
         apiMode: "responses",
+        defaultModel: "user-model",
         source: "byok"
       }
     });
@@ -89,7 +93,8 @@ describe("OpenAI credential resolution", () => {
           encryptedKey: encrypted.ok ? encrypted.data.encrypted : "",
           keyHint: "sk-...-key",
           baseUrl: null,
-          apiMode: null
+          apiMode: null,
+          defaultModel: null
         })
       }
     };
@@ -116,6 +121,7 @@ describe("OpenAI credential resolution", () => {
         apiKey: "sk-platform-key",
         baseURL: "https://api.openai.com/v1",
         apiMode: "chat",
+        defaultModel: null,
         source: "platform"
       }
     });
@@ -146,6 +152,7 @@ describe("OpenAI credential resolution", () => {
         apiKey: "sk-platform-key",
         baseURL: "http://127.0.0.1:8317/v1",
         apiMode: "chat",
+        defaultModel: null,
         source: "platform"
       }
     });
@@ -168,6 +175,7 @@ describe("OpenAI credential resolution", () => {
           keyHint: "sk-...-key",
           baseUrl: "http://admin.example/v1",
           apiMode: "responses",
+          defaultModel: "admin-model",
           updatedAt: new Date("2026-05-05T00:00:00.000Z")
         })
       }
@@ -179,6 +187,7 @@ describe("OpenAI credential resolution", () => {
         apiKey: "sk-admin-key",
         baseURL: "http://admin.example/v1",
         apiMode: "responses",
+        defaultModel: "admin-model",
         source: "platform"
       }
     });
@@ -195,6 +204,7 @@ describe("AI provider settings", () => {
             keyHint: "sk-...ude",
             baseUrl: "https://api.anthropic.com",
             apiMode: null,
+            defaultModel: "claude-test-model",
             updatedAt: new Date("2026-05-05T00:00:00.000Z")
           }
         ]
@@ -212,7 +222,7 @@ describe("AI provider settings", () => {
     ).resolves.toMatchObject({
       providers: [
         { provider: "openai", label: "OpenAI", configured: false, platformAvailable: true, platformSource: "env" },
-        { provider: "anthropic", label: "Claude", configured: true, keyHint: "sk-...ude", baseUrl: "https://api.anthropic.com", platformAvailable: false },
+        { provider: "anthropic", label: "Claude", configured: true, keyHint: "sk-...ude", baseUrl: "https://api.anthropic.com", defaultModel: "claude-test-model", platformAvailable: false },
         { provider: "gemini", label: "Gemini", configured: false, platformAvailable: true, platformSource: "env" }
       ]
     });
@@ -236,7 +246,8 @@ describe("AI provider settings", () => {
       configured: true,
       source: "env",
       baseUrl: "http://127.0.0.1:8317/v1",
-      apiMode: "responses"
+      apiMode: "responses",
+      defaultModel: null
     });
   });
 
@@ -253,6 +264,84 @@ describe("AI provider settings", () => {
       ok: false,
       error: "请输入 Base URL。"
     });
+  });
+
+  it("saves BYOK credentials with a default model without testing first", async () => {
+    const calls: { method: string; args?: unknown }[] = [];
+    const db = {
+      userProviderKey: {
+        upsert: async (args: unknown) => {
+          calls.push({ method: "userProviderKey.upsert", args });
+          return args;
+        }
+      }
+    };
+
+    await expect(
+      saveUserProviderKey(
+        "user_1",
+        {
+          provider: "openai",
+          apiKey: "sk-test-key",
+          baseUrl: "http://127.0.0.1:8317/v1",
+          apiMode: "responses",
+          defaultModel: "gpt-5.5-byok"
+        },
+        db as never,
+        { AI_KEY_ENCRYPTION_SECRET: "test-secret" }
+      )
+    ).resolves.toEqual({ ok: true });
+
+    expect(calls).toContainEqual(
+      expect.objectContaining({
+        method: "userProviderKey.upsert",
+        args: expect.objectContaining({
+          update: expect.objectContaining({
+            baseUrl: "http://127.0.0.1:8317/v1",
+            apiMode: "responses",
+            defaultModel: "gpt-5.5-byok"
+          }),
+          create: expect.objectContaining({
+            userId: "user_1",
+            provider: "openai",
+            defaultModel: "gpt-5.5-byok"
+          })
+        })
+      })
+    );
+  });
+
+  it("uses the BYOK default model for text tasks only", () => {
+    expect(
+      modelForCredential(
+        { model: "platform-model" },
+        {
+          ok: true,
+          data: {
+            apiKey: "sk-test-key",
+            baseURL: "http://127.0.0.1:8317/v1",
+            apiMode: "responses",
+            defaultModel: "byok-model",
+            source: "byok"
+          }
+        }
+      )
+    ).toBe("byok-model");
+    expect(
+      modelForCredential(
+        { model: "platform-model" },
+        {
+          ok: true,
+          data: {
+            apiKey: "sk-test-key",
+            baseURL: "http://127.0.0.1:8317/v1",
+            apiMode: "responses",
+            defaultModel: "admin-model",
+            source: "platform"
+          }
+        }
+      )
+    ).toBe("platform-model");
   });
 });
 

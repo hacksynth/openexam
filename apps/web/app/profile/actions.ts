@@ -3,8 +3,14 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { Route } from "next";
-import { deleteUserProviderKey, listAiProviderModels, saveUserProviderKey } from "@openexam/core/ai";
+import { deleteUserProviderKey, listAiProviderModels, saveUserProviderKey, testAiProviderCredential } from "@openexam/core/ai";
 import { requireWebSession } from "@/lib/auth";
+
+export type AiCredentialActionState = {
+  error?: string;
+  models?: { id: string; label: string }[];
+  notice?: string;
+};
 
 export async function saveProviderKeyAction(formData: FormData) {
   const session = await requireWebSession();
@@ -14,13 +20,13 @@ export async function saveProviderKeyAction(formData: FormData) {
     apiKey: value(formData, "apiKey"),
     baseUrl: value(formData, "baseUrl"),
     apiMode: value(formData, "apiMode"),
-    testModel: value(formData, "testModel")
+    defaultModel: value(formData, "defaultModel")
   });
 
   finish(result, `${providerLabel(provider)} API Key 已保存。`);
 }
 
-export async function listProviderModelsAction(formData: FormData) {
+export async function listProviderModelsAction(_previousState: AiCredentialActionState, formData: FormData): Promise<AiCredentialActionState> {
   await requireWebSession();
   const provider = value(formData, "provider") || "openai";
   const result = await listAiProviderModels({
@@ -31,12 +37,28 @@ export async function listProviderModelsAction(formData: FormData) {
   });
 
   if (!result.ok) {
-    finish(result, "");
+    return { error: result.error };
   }
 
-  const models = result.data.models.slice(0, 30).map((model) => model.id).join(" / ") || "未返回模型。";
+  return {
+    models: result.data.models,
+    notice: result.data.models.length > 0 ? `${providerLabel(provider)} 已获取 ${result.data.models.length} 个模型。` : "未返回模型。"
+  };
+}
 
-  finish({ ok: true }, `${providerLabel(provider)} 模型：${models}`);
+export async function testProviderKeyAction(_previousState: AiCredentialActionState, formData: FormData): Promise<AiCredentialActionState> {
+  await requireWebSession();
+  const provider = value(formData, "provider") || "openai";
+  const result = await testAiProviderCredential({
+    provider,
+    apiKey: value(formData, "apiKey"),
+    baseUrl: value(formData, "baseUrl"),
+    apiMode: value(formData, "apiMode"),
+    defaultModel: value(formData, "defaultModel"),
+    testModel: value(formData, "defaultModel")
+  });
+
+  return result.ok ? { notice: `${providerLabel(provider)} 连接测试通过。` } : { error: result.error };
 }
 
 export async function saveOpenAiKeyAction(formData: FormData) {

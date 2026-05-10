@@ -1,9 +1,10 @@
 import { AiProvider, AiTaskType } from "@prisma/client";
 import { AppShell } from "@/components/app-shell";
+import { AiCredentialForm } from "@/components/ai-credential-form";
 import { requireAdminSession } from "@/lib/auth";
 import { getAdminAiCredentialSettings, getAiUsageOverview, listAdminAiProviderPresets } from "@openexam/core/ai";
 import { FeedbackMessage, PixelChoice, SelectField, SubmitButton, TextField } from "@openexam/core/pixel-ui";
-import { disableAiProviderPresetAction, enableAiProviderPresetAction, listAdminAiCredentialModelsAction, saveAdminAiCredentialAction, upsertAiProviderPresetAction } from "./actions";
+import { disableAiProviderPresetAction, enableAiProviderPresetAction, listAdminAiCredentialModelsAction, saveAdminAiCredentialAction, testAdminAiCredentialAction, upsertAiProviderPresetAction } from "./actions";
 
 type AdminAiPageProps = {
   searchParams: Promise<{ error?: string; notice?: string }>;
@@ -63,31 +64,17 @@ export default async function AdminAiPage({ searchParams }: AdminAiPageProps) {
                   <span className={`status-chip px-2 py-1 ${credential.configured ? "bg-[var(--teal)]" : ""}`}>{credential.configured ? `已配置 ${credential.keyHint ?? ""}` : "未配置"}</span>
                   {credential.source ? <span className="status-chip px-2 py-1">{credential.source === "admin" ? "管理员配置" : "环境变量"}</span> : null}
                   {credential.baseUrl ? <span className="status-chip px-2 py-1">{credential.baseUrl}</span> : null}
+                  {credential.defaultModel ? <span className="status-chip px-2 py-1">{credential.defaultModel}</span> : null}
                   {credential.provider === AiProvider.openai ? <span className="status-chip px-2 py-1">{credential.apiMode === "responses" ? "Responses" : "Chat Completions"}</span> : null}
                   {credential.lastTestedModel ? <span className="status-chip px-2 py-1">测试 {credential.lastTestedModel}</span> : null}
                 </div>
-                <form action={saveAdminAiCredentialAction} className="grid gap-3">
-                  <input name="provider" type="hidden" value={credential.provider} />
-                  <div className="grid gap-3 lg:grid-cols-2">
-                    <TextField label={`${credential.label} API Key`} name="apiKey" placeholder="输入平台 API Key" required type="password" />
-                    <TextField label="Base URL" name="baseUrl" defaultValue={credential.baseUrl ?? defaultBaseUrl(credential.provider)} placeholder={defaultBaseUrl(credential.provider)} required />
-                  </div>
-                  <div className="grid gap-3 lg:grid-cols-2">
-                    {credential.provider === AiProvider.openai ? (
-                      <SelectField label="OpenAI API 模式" name="apiMode" defaultValue={credential.apiMode ?? "chat"}>
-                        <option value="chat">Chat Completions</option>
-                        <option value="responses">Responses</option>
-                      </SelectField>
-                    ) : (
-                      <input name="apiMode" type="hidden" value="" />
-                    )}
-                    <TextField label="测试模型" name="testModel" defaultValue={credential.lastTestedModel ?? ""} placeholder={credential.provider === AiProvider.openai ? "gpt-5.5" : "输入模型名"} required />
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <SubmitButton className="bg-white px-4 py-2" formAction={listAdminAiCredentialModelsAction} label="获取模型" />
-                    <SubmitButton className="px-4 py-2" label="测试并保存凭据" />
-                  </div>
-                </form>
+                <AiCredentialForm
+                  provider={credential}
+                  listModelsAction={listAdminAiCredentialModelsAction}
+                  saveAction={saveAdminAiCredentialAction}
+                  saveLabel="保存凭据"
+                  testAction={testAdminAiCredentialAction}
+                />
               </section>
             ))}
           </div>
@@ -153,18 +140,6 @@ export default async function AdminAiPage({ searchParams }: AdminAiPageProps) {
       </section>
     </AppShell>
   );
-}
-
-function defaultBaseUrl(provider: AiProvider) {
-  if (provider === AiProvider.openai) {
-    return "https://api.openai.com/v1";
-  }
-
-  if (provider === AiProvider.anthropic) {
-    return "https://api.anthropic.com";
-  }
-
-  return "https://generativelanguage.googleapis.com/v1beta";
 }
 
 function PresetForm({

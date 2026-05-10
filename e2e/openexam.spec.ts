@@ -22,6 +22,7 @@ const extractedQuestionStem = "E2E 资料抽题：事务原子性最准确的含
 const paperTitle = "E2E 基础知识样例卷";
 const paperSlug = "e2e-paper-basic-sample";
 const aiPresetModel = "gpt-5.4-e2e";
+const byokModel = "gpt-5.5-e2e-byok";
 const materialTitle = "E2E 事务资料";
 const e2eProgramSlug = "e2e-ruankao";
 const e2eSyllabusVersion = "e2e";
@@ -308,8 +309,16 @@ async function retryWrongNoteCorrectly(page: Page) {
 
 async function configureByokAndGenerateWrongNoteAnalysis(page: Page) {
   await page.goto(`${webUrl}/profile`);
-  await page.getByLabel("API Key").fill("sk-e2e-openai-test-key");
-  await page.getByRole("button", { name: "保存 Key" }).click();
+  const form = openAiCredentialForm(page);
+
+  await form.getByLabel("API Key").fill("sk-e2e-openai-test-key");
+  await form.getByLabel("Base URL").fill("http://127.0.0.1:8317/v1");
+  await form.getByRole("button", { name: "获取模型" }).click();
+  await expect(page.getByText("OpenAI 已获取 3 个模型。")).toBeVisible();
+  await form.getByLabel("默认模型").fill(byokModel);
+  await form.getByRole("button", { name: "测试" }).click();
+  await expect(page.getByText("OpenAI 连接测试通过。")).toBeVisible();
+  await form.getByRole("button", { name: "保存 Key" }).click();
   await expect(page.getByText("OpenAI API Key 已保存。")).toBeVisible();
   await expect(page.locator("body")).toContainText("已配置");
 
@@ -322,11 +331,14 @@ async function configureByokAndGenerateWrongNoteAnalysis(page: Page) {
   await expect(page.getByRole("heading", { name: "AI 任务" })).toBeVisible();
   await expect(page.locator("body")).toContainText("题目解析");
   await expect(page.locator("body")).toContainText("成功");
-  await expect(page.locator("body")).toContainText(aiPresetModel);
+  await expect(page.locator("body")).toContainText(byokModel);
 
   await page.goto(`${webUrl}/profile`);
-  await page.getByLabel("API Key").fill("sk-e2e-openai-fail-once");
-  await page.getByRole("button", { name: "保存 Key" }).click();
+  const failingForm = openAiCredentialForm(page);
+
+  await failingForm.getByLabel("API Key").fill("sk-e2e-openai-fail-once");
+  await failingForm.getByLabel("默认模型").fill(byokModel);
+  await failingForm.getByRole("button", { name: "保存 Key" }).click();
   await expect(page.getByText("OpenAI API Key 已保存。")).toBeVisible();
 
   await page.goto(`${webUrl}/wrong-notes?knowledgeNodeId=${fixtureIds.knowledgeNodeId}`);
@@ -339,7 +351,7 @@ async function configureByokAndGenerateWrongNoteAnalysis(page: Page) {
   await page.locator("article").filter({ hasText: "Mock OpenAI failure" }).first().getByRole("button", { name: "重试" }).click();
   await expect(page.getByText("错题 AI 解析已重试成功。")).toBeVisible();
   await expect(page.locator("body")).toContainText("成功");
-  await expect(page.locator("body")).toContainText(aiPresetModel);
+  await expect(page.locator("body")).toContainText(byokModel);
 
   await saveLearnerOpenAiKey(page, "sk-e2e-openai-test-key");
 }
@@ -378,9 +390,17 @@ async function failAndRetryWrongNoteReviewCard(webPage: Page, adminPage: Page) {
 
 async function saveLearnerOpenAiKey(page: Page, apiKey: string) {
   await page.goto(`${webUrl}/profile`);
-  await page.getByLabel("API Key").fill(apiKey);
-  await page.getByRole("button", { name: "保存 Key" }).click();
+  const form = openAiCredentialForm(page);
+
+  await form.getByLabel("API Key").fill(apiKey);
+  await form.getByLabel("Base URL").fill("http://127.0.0.1:8317/v1");
+  await form.getByLabel("默认模型").fill(byokModel);
+  await form.getByRole("button", { name: "保存 Key" }).click();
   await expect(page.getByText("OpenAI API Key 已保存。")).toBeVisible();
+}
+
+function openAiCredentialForm(page: Page) {
+  return page.locator("section").filter({ hasText: "OpenAI API Key" }).first();
 }
 
 async function waitForWrongNoteReviewCard(page: Page, expectedText: string) {

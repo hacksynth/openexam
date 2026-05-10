@@ -19,6 +19,18 @@ const server = createServer(async (request, response) => {
     return;
   }
 
+  if (request.method === "GET" && url.pathname === "/v1/models") {
+    sendJson(response, 200, {
+      object: "list",
+      data: [
+        { id: "gpt-5.4-e2e", object: "model" },
+        { id: "gpt-5.5-e2e-byok", object: "model" },
+        { id: "gpt-image-1.5", object: "model" }
+      ]
+    });
+    return;
+  }
+
   if (request.method === "POST" && url.pathname === "/v1/responses") {
     responseCount += 1;
     const body = await readJson(request);

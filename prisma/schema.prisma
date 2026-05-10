@@ -563,6 +563,7 @@ model UserProviderKey {
   keyHint      String?
   baseUrl      String?
   apiMode      String?
+  defaultModel String?
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
@@ -576,6 +577,7 @@ model AdminAiCredential {
   keyHint         String?
   baseUrl         String
   apiMode         String?
+  defaultModel    String?
   lastTestedModel String?
   updatedById     String?
   updatedBy       User?      @relation("AdminAiCredentialUpdater", fields: [updatedById], references: [id])

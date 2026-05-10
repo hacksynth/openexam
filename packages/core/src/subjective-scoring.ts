@@ -1,6 +1,6 @@
 import { AiTaskType, Prisma } from "@prisma/client";
 import { parseSubjectiveGradingOutput } from "./ai-output-schemas";
-import { assertAiUsageAllowed, generateAiText, resolveAiCredential, resolveTaskAiPreset, type AiTextGenerator } from "./ai";
+import { assertAiUsageAllowed, generateAiText, modelForCredential, resolveAiCredential, resolveTaskAiPreset, type AiTextGenerator } from "./ai";
 import { prisma } from "./prisma";
 
 type SubjectiveScoringDatabase = typeof prisma;
@@ -31,12 +31,13 @@ export async function generateSubjectiveScoreSuggestion(
 
   const preset = presetResult.data;
   const prompt = buildSubjectiveGradingPrompt(input);
+  let model = preset.model;
 
   const aiCall = await db.aiCall.create({
     data: {
       userId,
       provider: preset.provider,
-      model: preset.model,
+      model,
       taskType: AiTaskType.grade_subjective,
       promptVersion: "subjective-grade-v1",
       inputContextSource: `question:${input.questionId}`,
@@ -54,6 +55,7 @@ export async function generateSubjectiveScoreSuggestion(
     }
 
     if (credential?.ok) {
+      model = modelForCredential(preset, credential);
       const usageAllowed = await assertAiUsageAllowed(userId, credential.data.source, db, env);
 
       if (!usageAllowed.ok) {
@@ -64,7 +66,8 @@ export async function generateSubjectiveScoreSuggestion(
       await db.aiCall.update({
         where: { id: aiCall.id },
         data: {
-          credentialSource: credential.data.source
+          credentialSource: credential.data.source,
+          model
         }
       });
     }
@@ -74,7 +77,7 @@ export async function generateSubjectiveScoreSuggestion(
       apiKey: credential?.ok ? credential.data.apiKey : "test-key",
       baseURL: credential?.ok ? credential.data.baseURL : null,
       apiMode: credential?.ok ? credential.data.apiMode : null,
-      model: preset.model,
+      model,
       instructions: prompt.instructions,
       input: prompt.input,
       maxOutputTokens: preset.maxOutputTokens,

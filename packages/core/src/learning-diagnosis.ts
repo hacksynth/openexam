@@ -1,5 +1,5 @@
 import { AiTaskType, Prisma } from "@prisma/client";
-import { assertAiUsageAllowed, generateAiText, resolveAiCredential, resolveTaskAiPreset, type AiTextGenerator } from "./ai";
+import { assertAiUsageAllowed, generateAiText, modelForCredential, resolveAiCredential, resolveTaskAiPreset, type AiTextGenerator } from "./ai";
 import { parseLearningDiagnosisOutput } from "./ai-output-schemas";
 import { getLearningAnalysis, toStudyPlanSourceStats, type LearningAnalysisState } from "./analysis";
 import { prisma } from "./prisma";
@@ -80,11 +80,12 @@ export async function generateLearningDiagnosis(
     }
   }
 
+  const model = modelForCredential(preset, credential);
   const aiCall = await db.aiCall.create({
     data: {
       userId,
       provider: preset.provider,
-      model: preset.model,
+      model,
       taskType: AiTaskType.diagnose_learning,
       promptVersion,
       inputContextSource: `goal:${analysis.goal.id}`,
@@ -100,7 +101,7 @@ export async function generateLearningDiagnosis(
       apiKey: credential?.ok ? credential.data.apiKey : "test-key",
       baseURL: credential?.ok ? credential.data.baseURL : null,
       apiMode: credential?.ok ? credential.data.apiMode : null,
-      model: preset.model,
+      model,
       instructions: prompt.instructions,
       input: prompt.input,
       maxOutputTokens: preset.maxOutputTokens,

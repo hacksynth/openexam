@@ -1,5 +1,5 @@
 import { AiTaskType, Prisma } from "@prisma/client";
-import { assertAiUsageAllowed, generateAiText, resolveAiCredential, resolveTaskAiPreset, type AiTextGenerator } from "./ai";
+import { assertAiUsageAllowed, generateAiText, modelForCredential, resolveAiCredential, resolveTaskAiPreset, type AiTextGenerator } from "./ai";
 import { formatGoalPath, getPrimaryExamGoal, type PrimaryGoal } from "./exam-core";
 import { buildPracticeQuestionWhere } from "./practice";
 import { prisma } from "./prisma";
@@ -481,6 +481,7 @@ export async function generateKnowledgeExplanation(
   }
 
   const preset = presetResult.data;
+  let model = preset.model;
   const prompt = {
     instructions: "你是 OpenExam 的知识点范围讲解助手。只根据给定知识点、子树结构、大纲要求和用户笔记解释，用简体中文，输出短段落。",
     input: [
@@ -496,7 +497,7 @@ export async function generateKnowledgeExplanation(
     data: {
       userId,
       provider: preset.provider,
-      model: preset.model,
+      model,
       taskType: AiTaskType.chat_with_context,
       promptVersion: "knowledge-node-explain-v2",
       inputContextSource: `knowledge_node:${node.id}`,
@@ -514,6 +515,7 @@ export async function generateKnowledgeExplanation(
     }
 
     if (credential?.ok) {
+      model = modelForCredential(preset, credential);
       const usageAllowed = await assertAiUsageAllowed(userId, credential.data.source, db, env);
 
       if (!usageAllowed.ok) {
@@ -524,17 +526,18 @@ export async function generateKnowledgeExplanation(
       await db.aiCall.update({
         where: { id: aiCall.id },
         data: {
-          credentialSource: credential.data.source
+          credentialSource: credential.data.source,
+          model
         }
       });
-    }
+      }
 
     const result = await (options.generateText ?? generateAiText)({
       provider: preset.provider,
       apiKey: credential?.ok ? credential.data.apiKey : "test-key",
       baseURL: credential?.ok ? credential.data.baseURL : null,
       apiMode: credential?.ok ? credential.data.apiMode : null,
-      model: preset.model,
+      model,
       instructions: prompt.instructions,
       input: prompt.input,
       maxOutputTokens: preset.maxOutputTokens,
