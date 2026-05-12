@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { Route } from "next";
-import { confirmMaterialQuestionCandidate, updateMaterialQuestionCandidate, uploadMaterial } from "@openexam/core/materials";
+import { confirmMaterialQuestionCandidate, confirmMaterialQuestionCandidates, updateMaterialQuestionCandidate, uploadMaterial } from "@openexam/core/materials";
 import { writeAuditLog } from "@openexam/core/audit";
 import { requireAdminSession } from "@/lib/auth";
 
@@ -61,6 +61,29 @@ export async function confirmCandidateAction(formData: FormData) {
   });
 
   redirect(materialsRedirectUrl(formData, "notice", "候选题已确认并加入题库。"));
+}
+
+export async function confirmSelectedCandidatesAction(formData: FormData) {
+  const session = await requireAdminSession();
+  const candidateIds = formData.getAll("candidateIds").map((item) => String(item));
+  const result = await confirmMaterialQuestionCandidates(candidateIds);
+
+  revalidatePath("/admin/materials" as Route);
+  revalidatePath("/admin/questions" as Route);
+
+  if (!result.ok) {
+    redirect(materialsRedirectUrl(formData, "error", result.error));
+  }
+
+  await writeAuditLog({
+    actorId: session.user.id,
+    action: "material_candidate.bulk_confirm",
+    entityType: "MaterialQuestionCandidate",
+    entityId: "bulk",
+    metadata: { candidateIds, questionIds: result.data.questionIds }
+  });
+
+  redirect(materialsRedirectUrl(formData, "notice", `已将 ${result.data.count} 道候选题加入题库。`));
 }
 
 export async function updateCandidateAction(formData: FormData) {

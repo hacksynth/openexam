@@ -430,7 +430,8 @@ async function processMaterialExtractionJob(jobId: string, payload: Prisma.JsonV
 
     if (!parsed.ok) {
       throw new JobProcessingError(parsed.error, {
-        aiOutput: truncateText(result.text, 12000),
+        aiOutput: result.text,
+        aiOutputPreview: truncateText(result.text, 12000),
         error: parsed.error,
         model,
         promptVersion: materialExtractionPromptVersion

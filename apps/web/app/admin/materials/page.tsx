@@ -8,7 +8,7 @@ import { requireAdminSession } from "@/lib/auth";
 import { listKnowledgeHierarchy } from "@openexam/core/exam-core";
 import { listAdminMaterials, listMaterialQuestionCandidateSections, materialCandidatePageSizeOptions, materialQuestionKinds, type MaterialQuestionCandidateView } from "@openexam/core/materials";
 import { FeedbackMessage, SelectField, SubmitButton, TextareaField, TextField } from "@openexam/core/pixel-ui";
-import { confirmCandidateAction, updateCandidateAction, uploadAdminMaterialAction } from "./actions";
+import { confirmCandidateAction, confirmSelectedCandidatesAction, updateCandidateAction, uploadAdminMaterialAction } from "./actions";
 
 type AdminMaterialsPageProps = {
   searchParams: Promise<{ confirmedPage?: string; candidatePageSize?: string; error?: string; notice?: string; page?: string; pageSize?: string; pendingPage?: string }>;
@@ -48,6 +48,7 @@ export default async function AdminMaterialsPage({ searchParams }: AdminMaterial
       }))
     )
   );
+  const pendingBulkFormId = "pending-candidates-bulk-confirm";
 
   return (
     <AppShell section="admin" eyebrow="资料治理" title="资料">
@@ -130,6 +131,7 @@ export default async function AdminMaterialsPage({ searchParams }: AdminMaterial
             <div className="grid gap-5">
               <CandidateListSection
                 emptyMessage="暂无未确认候选题。"
+                bulkFormId={pendingBulkFormId}
                 items={candidateSections.pending.items}
                 knowledgeNodes={knowledgeNodes}
                 pagination={candidateSections.pending.pagination}
@@ -166,6 +168,7 @@ type CandidatePagination = Awaited<ReturnType<typeof listMaterialQuestionCandida
 
 function CandidateListSection({
   emptyMessage,
+  bulkFormId,
   items,
   knowledgeNodes,
   pagination,
@@ -174,6 +177,7 @@ function CandidateListSection({
   title
 }: {
   emptyMessage: string;
+  bulkFormId?: string;
   items: MaterialQuestionCandidateView[];
   knowledgeNodes: { id: string; label: string }[];
   pagination: CandidatePagination;
@@ -181,6 +185,8 @@ function CandidateListSection({
   section: CandidateSectionName;
   title: string;
 }) {
+  const showBulkActions = section === "pending" && items.length > 0 && bulkFormId;
+
   return (
     <section className="grid gap-3">
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -190,7 +196,15 @@ function CandidateListSection({
             共 {pagination.totalItems} 道 · 第 {pagination.page} / {pagination.totalPages} 页
           </p>
         </div>
-        <CandidatePageSizeForm pageSize={paging.pageSize} />
+        <div className="flex flex-wrap items-end gap-2">
+          {showBulkActions ? (
+            <form action={confirmSelectedCandidatesAction} id={bulkFormId}>
+              <CandidatePagingInputs paging={paging} />
+              <SubmitButton className="px-4 py-2" label="批量入题库" />
+            </form>
+          ) : null}
+          <CandidatePageSizeForm pageSize={paging.pageSize} />
+        </div>
       </div>
       {items.length === 0 ? (
         <section className="pixel-panel p-5">
@@ -200,6 +214,7 @@ function CandidateListSection({
         items.map((candidate) => (
           <CandidateCard
             key={candidate.id}
+            bulkFormId={bulkFormId}
             candidate={candidate}
             editable={section === "pending"}
             knowledgeNodes={knowledgeNodes}
@@ -230,11 +245,13 @@ function CandidatePageSizeForm({ pageSize }: { pageSize: number }) {
 }
 
 function CandidateCard({
+  bulkFormId,
   candidate,
   editable,
   knowledgeNodes,
   paging
 }: {
+  bulkFormId?: string;
   candidate: MaterialQuestionCandidateView;
   editable: boolean;
   knowledgeNodes: { id: string; label: string }[];
@@ -242,13 +259,21 @@ function CandidateCard({
 }) {
   return (
     <article className="pixel-panel grid gap-3 p-5">
-      <div className="flex flex-wrap gap-2">
-        <span className="status-chip px-2 py-1">{candidateStatusLabel(candidate.status)}</span>
-        <span className="status-chip px-2 py-1">{candidate.materialTitle}</span>
-        <span className="status-chip px-2 py-1">{libraryScopeLabels[candidate.materialScope] ?? candidate.materialScope}</span>
-        <span className="status-chip px-2 py-1">{candidate.kind}</span>
-        <span className="status-chip px-2 py-1">答案 {candidate.answer}</span>
-        {candidate.difficulty ? <span className="status-chip px-2 py-1">难度 {candidate.difficulty}</span> : null}
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex flex-wrap gap-2">
+          <span className="status-chip px-2 py-1">{candidateStatusLabel(candidate.status)}</span>
+          <span className="status-chip px-2 py-1">{candidate.materialTitle}</span>
+          <span className="status-chip px-2 py-1">{libraryScopeLabels[candidate.materialScope] ?? candidate.materialScope}</span>
+          <span className="status-chip px-2 py-1">{candidate.kind}</span>
+          <span className="status-chip px-2 py-1">答案 {candidate.answer}</span>
+          {candidate.difficulty ? <span className="status-chip px-2 py-1">难度 {candidate.difficulty}</span> : null}
+        </div>
+        {editable && bulkFormId ? (
+          <label className="flex min-h-10 items-center gap-2 border-2 border-black bg-white px-3 py-2 text-sm font-black">
+            <input className="h-5 w-5 accent-black" form={bulkFormId} name="candidateIds" type="checkbox" value={candidate.id} />
+            选择
+          </label>
+        ) : null}
       </div>
       <RichContent blocks={readPayloadBlocks(candidate.payload, "stemBlocks")} fallback={candidate.stem} textClassName="text-xl font-black" />
       <div className="grid gap-2 text-sm font-bold">

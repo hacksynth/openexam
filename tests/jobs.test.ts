@@ -247,7 +247,7 @@ describe("job claiming", () => {
         })
       ).resolves.toEqual({
         ok: false,
-        error: "AI 抽题结果格式无效：字段 questions.0.options.B 不符合要求。"
+        error: "AI 抽题结果格式无效：第 1 题 单选题必须包含 A/B/C/D 四个非空选项。"
       });
       expect(calls).toContainEqual(
         expect.objectContaining({
@@ -256,7 +256,8 @@ describe("job claiming", () => {
             data: expect.objectContaining({
               result: expect.objectContaining({
                 aiOutput: rawOutput,
-                error: "AI 抽题结果格式无效：字段 questions.0.options.B 不符合要求。",
+                aiOutputPreview: rawOutput,
+                error: "AI 抽题结果格式无效：第 1 题 单选题必须包含 A/B/C/D 四个非空选项。",
                 model: "gpt-test"
               })
             })

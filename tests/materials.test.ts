@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildMaterialExtractionPrompt,
   confirmMaterialQuestionCandidate,
+  confirmMaterialQuestionCandidates,
   createMaterialQuestionCandidates,
   listMaterialQuestionCandidateSections,
   readMaterialText,
@@ -68,7 +69,7 @@ describe("material question extraction", () => {
     });
     expect(validateExtractedQuestionsJson(JSON.stringify({ questions: [{ stem: "题干", options: { A: "A" }, answer: "E" }] }))).toEqual({
       ok: false,
-      error: "AI 抽题结果格式无效：字段 questions.0.options.B 不符合要求。"
+      error: "AI 抽题结果格式无效：第 1 题 单选题必须包含 A/B/C/D 四个非空选项。"
     });
   });
 
@@ -170,6 +171,55 @@ describe("material question extraction", () => {
             difficulty: null,
             knowledgeNodeId: null,
             sourceRef: null
+          }
+        ]
+      }
+    });
+  });
+
+  it("accepts choice options that only contain image blocks", () => {
+    expect(
+      validateExtractedQuestionsJson(
+        JSON.stringify({
+          questions: [
+            {
+              kind: "single_choice",
+              stem: "关系代数表达式等价于哪一项？",
+              options: {
+                A: [{ type: "image", sourceUrl: "https://example.com/a.jpg", alt: "选项 A 图" }],
+                B: { blocks: [{ type: "image", sourceUrl: "https://example.com/b.jpg", alt: "选项 B 图" }] },
+                C: { text: "", blocks: [{ type: "image", sourceUrl: "https://example.com/c.jpg", alt: "选项 C 图" }] },
+                D: [{ type: "image", sourceUrl: "https://example.com/d.jpg", alt: "选项 D 图" }]
+              },
+              answer: "B",
+              sourceRef: "question_id:363474; index:53"
+            }
+          ]
+        })
+      )
+    ).toEqual({
+      ok: true,
+      data: {
+        questions: [
+          {
+            stem: "关系代数表达式等价于哪一项？",
+            options: {
+              A: "选项 A 图",
+              B: "选项 B 图",
+              C: "选项 C 图",
+              D: "选项 D 图"
+            },
+            optionBlocks: {
+              A: [{ type: "image", sourceUrl: "https://example.com/a.jpg", assetId: null, alt: "选项 A 图" }],
+              B: [{ type: "image", sourceUrl: "https://example.com/b.jpg", assetId: null, alt: "选项 B 图" }],
+              C: [{ type: "image", sourceUrl: "https://example.com/c.jpg", assetId: null, alt: "选项 C 图" }],
+              D: [{ type: "image", sourceUrl: "https://example.com/d.jpg", assetId: null, alt: "选项 D 图" }]
+            },
+            answer: "B",
+            explanation: null,
+            difficulty: null,
+            knowledgeNodeId: null,
+            sourceRef: "question_id:363474; index:53"
           }
         ]
       }
@@ -643,6 +693,51 @@ describe("material question extraction", () => {
     });
   });
 
+  it("confirms selected material candidates in one batch", async () => {
+    const writes: { method: string; args: unknown }[] = [];
+    const db = materialBulkConfirmDb({
+      candidates: [
+        materialConfirmCandidateFixture("candidate_1", { ownerId: "admin_1", libraryScope: "platform" }),
+        materialConfirmCandidateFixture("candidate_2", { ownerId: "admin_1", libraryScope: "platform" })
+      ],
+      writes
+    });
+
+    await expect(confirmMaterialQuestionCandidates(["candidate_2", "candidate_1", "candidate_2"], db as never)).resolves.toEqual({
+      ok: true,
+      data: {
+        count: 2,
+        questionIds: ["question_1", "question_2"]
+      }
+    });
+    expect(writes.map((write) => write.method)).toEqual(["question.create", "candidate.update", "question.create", "candidate.update"]);
+    expect(writes.filter((write) => write.method === "candidate.update").map((write) => (write.args as { where: { id: string } }).where.id)).toEqual(["candidate_2", "candidate_1"]);
+  });
+
+  it("rejects empty material candidate batch confirmation", async () => {
+    await expect(confirmMaterialQuestionCandidates([], {} as never)).resolves.toEqual({
+      ok: false,
+      error: "请选择要入库的候选题。"
+    });
+  });
+
+  it("rejects material candidate batch confirmation when any selected item lacks a knowledge node", async () => {
+    const writes: { method: string; args: unknown }[] = [];
+    const db = materialBulkConfirmDb({
+      candidates: [
+        materialConfirmCandidateFixture("candidate_1", { ownerId: "admin_1", libraryScope: "platform" }),
+        materialConfirmCandidateFixture("candidate_2", { ownerId: "admin_1", libraryScope: "platform", knowledgeNodeId: null })
+      ],
+      writes
+    });
+
+    await expect(confirmMaterialQuestionCandidates(["candidate_1", "candidate_2"], db as never)).resolves.toEqual({
+      ok: false,
+      error: "已选候选题中有缺少知识点的题目，暂不能确认。"
+    });
+    expect(writes).toEqual([]);
+  });
+
   it("uses AI OCR input for image materials", async () => {
     const originalStorageDir = process.env.LOCAL_STORAGE_DIR;
     const storageRoot = path.join(tmpdir(), `openexam-materials-${Date.now()}`);
@@ -918,47 +1013,7 @@ function materialConfirmDb({
 }) {
   return {
     materialQuestionCandidate: {
-      findUnique: async () => ({
-        id: "candidate_1",
-        materialId: "material_1",
-        jobId: "job_1",
-        kind: "single_choice",
-        stem: "黑盒测试的主要依据是（）。",
-        payload: {
-          options: [
-            { key: "A", text: "程序代码" },
-            { key: "B", text: "需求规格说明" },
-            { key: "C", text: "开发语言" },
-            { key: "D", text: "数据库结构" }
-          ]
-        },
-        answerKey: { value: "B" },
-        explanation: "黑盒测试依据规格说明。",
-        difficulty: 2,
-        knowledgeNodeId: "node_1",
-        sourceRef: "第 1 段",
-        status: "pending",
-        confirmedQuestionId: null,
-        createdAt: new Date("2026-05-05T00:00:00.000Z"),
-        updatedAt: new Date("2026-05-05T00:00:00.000Z"),
-        material: {
-          id: "material_1",
-          ownerId: material.ownerId,
-          libraryScope: material.libraryScope,
-          title: "软件测试资料",
-          mimeType: "text/plain",
-          sizeBytes: 10,
-          sha256: "hash",
-          storageKey: "materials/user_1/test.txt",
-          bindingScope: "subject:subject_1",
-          extractionState: "succeeded",
-          extractionMethod: "local_text",
-          extractionError: null,
-          sourceLicense: "自用资料",
-          createdAt: new Date("2026-05-05T00:00:00.000Z"),
-          updatedAt: new Date("2026-05-05T00:00:00.000Z")
-        }
-      })
+      findUnique: async () => materialConfirmCandidateFixture("candidate_1", material)
     },
     knowledgeNode: {
       findUnique: async () => ({ id: "node_1" })
@@ -981,5 +1036,91 @@ function materialConfirmDb({
           }
         }
       })
+  };
+}
+
+function materialBulkConfirmDb({
+  candidates,
+  writes
+}: {
+  candidates: ReturnType<typeof materialConfirmCandidateFixture>[];
+  writes: { method: string; args: unknown }[];
+}) {
+  return {
+    materialQuestionCandidate: {
+      findMany: async (args: { where?: { id?: { in?: string[] } } }) => {
+        const ids = new Set(args.where?.id?.in ?? []);
+
+        return candidates.filter((candidate) => ids.has(candidate.id));
+      }
+    },
+    knowledgeNode: {
+      count: async (args: { where?: { id?: { in?: string[] } } }) => args.where?.id?.in?.filter((id) => id === "node_1").length ?? 0
+    },
+    $transaction: async (callback: (tx: {
+      question: { create: (args: unknown) => Promise<{ id: string }> };
+      materialQuestionCandidate: { update: (args: unknown) => Promise<{ id: string }> };
+    }) => Promise<string[]>) =>
+      callback({
+        question: {
+          create: async (args: unknown) => {
+            writes.push({ method: "question.create", args });
+            return { id: `question_${writes.filter((write) => write.method === "question.create").length}` };
+          }
+        },
+        materialQuestionCandidate: {
+          update: async (args: unknown) => {
+            writes.push({ method: "candidate.update", args });
+            return { id: (args as { where: { id: string } }).where.id };
+          }
+        }
+      })
+  };
+}
+
+function materialConfirmCandidateFixture(
+  id: string,
+  material: { ownerId: string; libraryScope: "personal" | "platform"; knowledgeNodeId?: string | null }
+) {
+  return {
+    id,
+    materialId: "material_1",
+    jobId: "job_1",
+    kind: "single_choice",
+    stem: "黑盒测试的主要依据是（）。",
+    payload: {
+      options: [
+        { key: "A", text: "程序代码" },
+        { key: "B", text: "需求规格说明" },
+        { key: "C", text: "开发语言" },
+        { key: "D", text: "数据库结构" }
+      ]
+    },
+    answerKey: { value: "B" },
+    explanation: "黑盒测试依据规格说明。",
+    difficulty: 2,
+    knowledgeNodeId: material.knowledgeNodeId === undefined ? "node_1" : material.knowledgeNodeId,
+    sourceRef: "第 1 段",
+    status: "pending",
+    confirmedQuestionId: null,
+    createdAt: new Date("2026-05-05T00:00:00.000Z"),
+    updatedAt: new Date("2026-05-05T00:00:00.000Z"),
+    material: {
+      id: "material_1",
+      ownerId: material.ownerId,
+      libraryScope: material.libraryScope,
+      title: "软件测试资料",
+      mimeType: "text/plain",
+      sizeBytes: 10,
+      sha256: "hash",
+      storageKey: "materials/user_1/test.txt",
+      bindingScope: "subject:subject_1",
+      extractionState: "succeeded",
+      extractionMethod: "local_text",
+      extractionError: null,
+      sourceLicense: "自用资料",
+      createdAt: new Date("2026-05-05T00:00:00.000Z"),
+      updatedAt: new Date("2026-05-05T00:00:00.000Z")
+    }
   };
 }

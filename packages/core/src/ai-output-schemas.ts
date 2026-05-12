@@ -11,10 +11,10 @@ export const jsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
 export const aiQuestionKindSchema = z.enum(["single_choice", "multiple_choice", "true_false", "blank", "short_answer", "case_analysis"]);
 
 export const choiceOptionsObjectSchema = z.object({
-  A: z.string().min(1),
-  B: z.string().min(1),
-  C: z.string().min(1),
-  D: z.string().min(1)
+  A: z.unknown().optional(),
+  B: z.unknown().optional(),
+  C: z.unknown().optional(),
+  D: z.unknown().optional()
 });
 
 export const richContentBlockSchema = z.union([

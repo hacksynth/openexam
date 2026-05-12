@@ -457,7 +457,7 @@ export async function updateMaterialQuestionCandidate(candidateId: string, input
 
 export async function confirmMaterialQuestionCandidate(candidateId: string, db: MaterialDatabase = prisma): Promise<ActionResult<{ questionId: string }>> {
   const candidate = await db.materialQuestionCandidate.findUnique({
-    where: { id: candidateId },
+    where: { id: candidateId.trim() },
     include: {
       material: true
     }
@@ -486,57 +486,138 @@ export async function confirmMaterialQuestionCandidate(candidateId: string, db: 
 
   try {
     const question = await db.$transaction(async (tx) => {
-      const created = await tx.question.create({
-        data: {
-          ownerId: candidate.material.libraryScope === "platform" ? null : candidate.material.ownerId,
-          kind: candidate.kind,
-          stem: candidate.stem,
-          payload: candidate.payload as Prisma.InputJsonValue,
-          answerKey: candidate.answerKey as Prisma.InputJsonValue,
-          explanation: candidate.explanation,
-          difficulty: candidate.difficulty,
-          sourceType: SourceType.user_uploaded,
-          sourceTitle: formatMaterialSourceTitle(candidate.material.title, candidate.sourceRef),
-          sourceLicense: candidate.material.sourceLicense,
-          visibility: Visibility.private,
-          reviewStatus: candidate.material.libraryScope === "platform" ? ReviewStatus.pending_review : ReviewStatus.approved,
-          currentVersion: 1,
-          knowledgeBindings: {
-            create: {
-              knowledgeNodeId: candidate.knowledgeNodeId!,
-              weight: 1,
-              isPrimary: true
-            }
-          },
-          versions: {
-            create: {
-              version: 1,
-              stem: candidate.stem,
-              payload: candidate.payload as Prisma.InputJsonValue,
-              answerKey: candidate.answerKey as Prisma.InputJsonValue,
-              explanation: candidate.explanation,
-              sourceType: SourceType.user_uploaded,
-              visibility: Visibility.private,
-              reviewStatus: candidate.material.libraryScope === "platform" ? ReviewStatus.pending_review : ReviewStatus.approved
-            }
-          }
-        }
-      });
-      await tx.materialQuestionCandidate.update({
-        where: { id: candidate.id },
-        data: {
-          status: "confirmed",
-          confirmedQuestionId: created.id
-        }
-      });
-
-      return created;
+      return createQuestionFromMaterialCandidate(tx, candidate);
     });
 
     return { ok: true, data: { questionId: question.id } };
   } catch (error) {
     return { ok: false, error: databaseErrorMessage(error, "候选题确认失败。") };
   }
+}
+
+export async function confirmMaterialQuestionCandidates(candidateIds: string[], db: MaterialDatabase = prisma): Promise<ActionResult<{ count: number; questionIds: string[] }>> {
+  const ids = [...new Set(candidateIds.map((id) => id.trim()).filter(Boolean))];
+
+  if (ids.length === 0) {
+    return { ok: false, error: "请选择要入库的候选题。" };
+  }
+
+  const candidates = await db.materialQuestionCandidate.findMany({
+    where: {
+      id: {
+        in: ids
+      }
+    },
+    include: {
+      material: true
+    }
+  });
+  const candidateById = new Map(candidates.map((candidate) => [candidate.id, candidate]));
+  const orderedCandidates = ids.map((id) => candidateById.get(id));
+
+  if (orderedCandidates.some((candidate) => !candidate)) {
+    return { ok: false, error: "部分候选题不存在。" };
+  }
+
+  const validCandidates = orderedCandidates as NonNullable<(typeof orderedCandidates)[number]>[];
+
+  if (validCandidates.some((candidate) => candidate.status === "confirmed" || candidate.confirmedQuestionId)) {
+    return { ok: false, error: "已选候选题中有已确认项。" };
+  }
+
+  if (validCandidates.some((candidate) => !candidate.knowledgeNodeId)) {
+    return { ok: false, error: "已选候选题中有缺少知识点的题目，暂不能确认。" };
+  }
+
+  const knowledgeNodeIds = [...new Set(validCandidates.map((candidate) => candidate.knowledgeNodeId).filter((id): id is string => Boolean(id)))];
+  const knowledgeNodeCount = await db.knowledgeNode.count({
+    where: {
+      id: {
+        in: knowledgeNodeIds
+      }
+    }
+  });
+
+  if (knowledgeNodeCount !== knowledgeNodeIds.length) {
+    return { ok: false, error: "已选候选题中有无效知识点，暂不能确认。" };
+  }
+
+  try {
+    const questionIds = await db.$transaction(async (tx) => {
+      const createdIds: string[] = [];
+
+      for (const candidate of validCandidates) {
+        const created = await createQuestionFromMaterialCandidate(tx, candidate);
+
+        createdIds.push(created.id);
+      }
+
+      return createdIds;
+    });
+
+    return { ok: true, data: { count: questionIds.length, questionIds } };
+  } catch (error) {
+    return { ok: false, error: databaseErrorMessage(error, "候选题批量确认失败。") };
+  }
+}
+
+type ConfirmableMaterialQuestionCandidate = Prisma.MaterialQuestionCandidateGetPayload<{
+  include: {
+    material: true;
+  };
+}>;
+
+async function createQuestionFromMaterialCandidate(
+  tx: Pick<MaterialDatabase, "question" | "materialQuestionCandidate">,
+  candidate: ConfirmableMaterialQuestionCandidate
+) {
+  const reviewStatus = candidate.material.libraryScope === "platform" ? ReviewStatus.pending_review : ReviewStatus.approved;
+  const created = await tx.question.create({
+    data: {
+      ownerId: candidate.material.libraryScope === "platform" ? null : candidate.material.ownerId,
+      kind: candidate.kind,
+      stem: candidate.stem,
+      payload: candidate.payload as Prisma.InputJsonValue,
+      answerKey: candidate.answerKey as Prisma.InputJsonValue,
+      explanation: candidate.explanation,
+      difficulty: candidate.difficulty,
+      sourceType: SourceType.user_uploaded,
+      sourceTitle: formatMaterialSourceTitle(candidate.material.title, candidate.sourceRef),
+      sourceLicense: candidate.material.sourceLicense,
+      visibility: Visibility.private,
+      reviewStatus,
+      currentVersion: 1,
+      knowledgeBindings: {
+        create: {
+          knowledgeNodeId: candidate.knowledgeNodeId!,
+          weight: 1,
+          isPrimary: true
+        }
+      },
+      versions: {
+        create: {
+          version: 1,
+          stem: candidate.stem,
+          payload: candidate.payload as Prisma.InputJsonValue,
+          answerKey: candidate.answerKey as Prisma.InputJsonValue,
+          explanation: candidate.explanation,
+          sourceType: SourceType.user_uploaded,
+          visibility: Visibility.private,
+          reviewStatus
+        }
+      }
+    }
+  });
+
+  await tx.materialQuestionCandidate.update({
+    where: { id: candidate.id },
+    data: {
+      status: "confirmed",
+      confirmedQuestionId: created.id
+    }
+  });
+
+  return created;
 }
 
 export async function readMaterialText(
@@ -1496,7 +1577,7 @@ function parseChoiceContent(value: Record<string, unknown>) {
 
   for (const key of singleChoiceAnswerKeys) {
     const text = optionTexts[key] || richOptions.texts[key] || "";
-    const blocks = richOptions.blocks[key] ?? explicitOptionBlocks[key] ?? readOptionalRichContentBlocks(null, text);
+    const blocks = richOptions.blocks[key] ?? explicitOptionBlocks[key] ?? readOptionalRichContentBlocks(optionTexts.raw[key], text);
     const plain = text || (blocks ? richTextToPlainText(blocks) : "");
 
     if (plain) {
@@ -1520,20 +1601,48 @@ function parseChoiceContent(value: Record<string, unknown>) {
 
 function parsePartialOptions(value: unknown) {
   const options: Partial<Record<SingleChoiceAnswerKey, string>> = {};
+  const raw: Partial<Record<SingleChoiceAnswerKey, unknown>> = {};
 
   if (!isPlainObject(value)) {
-    return options;
+    return { ...options, raw };
   }
 
   for (const key of singleChoiceAnswerKeys) {
-    const text = textValue(value[key] ?? value[key.toLowerCase()]);
+    const rawValue = value[key] ?? value[key.toLowerCase()];
+    const text = choiceOptionTextValue(rawValue);
+
+    if (rawValue !== undefined) {
+      raw[key] = rawValue;
+    }
 
     if (text) {
       options[key] = text;
     }
   }
 
-  return options;
+  return { ...options, raw };
+}
+
+function choiceOptionTextValue(value: unknown) {
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return textValue(value);
+  }
+
+  if (Array.isArray(value)) {
+    return richTextToPlainText(normalizeRichContentBlocks(value)) || null;
+  }
+
+  if (isPlainObject(value)) {
+    const text = textValue(value.text);
+
+    if (text) {
+      return text;
+    }
+
+    return richTextToPlainText(normalizeRichContentBlocks(readRichContentValue(value))) || null;
+  }
+
+  return null;
 }
 
 function parseRichOptions(value: unknown) {
@@ -1637,7 +1746,7 @@ function buildRichPayload(question: ExtractedMaterialQuestion, basePayload: unkn
 }
 
 function readOptionalRichContentBlocks(value: unknown, fallbackText?: string | null): RichContentBlock[] | null {
-  const blocks = normalizeRichContentBlocks(value, fallbackText);
+  const blocks = normalizeRichContentBlocks(readRichContentValue(value), fallbackText);
 
   if (blocks.length === 0) {
     return null;
@@ -1648,6 +1757,18 @@ function readOptionalRichContentBlocks(value: unknown, fallbackText?: string | n
   }
 
   return null;
+}
+
+function readRichContentValue(value: unknown) {
+  if (isPlainObject(value) && Array.isArray(value.blocks)) {
+    return value.blocks;
+  }
+
+  if (isPlainObject(value) && typeof value.type === "string") {
+    return [value];
+  }
+
+  return value;
 }
 
 function mergeChoicePayloadOverride(defaultPayload: { options: { key: SingleChoiceAnswerKey; text: string }[] }, override: Prisma.InputJsonValue | null) {
