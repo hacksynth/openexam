@@ -1,7 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-
-const defaultLocale = "zh-CN";
-const locales = [defaultLocale] as const;
+import { defaultLocale, locales } from "./lib/locale";
 
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;

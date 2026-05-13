@@ -3,6 +3,7 @@ import type { Route } from "next";
 import { adminRoutes, learnerRoutes, sectionLabels, type AppSection } from "@openexam/core/routes";
 import { SubmitButton } from "@openexam/core/pixel-ui";
 import { requireAdminSession, requireWebSession } from "@/lib/auth";
+import { withDefaultLocalePath } from "@/lib/locale";
 import { adminLogoutAction } from "@/app/admin/logout/actions";
 import { logoutAction } from "@/app/logout/actions";
 
@@ -19,7 +20,7 @@ export async function AppShell({ section, title, eyebrow, children }: AppShellPr
   const accountLabel = session.user.name?.trim() || session.user.email;
   const accountTitle = session.user.name ? `${session.user.name} <${session.user.email}>` : session.user.email;
   const navigationRoutes = (isAdmin ? adminRoutes : learnerRoutes).filter((route) => !route.href.includes("["));
-  const homeHref = isAdmin ? "/admin" : "/";
+  const homeHref = withDefaultLocalePath(isAdmin ? "/admin" : "/");
   const logout = isAdmin ? adminLogoutAction : logoutAction;
 
   return (
@@ -33,7 +34,7 @@ export async function AppShell({ section, title, eyebrow, children }: AppShellPr
           {navigationRoutes.map((route) => (
             <Link
               key={route.id}
-              href={route.href as Route}
+              href={withDefaultLocalePath(route.href) as Route}
               className="border-2 border-black bg-white px-3 py-2 text-sm font-bold hover:bg-[var(--primary)]"
             >
               {route.label}

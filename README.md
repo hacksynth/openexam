@@ -98,6 +98,8 @@ npm run test:e2e
 
 Copy `.env.example` to `.env` and update `DATABASE_URL`, `SESSION_SECRET`, `NEXT_PUBLIC_WEB_URL`, and `NEXT_PUBLIC_ADMIN_URL` before running migrations or seed data.
 
+When serving Docker over plain HTTP, including a LAN IP on mobile, keep `SESSION_COOKIE_SECURE=false` so browsers persist the login cookie. Set `SESSION_COOKIE_SECURE=true` only behind HTTPS.
+
 Set `ADMIN_EMAIL` and `ADMIN_PASSWORD` to bootstrap or update an admin login. The Docker web service runs this bootstrap automatically after migrations; local development can run `npm run db:bootstrap-admin` or `npm run db:seed`.
 
 Set `AI_KEY_ENCRYPTION_SECRET` before saving BYOK provider keys. `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, and `GEMINI_API_KEY` are optional platform fallbacks when a learner has not saved a personal key. Set provider base URL env vars when using compatible gateways.

@@ -50,7 +50,7 @@ export default async function GeneratePracticePage({ searchParams }: GeneratePra
             </div>
           ) : (
             <form action={generatePracticeQuestionCandidatesAction} className="grid gap-3">
-              <TextareaField label="出题方向" name="prompt" placeholder="例如：数据库事务隔离级别，偏应用题，覆盖易混概念" required textareaClassName="min-h-24" />
+              <TextareaField label="想练什么内容？" name="prompt" placeholder="例如：我想练数据库事务隔离级别，多出应用题，重点覆盖容易混淆的概念" required textareaClassName="min-h-24" />
               <div className="grid gap-3 lg:grid-cols-[1fr_180px]">
                 <SelectField label="知识点" name="knowledgeNodeId">
                   <option value="">由 AI 从当前目标中选择</option>

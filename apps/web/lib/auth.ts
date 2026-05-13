@@ -8,6 +8,7 @@ import {
   userHasRole,
   type AuthSession
 } from "@openexam/core/auth";
+import { withDefaultLocalePath } from "./locale";
 
 export const webSessionCookieName = "openexam_web_session";
 export const adminSessionCookieName = "openexam_admin_session";
@@ -30,7 +31,7 @@ export async function requireWebSession() {
   const session = await getWebSession();
 
   if (!session) {
-    redirect("/login" as Route);
+    redirect(withDefaultLocalePath("/login") as Route);
   }
 
   return session;
@@ -40,11 +41,11 @@ export async function requireAdminSession() {
   const session = await getAdminSession();
 
   if (!session) {
-    redirect("/admin/login" as Route);
+    redirect(withDefaultLocalePath("/admin/login") as Route);
   }
 
   if (!userHasRole(session.user, "admin")) {
-    redirect("/admin/login?error=forbidden" as Route);
+    redirect(withDefaultLocalePath("/admin/login?error=forbidden") as Route);
   }
 
   return session;
@@ -54,7 +55,7 @@ export async function redirectAuthenticatedWebUser() {
   const session = await getWebSession();
 
   if (session) {
-    redirect("/dashboard" as Route);
+    redirect(withDefaultLocalePath("/dashboard") as Route);
   }
 }
 
@@ -62,7 +63,7 @@ export async function redirectAuthenticatedAdminUser() {
   const session = await getAdminSession();
 
   if (session && userHasRole(session.user, "admin")) {
-    redirect("/admin" as Route);
+    redirect(withDefaultLocalePath("/admin") as Route);
   }
 }
 
@@ -70,7 +71,7 @@ export async function redirectAuthenticatedWebUserTo(redirectTo?: string | null)
   const session = await getWebSession();
 
   if (session) {
-    redirect(normalizeWebRedirectPath(redirectTo) as Route);
+    redirect(withDefaultLocalePath(normalizeWebRedirectPath(redirectTo)) as Route);
   }
 }
 
@@ -129,7 +130,17 @@ function sessionCookieOptions(expiresAt: AuthSession["expiresAt"]) {
     expires: expiresAt,
     httpOnly: true,
     sameSite: "lax" as const,
-    secure: process.env.NODE_ENV === "production",
+    secure: shouldUseSecureSessionCookie(),
     path: "/"
   };
+}
+
+function shouldUseSecureSessionCookie() {
+  const configured = process.env.SESSION_COOKIE_SECURE?.trim().toLowerCase();
+
+  if (configured) {
+    return ["1", "true", "yes", "on"].includes(configured);
+  }
+
+  return [process.env.AUTH_URL, process.env.NEXT_PUBLIC_WEB_URL, process.env.NEXT_PUBLIC_ADMIN_URL].some((value) => value?.trim().startsWith("https://"));
 }

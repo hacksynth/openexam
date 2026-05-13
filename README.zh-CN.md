@@ -98,6 +98,8 @@ npm run test:e2e
 
 复制 `.env.example` 为 `.env`，并在迁移或 seed 前更新 `DATABASE_URL`、`SESSION_SECRET`、`NEXT_PUBLIC_WEB_URL` 和 `NEXT_PUBLIC_ADMIN_URL`。
 
+Docker 使用普通 HTTP 或局域网 IP 给手机访问时，保持 `SESSION_COOKIE_SECURE=false`，否则浏览器不会保存登录 Cookie。只有在 HTTPS 后面部署时才设置为 `true`。
+
 设置 `ADMIN_EMAIL` 和 `ADMIN_PASSWORD` 可初始化或更新管理员账号。Docker web 服务会在 migration 后自动 bootstrap；本地开发可运行 `npm run db:bootstrap-admin` 或 `npm run db:seed`。
 
 设置 `AI_KEY_ENCRYPTION_SECRET` 后才能保存 BYOK provider key。`OPENAI_API_KEY`、`ANTHROPIC_API_KEY` 和 `GEMINI_API_KEY` 是可选平台 fallback；用户未保存个人 key 时会使用平台 key。使用兼容网关时可设置 provider base URL。

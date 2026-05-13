@@ -16,6 +16,7 @@ x-app-environment: &app-environment
   AUTH_URL: "${AUTH_URL:-}"
   SESSION_SECRET: "${SESSION_SECRET:-openexam-local-session-secret}"
   SESSION_DAYS: "${SESSION_DAYS:-14}"
+  SESSION_COOKIE_SECURE: "${SESSION_COOKIE_SECURE:-false}"
   AI_KEY_ENCRYPTION_SECRET: "${AI_KEY_ENCRYPTION_SECRET:-openexam-local-ai-key-encryption-secret}"
   OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
   OPENAI_BASE_URL: "${OPENAI_BASE_URL:-}"

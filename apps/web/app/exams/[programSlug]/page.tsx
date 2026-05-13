@@ -7,6 +7,7 @@ import {
   type HomepageExamItem
 } from "@openexam/core/exam-core";
 import { getWebSession } from "@/lib/auth";
+import { withDefaultLocalePath } from "@/lib/locale";
 
 export const dynamic = "force-dynamic";
 
@@ -43,7 +44,7 @@ export default async function ExamProgramPage({ params }: ProgramPageProps) {
             当前展示 {program.defaultTrackName} / {program.defaultCycleName} 下的科目。
           </p>
         ) : null}
-        <Link href={"/" as Route} className="pixel-button w-fit bg-white px-4 py-2">
+        <Link href={withDefaultLocalePath("/") as Route} className="pixel-button w-fit bg-white px-4 py-2">
           返回考试大方向
         </Link>
       </section>
@@ -147,7 +148,7 @@ function buildItemHref(item: HomepageExamItem, sessionReady: boolean) {
       ? `/goals?programId=${encodeURIComponent(item.programId)}&trackId=${encodeURIComponent(item.trackId)}&cycleId=${encodeURIComponent(item.cycleId)}&subjectId=${encodeURIComponent(item.id)}`
       : `/goals?programId=${encodeURIComponent(item.programId)}&trackId=${encodeURIComponent(item.trackId)}`;
 
-  return sessionReady ? goalsHref : `/login?redirectTo=${encodeURIComponent(goalsHref)}`;
+  return sessionReady ? withDefaultLocalePath(goalsHref) : withDefaultLocalePath(`/login?redirectTo=${encodeURIComponent(goalsHref)}`);
 }
 
 function subjectNames(item: Extract<HomepageExamItem, { kind: "track" }>) {

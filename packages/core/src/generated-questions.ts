@@ -84,7 +84,7 @@ export async function generatePracticeQuestionCandidates(
   const promptText = input.prompt.trim();
 
   if (promptText.length < 4) {
-    return { ok: false, error: "请描述要生成的练习题方向。" };
+    return { ok: false, error: "请简单写一下你想练的内容，比如知识点、题型或重点难点。" };
   }
 
   const count = parseCount(input.count);
