@@ -40,7 +40,7 @@
     "./wrong-note-images": "./src/wrong-note-images.ts"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.940.0",
+    "@aws-sdk/client-s3": "^3.1048.0",
     "@aws-sdk/credential-providers": "^3.940.0",
     "@prisma/client": "^6.19.0",
     "mammoth": "^1.12.0",
